@@ -106,10 +106,15 @@ func (s *Store) RevokeSession(ctx context.Context, id string) error {
 	return err
 }
 
+// ListSessionsForUser returns the user's active full sessions, most recently
+// seen first. Pre-auth (TOTP-pending) and expired rows are intentionally
+// excluded — the user-facing list should only show real, live devices.
 func (s *Store) ListSessionsForUser(ctx context.Context, userID string) ([]Session, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, user_id, ip_address, user_agent, created_at, expires_at, last_seen_at, pre_auth
-		FROM sessions WHERE user_id = $1 ORDER BY last_seen_at DESC
+		FROM sessions
+		WHERE user_id = $1 AND pre_auth = FALSE AND expires_at > NOW()
+		ORDER BY last_seen_at DESC
 	`, userID)
 	if err != nil {
 		return nil, err
@@ -124,6 +129,20 @@ func (s *Store) ListSessionsForUser(ctx context.Context, userID string) ([]Sessi
 		out = append(out, sess)
 	}
 	return out, rows.Err()
+}
+
+// RevokeOtherSessionsForUser deletes every full session owned by userID
+// except exceptID. Returns the number of rows deleted so the caller can
+// surface "N other devices signed out".
+func (s *Store) RevokeOtherSessionsForUser(ctx context.Context, userID, exceptID string) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM sessions
+		WHERE user_id = $1 AND id <> $2 AND pre_auth = FALSE
+	`, userID, exceptID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // --- totp ---

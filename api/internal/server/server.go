@@ -73,6 +73,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store) *http.Server {
 			r.Post("/auth/totp/setup", handler.TOTPSetup(tm))
 			r.Post("/auth/totp/enable", handler.TOTPEnable(tm))
 			r.Delete("/auth/totp", handler.TOTPDisable(s, tm))
+			r.Get("/auth/sessions", handler.ListSessions(s))
+			r.Delete("/auth/sessions", handler.RevokeOtherSessions(s))
+			r.Delete("/auth/sessions/{id}", handler.RevokeSession(s, sm))
 		})
 
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
