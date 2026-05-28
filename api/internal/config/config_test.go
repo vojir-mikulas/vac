@@ -92,3 +92,50 @@ func TestAddr(t *testing.T) {
 		t.Errorf("Addr() = %q", c.Addr())
 	}
 }
+
+func TestExposureAndSessionDefaults(t *testing.T) {
+	c := Default()
+	if c.Exposure != ExposurePublic {
+		t.Errorf("default exposure = %q", c.Exposure)
+	}
+	if !c.SecureCookies() {
+		t.Error("default exposure should require secure cookies")
+	}
+	if c.SessionTTL == 0 || c.SessionTTLExtended <= c.SessionTTL {
+		t.Errorf("session ttls: %v / %v", c.SessionTTL, c.SessionTTLExtended)
+	}
+}
+
+func TestLoad_ExposureLocalDropsSecure(t *testing.T) {
+	t.Setenv("VAC_EXPOSURE", "local")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Exposure != ExposureLocal {
+		t.Errorf("exposure = %q", cfg.Exposure)
+	}
+	if cfg.SecureCookies() {
+		t.Error("local exposure must not require secure cookies")
+	}
+}
+
+func TestLoad_InvalidExposureFallsBack(t *testing.T) {
+	t.Setenv("VAC_EXPOSURE", "garbage")
+	cfg, _ := Load()
+	if cfg.Exposure != ExposurePublic {
+		t.Errorf("invalid exposure should fall back to public, got %q", cfg.Exposure)
+	}
+}
+
+func TestLoad_SessionTTLs(t *testing.T) {
+	t.Setenv("VAC_SESSION_TTL", "2h")
+	t.Setenv("VAC_SESSION_TTL_EXTENDED", "48h")
+	cfg, _ := Load()
+	if cfg.SessionTTL.Hours() != 2 {
+		t.Errorf("session ttl = %v", cfg.SessionTTL)
+	}
+	if cfg.SessionTTLExtended.Hours() != 48 {
+		t.Errorf("session ttl extended = %v", cfg.SessionTTLExtended)
+	}
+}

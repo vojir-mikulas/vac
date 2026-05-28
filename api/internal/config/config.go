@@ -10,14 +10,24 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
+// Exposure mode controls cookie Secure flag and bind behaviour.
+const (
+	ExposurePublic = "public"
+	ExposureLocal  = "local"
+)
+
 type Config struct {
-	Server      ServerConfig `yaml:"server"`
-	DatabaseURL string       `yaml:"-"` // env-only (VAC_DATABASE_URL)
-	MasterKey   []byte       `yaml:"-"` // env-only (VAC_MASTER_KEY), 32 bytes
+	Server             ServerConfig  `yaml:"server"`
+	DatabaseURL        string        `yaml:"-"` // env-only (VAC_DATABASE_URL)
+	MasterKey          []byte        `yaml:"-"` // env-only (VAC_MASTER_KEY), 32 bytes
+	Exposure           string        `yaml:"exposure"`
+	SessionTTL         time.Duration `yaml:"session_ttl"`
+	SessionTTLExtended time.Duration `yaml:"session_ttl_extended"`
 }
 
 type ServerConfig struct {
@@ -31,6 +41,9 @@ func Default() Config {
 			Port: 3000,
 			Host: "0.0.0.0",
 		},
+		Exposure:           ExposurePublic,
+		SessionTTL:         7 * 24 * time.Hour,
+		SessionTTLExtended: 30 * 24 * time.Hour,
 	}
 }
 
@@ -84,15 +97,40 @@ func applyEnv(cfg *Config) {
 			cfg.MasterKey = key
 		}
 	}
+
+	if v := os.Getenv("VAC_EXPOSURE"); v != "" {
+		cfg.Exposure = v
+	}
+	if v := os.Getenv("VAC_SESSION_TTL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.SessionTTL = d
+		}
+	}
+	if v := os.Getenv("VAC_SESSION_TTL_EXTENDED"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.SessionTTLExtended = d
+		}
+	}
 }
 
 func validate(cfg *Config) {
 	if len(cfg.MasterKey) == 0 {
 		slog.Warn("VAC_MASTER_KEY is not set — encryption disabled, app creation will be blocked")
 	}
+	if cfg.Exposure != ExposurePublic && cfg.Exposure != ExposureLocal {
+		slog.Warn("VAC_EXPOSURE is invalid; falling back to public", "value", cfg.Exposure)
+		cfg.Exposure = ExposurePublic
+	}
 }
 
 // Addr returns the host:port string used by the HTTP server.
 func (c Config) Addr() string {
 	return fmt.Sprintf("%s:%d", c.Server.Host, c.Server.Port)
+}
+
+// SecureCookies returns true when cookies must carry the Secure flag (HTTPS
+// required). Local-exposure deployments behind Tailscale / SSH-tunnel do not
+// need it.
+func (c Config) SecureCookies() bool {
+	return c.Exposure == ExposurePublic
 }
