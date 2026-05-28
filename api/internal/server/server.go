@@ -80,6 +80,14 @@ func New(ctx context.Context, cfg config.Config, s *store.Store) *http.Server {
 			r.Get("/auth/api-tokens", handler.ListAPITokens(s))
 			r.Post("/auth/api-tokens", handler.CreateAPIToken(tokm))
 			r.Delete("/auth/api-tokens/{id}", handler.RevokeAPIToken(tokm))
+
+			r.Route("/apps", func(r chi.Router) {
+				r.Get("/", handler.ListApps(s))
+				r.Post("/", handler.CreateApp(s))
+				r.Get("/{id}", handler.GetApp(s))
+				r.Patch("/{id}", handler.UpdateApp(s))
+				r.Delete("/{id}", handler.DeleteApp(s))
+			})
 		})
 
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
