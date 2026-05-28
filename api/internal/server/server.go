@@ -2,6 +2,7 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/vojir-mikulas/vac/api/internal/auth"
 	"github.com/vojir-mikulas/vac/api/internal/config"
+	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/server/handler"
 	"github.com/vojir-mikulas/vac/api/internal/server/middleware"
 	"github.com/vojir-mikulas/vac/api/internal/store"
@@ -18,6 +20,19 @@ import (
 
 func New(cfg config.Config, s *store.Store) *http.Server {
 	sm := auth.NewSessionManager(s, cfg.SessionTTL, cfg.SessionTTLExtended)
+
+	// box may be nil when VAC_MASTER_KEY is unset — TOTP setup will then
+	// refuse with a clear error rather than silently doing nothing.
+	var box *crypto.Box
+	if len(cfg.MasterKey) > 0 {
+		b, err := crypto.New(cfg.MasterKey)
+		if err != nil {
+			slog.Warn("crypto box init failed; totp setup disabled", "err", err)
+		} else {
+			box = b
+		}
+	}
+	tm := auth.NewTOTPManager(s, box)
 
 	r := chi.NewRouter()
 
@@ -38,12 +53,18 @@ func New(cfg config.Config, s *store.Store) *http.Server {
 			r.Post("/admin", handler.SetupAdmin(s))
 		})
 		r.Post("/auth/login", handler.Login(s, sm, cfg))
+		// TOTP login step is reached via the pre-auth cookie, not a full
+		// session — so it sits outside the RequireSession group.
+		r.Post("/auth/totp", handler.TOTPLogin(s, sm, tm, cfg))
 
 		// Authenticated — requires a valid session cookie.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireSession)
 			r.Post("/auth/logout", handler.Logout(sm, cfg))
 			r.Get("/auth/me", handler.Me)
+			r.Post("/auth/totp/setup", handler.TOTPSetup(tm))
+			r.Post("/auth/totp/enable", handler.TOTPEnable(tm))
+			r.Delete("/auth/totp", handler.TOTPDisable(s, tm))
 		})
 
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {

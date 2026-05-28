@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strconv"
 	"sync"
 
 	"github.com/vojir-mikulas/vac/api/internal/auth"
@@ -44,7 +45,14 @@ type meResponse struct {
 	TOTPEnabled bool   `json:"totp_enabled"`
 }
 
-// Login verifies the password and issues a session + CSRF cookie pair.
+type totpRequiredResponse struct {
+	TOTPRequired bool `json:"totp_required"`
+}
+
+// Login verifies the password and issues a session + CSRF cookie pair. If the
+// user has TOTP enabled, the response is a `{"totp_required": true}` plus a
+// short-lived pre-auth cookie; the client must then POST /api/auth/totp with a
+// code to finish authenticating.
 func Login(s *store.Store, sm *auth.SessionManager, cfg config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req loginRequest
@@ -73,32 +81,55 @@ func Login(s *store.Store, sm *auth.SessionManager, cfg config.Config) http.Hand
 		}
 
 		ip := clientIP(r)
-		token, sess, err := sm.Create(r.Context(), user.ID, ip, r.UserAgent(), req.Remember)
-		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "could not create session")
+
+		if user.TOTPEnabled {
+			preToken, _, err := sm.CreatePreAuth(r.Context(), user.ID, ip, r.UserAgent())
+			if err != nil {
+				WriteError(w, http.StatusInternalServerError, "could not create pre-auth session")
+				return
+			}
+			setPreAuthCookie(w, preToken, auth.PreAuthTTL, cfg.SecureCookies())
+			// Carry the "remember me" preference through the pre-auth step
+			// so the eventual full session honours it.
+			http.SetCookie(w, &http.Cookie{
+				Name:     "vac_pre_remember",
+				Value:    strconv.FormatBool(req.Remember),
+				Path:     "/",
+				HttpOnly: true,
+				Secure:   cfg.SecureCookies(),
+				SameSite: http.SameSiteStrictMode,
+				MaxAge:   int(auth.PreAuthTTL.Seconds()),
+			})
+			WriteJSON(w, http.StatusOK, totpRequiredResponse{TOTPRequired: true})
 			return
 		}
 
-		csrf, err := newCSRFToken()
-		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "could not generate csrf token")
-			return
-		}
-
-		ttl := sm.TTL(req.Remember)
-		setSessionCookie(w, token, ttl, cfg.SecureCookies())
-		setCSRFCookie(w, csrf, ttl, cfg.SecureCookies())
-
-		// Avoid unused-variable warning; sess is here so future callers can
-		// surface the session id without another query.
-		_ = sess
-
-		WriteJSON(w, http.StatusOK, meResponse{
-			ID:          user.ID,
-			Username:    user.Username,
-			TOTPEnabled: user.TOTPEnabled,
-		})
+		issueFullSession(w, r, sm, cfg, user, req.Remember)
 	}
+}
+
+// issueFullSession is the tail of login (and TOTP step) shared between the
+// password-only path and the password+TOTP path.
+func issueFullSession(w http.ResponseWriter, r *http.Request, sm *auth.SessionManager, cfg config.Config, user store.User, remember bool) {
+	ip := clientIP(r)
+	token, _, err := sm.Create(r.Context(), user.ID, ip, r.UserAgent(), remember)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "could not create session")
+		return
+	}
+	csrf, err := newCSRFToken()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "could not generate csrf token")
+		return
+	}
+	ttl := sm.TTL(remember)
+	setSessionCookie(w, token, ttl, cfg.SecureCookies())
+	setCSRFCookie(w, csrf, ttl, cfg.SecureCookies())
+	WriteJSON(w, http.StatusOK, meResponse{
+		ID:          user.ID,
+		Username:    user.Username,
+		TOTPEnabled: user.TOTPEnabled,
+	})
 }
 
 // Logout revokes the current session and clears its cookies. Must be mounted

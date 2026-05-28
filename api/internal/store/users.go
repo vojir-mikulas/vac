@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/netip"
 	"time"
@@ -26,6 +27,7 @@ type Session struct {
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
 	LastSeenAt time.Time
+	PreAuth    bool
 }
 
 // --- users ---
@@ -72,22 +74,22 @@ func (s *Store) GetUserByID(ctx context.Context, id string) (User, error) {
 
 // --- sessions ---
 
-func (s *Store) CreateSession(ctx context.Context, userID string, tokenHash []byte, ip *netip.Addr, ua string, expiresAt time.Time) (Session, error) {
+func (s *Store) CreateSession(ctx context.Context, userID string, tokenHash []byte, ip *netip.Addr, ua string, expiresAt time.Time, preAuth bool) (Session, error) {
 	var sess Session
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO sessions (user_id, token_hash, ip_address, user_agent, expires_at)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, user_id, ip_address, user_agent, created_at, expires_at, last_seen_at
-	`, userID, tokenHash, ip, ua, expiresAt).Scan(&sess.ID, &sess.UserID, &sess.IPAddress, &sess.UserAgent, &sess.CreatedAt, &sess.ExpiresAt, &sess.LastSeenAt)
+		INSERT INTO sessions (user_id, token_hash, ip_address, user_agent, expires_at, pre_auth)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, user_id, ip_address, user_agent, created_at, expires_at, last_seen_at, pre_auth
+	`, userID, tokenHash, ip, ua, expiresAt, preAuth).Scan(&sess.ID, &sess.UserID, &sess.IPAddress, &sess.UserAgent, &sess.CreatedAt, &sess.ExpiresAt, &sess.LastSeenAt, &sess.PreAuth)
 	return sess, err
 }
 
 func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error) {
 	var sess Session
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, user_id, ip_address, user_agent, created_at, expires_at, last_seen_at
+		SELECT id, user_id, ip_address, user_agent, created_at, expires_at, last_seen_at, pre_auth
 		FROM sessions WHERE token_hash = $1
-	`, tokenHash).Scan(&sess.ID, &sess.UserID, &sess.IPAddress, &sess.UserAgent, &sess.CreatedAt, &sess.ExpiresAt, &sess.LastSeenAt)
+	`, tokenHash).Scan(&sess.ID, &sess.UserID, &sess.IPAddress, &sess.UserAgent, &sess.CreatedAt, &sess.ExpiresAt, &sess.LastSeenAt, &sess.PreAuth)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, ErrNotFound
 	}
@@ -106,7 +108,7 @@ func (s *Store) RevokeSession(ctx context.Context, id string) error {
 
 func (s *Store) ListSessionsForUser(ctx context.Context, userID string) ([]Session, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, user_id, ip_address, user_agent, created_at, expires_at, last_seen_at
+		SELECT id, user_id, ip_address, user_agent, created_at, expires_at, last_seen_at, pre_auth
 		FROM sessions WHERE user_id = $1 ORDER BY last_seen_at DESC
 	`, userID)
 	if err != nil {
@@ -116,10 +118,82 @@ func (s *Store) ListSessionsForUser(ctx context.Context, userID string) ([]Sessi
 	var out []Session
 	for rows.Next() {
 		var sess Session
-		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.IPAddress, &sess.UserAgent, &sess.CreatedAt, &sess.ExpiresAt, &sess.LastSeenAt); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.IPAddress, &sess.UserAgent, &sess.CreatedAt, &sess.ExpiresAt, &sess.LastSeenAt, &sess.PreAuth); err != nil {
 			return nil, err
 		}
 		out = append(out, sess)
 	}
 	return out, rows.Err()
+}
+
+// --- totp ---
+
+// SetUserTOTPSecret stores an encrypted TOTP secret as pending. totp_enabled
+// stays FALSE until EnableUserTOTP is called with a valid code.
+func (s *Store) SetUserTOTPSecret(ctx context.Context, userID string, encSecret []byte) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE users
+		SET totp_secret = $1, totp_enabled = FALSE, totp_recovery_codes = NULL, updated_at = NOW()
+		WHERE id = $2
+	`, encSecret, userID)
+	return err
+}
+
+// GetUserTOTPSecret returns the encrypted secret stored on the user. Returns
+// ErrNotFound when no secret has been set (TOTP setup not started).
+func (s *Store) GetUserTOTPSecret(ctx context.Context, userID string) ([]byte, error) {
+	var secret []byte
+	err := s.pool.QueryRow(ctx, `SELECT totp_secret FROM users WHERE id = $1`, userID).Scan(&secret)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(secret) == 0 {
+		return nil, ErrNotFound
+	}
+	return secret, nil
+}
+
+// EnableUserTOTP flips totp_enabled to TRUE and stores the hashed recovery
+// codes. Caller is expected to have just verified a TOTP code against the
+// pending secret.
+func (s *Store) EnableUserTOTP(ctx context.Context, userID string, recoveryHashes []string) error {
+	payload, err := json.Marshal(recoveryHashes)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE users
+		SET totp_enabled = TRUE, totp_recovery_codes = $1, updated_at = NOW()
+		WHERE id = $2
+	`, payload, userID)
+	return err
+}
+
+// DisableUserTOTP clears the secret, the enabled flag, and any recovery codes.
+func (s *Store) DisableUserTOTP(ctx context.Context, userID string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE users
+		SET totp_secret = NULL, totp_enabled = FALSE, totp_recovery_codes = NULL, updated_at = NOW()
+		WHERE id = $1
+	`, userID)
+	return err
+}
+
+// ConsumeRecoveryCode removes hexHash from the user's recovery code list and
+// returns true if it was present. The update is done atomically via a single
+// UPDATE so concurrent uses cannot both succeed.
+func (s *Store) ConsumeRecoveryCode(ctx context.Context, userID, hexHash string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE users
+		SET totp_recovery_codes = COALESCE(totp_recovery_codes, '[]'::jsonb) - $2
+		WHERE id = $1
+		  AND totp_recovery_codes @> to_jsonb(ARRAY[$2]::text[])
+	`, userID, hexHash)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }

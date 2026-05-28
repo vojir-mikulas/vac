@@ -123,7 +123,7 @@ func TestSessionsCRUD(t *testing.T) {
 
 	expires := time.Now().Add(7 * 24 * time.Hour)
 	tokenHash := randomToken(t)
-	sess, err := s.CreateSession(ctx, u.ID, tokenHash, nil, "go-test", expires)
+	sess, err := s.CreateSession(ctx, u.ID, tokenHash, nil, "go-test", expires, false)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}

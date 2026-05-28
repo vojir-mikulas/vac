@@ -17,6 +17,20 @@ import (
 // expires_at timestamp.
 var ErrExpired = errors.New("auth: session expired")
 
+// ErrPreAuth is returned when a normal Lookup hits a pre-auth (TOTP-pending)
+// session. Callers should treat the request as anonymous.
+var ErrPreAuth = errors.New("auth: session is pre-auth only")
+
+// ErrNotPreAuth is returned by LookupPreAuth when the token resolves to a
+// full session rather than a pending one. The caller should reject — using a
+// full session token to satisfy the TOTP step would defeat 2FA.
+var ErrNotPreAuth = errors.New("auth: session is not pre-auth")
+
+// PreAuthTTL is how long a TOTP-pending session is valid for. Short enough
+// that a stolen pre-auth cookie cannot be sat on, long enough for the user
+// to fetch their authenticator app.
+const PreAuthTTL = 10 * time.Minute
+
 // SessionManager creates and validates session tokens. Raw tokens are returned
 // once at creation (for the cookie) and never persisted — only the SHA-256
 // hash lives in the DB. A leaked DB dump cannot be used to hijack live sessions.
@@ -38,9 +52,20 @@ func (m *SessionManager) TTL(extended bool) time.Duration {
 	return m.ttl
 }
 
-// Create issues a new session and returns the raw token (for the cookie) along
-// with the persisted session row. The raw token is not stored anywhere.
+// Create issues a new full session and returns the raw token (for the cookie)
+// along with the persisted session row. The raw token is not stored anywhere.
 func (m *SessionManager) Create(ctx context.Context, userID string, ip *netip.Addr, ua string, extended bool) (rawToken string, sess store.Session, err error) {
+	return m.create(ctx, userID, ip, ua, m.TTL(extended), false)
+}
+
+// CreatePreAuth issues a short-lived session that satisfies only the TOTP
+// step of login. Auth middleware refuses it — only the /api/auth/totp handler
+// accepts it via LookupPreAuth.
+func (m *SessionManager) CreatePreAuth(ctx context.Context, userID string, ip *netip.Addr, ua string) (rawToken string, sess store.Session, err error) {
+	return m.create(ctx, userID, ip, ua, PreAuthTTL, true)
+}
+
+func (m *SessionManager) create(ctx context.Context, userID string, ip *netip.Addr, ua string, ttl time.Duration, preAuth bool) (string, store.Session, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", store.Session{}, fmt.Errorf("auth: token rand: %w", err)
@@ -48,7 +73,7 @@ func (m *SessionManager) Create(ctx context.Context, userID string, ip *netip.Ad
 	token := base64.RawURLEncoding.EncodeToString(raw)
 	hash := sha256.Sum256(raw)
 
-	sess, err = m.store.CreateSession(ctx, userID, hash[:], ip, ua, time.Now().Add(m.TTL(extended)))
+	sess, err := m.store.CreateSession(ctx, userID, hash[:], ip, ua, time.Now().Add(ttl), preAuth)
 	if err != nil {
 		return "", store.Session{}, err
 	}
@@ -56,8 +81,35 @@ func (m *SessionManager) Create(ctx context.Context, userID string, ip *netip.Ad
 }
 
 // Lookup resolves a raw cookie token to (session, user). Returns
-// store.ErrNotFound for unknown tokens and ErrExpired for past-due sessions.
+// store.ErrNotFound for unknown tokens, ErrExpired for past-due sessions, and
+// ErrPreAuth for sessions that have not cleared the TOTP step.
 func (m *SessionManager) Lookup(ctx context.Context, rawToken string) (store.Session, store.User, error) {
+	sess, user, err := m.lookup(ctx, rawToken)
+	if err != nil {
+		return store.Session{}, store.User{}, err
+	}
+	if sess.PreAuth {
+		return store.Session{}, store.User{}, ErrPreAuth
+	}
+	// Best-effort: bump last_seen_at, but don't fail the lookup if the write errors.
+	_ = m.store.UpdateSessionLastSeen(ctx, sess.ID, time.Now())
+	return sess, user, nil
+}
+
+// LookupPreAuth is the dual of Lookup for the TOTP step: it accepts only
+// pending sessions and rejects full ones.
+func (m *SessionManager) LookupPreAuth(ctx context.Context, rawToken string) (store.Session, store.User, error) {
+	sess, user, err := m.lookup(ctx, rawToken)
+	if err != nil {
+		return store.Session{}, store.User{}, err
+	}
+	if !sess.PreAuth {
+		return store.Session{}, store.User{}, ErrNotPreAuth
+	}
+	return sess, user, nil
+}
+
+func (m *SessionManager) lookup(ctx context.Context, rawToken string) (store.Session, store.User, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(rawToken)
 	if err != nil {
 		return store.Session{}, store.User{}, store.ErrNotFound
@@ -74,8 +126,6 @@ func (m *SessionManager) Lookup(ctx context.Context, rawToken string) (store.Ses
 	if err != nil {
 		return store.Session{}, store.User{}, err
 	}
-	// Best-effort: bump last_seen_at, but don't fail the lookup if the write errors.
-	_ = m.store.UpdateSessionLastSeen(ctx, sess.ID, time.Now())
 	return sess, user, nil
 }
 

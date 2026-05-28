@@ -55,3 +55,27 @@ func clearCSRFCookie(w http.ResponseWriter, secure bool) {
 		MaxAge:   -1,
 	})
 }
+
+func setPreAuthCookie(w http.ResponseWriter, value string, ttl time.Duration, secure bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.PreAuthCookie,
+		Value:    value,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   int(ttl.Seconds()),
+	})
+}
+
+func clearPreAuthCookie(w http.ResponseWriter, secure bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.PreAuthCookie,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+	})
+}
