@@ -1,0 +1,44 @@
+# Go
+*.exe
+*.test
+*.out
+*.prof
+/api/bin/
+/api/vac
+/api/vac-api
+/api/coverage.txt
+/api/internal/ui/dist/
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+
+# Vite
+ui/dist/
+ui/dist-ssr/
+*.local
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*~
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test / coverage
+coverage/
+.nyc_output/

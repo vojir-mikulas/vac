@@ -1,0 +1,22 @@
+{
+  "name": "vac",
+  "private": true,
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "prepare": "husky",
+    "lint": "pnpm --filter ui lint",
+    "typecheck": "pnpm --filter ui typecheck",
+    "test": "pnpm --filter ui test",
+    "format": "pnpm --filter ui format",
+    "format:check": "pnpm --filter ui format:check"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.0.1",
+    "@commitlint/config-conventional": "^21.0.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5"
+  }
+}
