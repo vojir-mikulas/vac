@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -43,6 +45,13 @@ func main() {
 	slog.Info("database migrations applied")
 
 	st := store.New(pool)
+
+	if n, err := st.CountUsers(ctx); err != nil {
+		slog.Warn("could not count users for first-boot detection", "err", err)
+	} else if n == 0 {
+		printFirstBootBanner(cfg)
+	}
+
 	srv := server.New(cfg, st)
 
 	go func() {
@@ -65,4 +74,24 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("shutdown complete")
+}
+
+func printFirstBootBanner(cfg config.Config) {
+	bar := strings.Repeat("━", 50)
+	var b strings.Builder
+	fmt.Fprintln(&b)
+	fmt.Fprintln(&b, bar)
+	fmt.Fprintln(&b, "  VAC — first boot")
+	fmt.Fprintln(&b, bar)
+	fmt.Fprintln(&b)
+	fmt.Fprintf(&b, "  Dashboard:  http://localhost:%d\n", cfg.Server.Port)
+	fmt.Fprintln(&b)
+	fmt.Fprintln(&b, "  Open the dashboard to create your admin account.")
+	if len(cfg.MasterKey) == 0 {
+		fmt.Fprintln(&b, "  ⚠  Set VAC_MASTER_KEY (32 bytes hex) in your")
+		fmt.Fprintln(&b, "     environment before deploying any apps.")
+	}
+	fmt.Fprintln(&b)
+	fmt.Fprintln(&b, bar)
+	fmt.Print(b.String())
 }

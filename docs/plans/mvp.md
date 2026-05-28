@@ -902,6 +902,25 @@ into the Query cache so components stay reactive without separate state manageme
 
 ## UI Structure
 
+### Design Reference
+
+The visual design is mocked up in `design/project/` as a Claude Design handoff bundle
+(HTML/CSS/JS prototypes). When implementing any UI screen, treat these files as the
+source of truth for layout, spacing, colors, and component appearance — match them
+pixel-perfectly using the Frontend Stack above, rather than copying prototype structure.
+
+- **`design/project/VAC Dashboard.html`** — primary reference for the dashboard UI
+  (Global Dashboard, app list, per-app views). Read top to bottom and follow its
+  imports (shared components, CSS, scripts in `design/project/src/`) before
+  implementing any dashboard screen.
+- `design/project/VAC Landing.html` — marketing/landing page
+- `design/project/VAC Docs.html` — docs site styling
+- `design/project/VAC Logos.html` — logo / brand assets
+- `design/project/VAC Roadmap.html` — roadmap page
+
+See `design/README.md` for the full handoff instructions. Read the HTML/CSS directly;
+don't render or screenshot the prototypes unless explicitly asked.
+
 ### Global Dashboard
 
 - Running app count, host CPU, host RAM, host disk

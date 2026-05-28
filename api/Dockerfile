@@ -13,7 +13,7 @@ COPY ui/ ui/
 RUN pnpm --filter ui build
 
 # Build Go binary with the embedded UI
-FROM golang:1.24-alpine AS api
+FROM golang:1.25-alpine AS api
 WORKDIR /src/api
 COPY api/go.mod api/go.sum ./
 RUN go mod download

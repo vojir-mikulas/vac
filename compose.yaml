@@ -35,7 +35,7 @@ services:
       VAC_DATABASE_URL: "postgres://vac:${VAC_DB_PASSWORD}@vac-db:5432/vac?sslmode=disable"
       VAC_MASTER_KEY: ${VAC_MASTER_KEY:?VAC_MASTER_KEY is required (32 bytes hex)}
     ports:
-      - "3000:3000"
+      - "${VAC_HOST_PORT:-3000}:3000"
 
 volumes:
   vac_db_data:
