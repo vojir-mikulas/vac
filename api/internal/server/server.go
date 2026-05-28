@@ -1,23 +1,51 @@
+// Package server wires the HTTP router and middleware stack.
 package server
 
 import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/vojir-mikulas/vac/api/internal/config"
+	"github.com/vojir-mikulas/vac/api/internal/ui"
 )
 
-func New(addr string) *http.Server {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", handleHealth)
+func New(cfg config.Config) *http.Server {
+	r := chi.NewRouter()
+
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Timeout(60 * time.Second))
+
+	r.Get("/health", handleHealth)
+
+	r.Route("/api", func(r chi.Router) {
+		// Handlers mounted here in later milestones (auth, apps, etc.).
+		// Unknown /api/* paths 404 instead of falling through to the UI.
+		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		})
+	})
+
+	r.Handle("/*", ui.Handler())
 
 	return &http.Server{
-		Addr:              addr,
-		Handler:           mux,
+		Addr:              cfg.Addr(),
+		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 }
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
 }

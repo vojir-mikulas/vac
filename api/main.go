@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/server"
 )
 
@@ -17,7 +18,13 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	srv := server.New(":3000")
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("config load failed", "err", err)
+		os.Exit(1)
+	}
+
+	srv := server.New(cfg)
 
 	go func() {
 		slog.Info("vac-api listening", "addr", srv.Addr)

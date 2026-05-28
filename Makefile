@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-api dev-ui build build-ui build-api lint lint-go lint-ui test test-go test-ui typecheck format clean
+.PHONY: help install dev dev-api dev-ui build build-ui build-api build-api-noembed lint lint-go lint-ui test test-go test-ui typecheck format clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -23,7 +23,10 @@ build: build-ui build-api ## Build everything (UI then Go binary with embedded U
 build-ui: ## Build UI into api/internal/ui/dist
 	pnpm --filter ui build
 
-build-api: ## Build Go binary (expects UI build to exist)
+build-api: ## Build Go binary with the embedded UI (requires build-ui first)
+	cd api && go build -tags embedui -ldflags="-s -w" -o bin/vac-api .
+
+build-api-noembed: ## Build Go binary without UI (UI not bundled, dev/test)
 	cd api && go build -ldflags="-s -w" -o bin/vac-api .
 
 lint: lint-go lint-ui ## Run all linters
