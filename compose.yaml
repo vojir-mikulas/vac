@@ -34,8 +34,21 @@ services:
       VAC_HOST: "0.0.0.0"
       VAC_DATABASE_URL: "postgres://vac:${VAC_DB_PASSWORD}@vac-db:5432/vac?sslmode=disable"
       VAC_MASTER_KEY: ${VAC_MASTER_KEY:?VAC_MASTER_KEY is required (32 bytes hex)}
+      VAC_WORK_DIR: "/var/lib/vac/repos"
+      VAC_DOCKER_SOCKET: "/var/run/docker.sock"
     ports:
       - "${VAC_HOST_PORT:-3000}:3000"
+    volumes:
+      # Host Docker socket — VAC drives user app stacks via the host's daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persistent working tree for cloned repos + generated compose files.
+      - vac_repos:/var/lib/vac/repos
+    # Supplementary group so the non-root `vac` user can read the docker socket.
+    # Linux: set DOCKER_GID to `getent group docker | cut -d: -f3` in .env.
+    # Docker Desktop (macOS/Windows): the default 999 usually works.
+    group_add:
+      - "${DOCKER_GID:-999}"
 
 volumes:
   vac_db_data:
+  vac_repos:

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -52,6 +53,8 @@ func main() {
 		printFirstBootBanner(cfg)
 	}
 
+	probeDockerCLI(ctx)
+
 	srv := server.New(ctx, cfg, st)
 
 	go func() {
@@ -74,6 +77,22 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("shutdown complete")
+}
+
+// probeDockerCLI runs `docker version` once at boot. Failure is logged but
+// non-fatal — we want VAC to come up on a misconfigured host so the operator
+// can fix the socket from the UI. Deployments will refuse to run until the
+// probe succeeds at request time.
+func probeDockerCLI(parent context.Context) {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker", "version", "--format", "{{.Server.Version}}")
+	out, err := cmd.Output()
+	if err != nil {
+		slog.Warn("docker CLI probe failed; deployments will not run until the docker socket is reachable", "err", err)
+		return
+	}
+	slog.Info("docker CLI probe ok", "server_version", strings.TrimSpace(string(out)))
 }
 
 func printFirstBootBanner(cfg config.Config) {
