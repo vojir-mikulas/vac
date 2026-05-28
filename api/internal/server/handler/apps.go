@@ -50,7 +50,6 @@ type appDTO struct {
 	Slug        string    `json:"slug"`
 	GitURL      string    `json:"git_url"`
 	GitBranch   string    `json:"git_branch"`
-	GitSSHKeyID *string   `json:"git_ssh_key_id,omitempty"`
 	ComposeFile string    `json:"compose_file"`
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -64,7 +63,6 @@ func toAppDTO(a store.App) appDTO {
 		Slug:        a.Slug,
 		GitURL:      a.GitURL,
 		GitBranch:   a.GitBranch,
-		GitSSHKeyID: a.GitSSHKeyID,
 		ComposeFile: a.ComposeFile,
 		Status:      a.Status,
 		CreatedAt:   a.CreatedAt,

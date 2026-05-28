@@ -19,7 +19,6 @@ type App struct {
 	Slug        string
 	GitURL      string
 	GitBranch   string
-	GitSSHKeyID *string
 	ComposeFile string
 	Status      string
 	CreatedAt   time.Time
@@ -31,9 +30,9 @@ func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, co
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO apps (name, slug, git_url, git_branch, compose_file)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, name, slug, git_url, git_branch, git_ssh_key_id, compose_file, status, created_at, updated_at
+		RETURNING id, name, slug, git_url, git_branch, compose_file, status, created_at, updated_at
 	`, name, slug, gitURL, gitBranch, composeFile).Scan(
-		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.GitSSHKeyID, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if isUniqueViolation(err) {
 		return App{}, ErrConflict
@@ -44,9 +43,9 @@ func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, co
 func (s *Store) GetApp(ctx context.Context, id string) (App, error) {
 	var a App
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, slug, git_url, git_branch, git_ssh_key_id, compose_file, status, created_at, updated_at
+		SELECT id, name, slug, git_url, git_branch, compose_file, status, created_at, updated_at
 		FROM apps WHERE id = $1
-	`, id).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.GitSSHKeyID, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt)
+	`, id).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return App{}, ErrNotFound
 	}
@@ -55,7 +54,7 @@ func (s *Store) GetApp(ctx context.Context, id string) (App, error) {
 
 func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, name, slug, git_url, git_branch, git_ssh_key_id, compose_file, status, created_at, updated_at
+		SELECT id, name, slug, git_url, git_branch, compose_file, status, created_at, updated_at
 		FROM apps ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -65,7 +64,7 @@ func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 	var out []App
 	for rows.Next() {
 		var a App
-		if err := rows.Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.GitSSHKeyID, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -86,14 +85,28 @@ func (s *Store) UpdateApp(ctx context.Context, id string, name, gitURL, gitBranc
 			compose_file = COALESCE($5, compose_file),
 			updated_at   = NOW()
 		WHERE id = $1
-		RETURNING id, name, slug, git_url, git_branch, git_ssh_key_id, compose_file, status, created_at, updated_at
+		RETURNING id, name, slug, git_url, git_branch, compose_file, status, created_at, updated_at
 	`, id, name, gitURL, gitBranch, composeFile).Scan(
-		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.GitSSHKeyID, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return App{}, ErrNotFound
 	}
 	return a, err
+}
+
+// SetAppStatus is the lightweight write the deployment pipeline uses to
+// reflect the derived stack status into the apps row. Valid values are
+// owned by the Go side (no DB CHECK after 00011).
+func (s *Store) SetAppStatus(ctx context.Context, id, status string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE apps SET status = $2, updated_at = NOW() WHERE id = $1`, id, status)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) DeleteApp(ctx context.Context, id string) error {
