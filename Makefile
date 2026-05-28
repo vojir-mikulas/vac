@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-api dev-ui build build-ui build-api build-api-noembed lint lint-go lint-ui test test-go test-ui typecheck format clean
+.PHONY: help install dev dev-api dev-ui build build-ui build-api build-api-noembed lint lint-go lint-ui test test-go test-ui test-integration typecheck format clean compose-up compose-down compose-logs
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -38,10 +38,13 @@ lint-ui: ## ESLint + Prettier check
 	pnpm --filter ui lint
 	pnpm --filter ui format:check
 
-test: test-go test-ui ## Run all tests
+test: test-go test-ui ## Run all unit tests (excludes integration; use test-integration for those)
 
-test-go: ## go test
+test-go: ## go test (unit only)
 	cd api && go test ./...
+
+test-integration: ## go test with integration tag (requires Docker)
+	cd api && go test -tags integration ./...
 
 test-ui: ## vitest
 	pnpm --filter ui test
@@ -55,3 +58,12 @@ format: ## Format all code
 
 clean: ## Remove build artifacts
 	rm -rf api/bin api/internal/ui/dist ui/dist ui/node_modules/.vite
+
+compose-up: ## Start vac-db + vac-api via Docker Compose (reads .env)
+	docker compose up -d --build
+
+compose-down: ## Stop the compose stack
+	docker compose down
+
+compose-logs: ## Tail logs from the compose stack
+	docker compose logs -f --tail=100

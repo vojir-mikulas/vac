@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/config"
+	"github.com/vojir-mikulas/vac/api/internal/db"
 	"github.com/vojir-mikulas/vac/api/internal/server"
+	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
 func main() {
@@ -24,7 +26,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := server.New(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	pool, err := db.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("database open failed", "err", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	if err := db.Migrate(ctx, pool); err != nil {
+		slog.Error("database migrate failed", "err", err)
+		os.Exit(1)
+	}
+	slog.Info("database migrations applied")
+
+	st := store.New(pool)
+	srv := server.New(cfg, st)
 
 	go func() {
 		slog.Info("vac-api listening", "addr", srv.Addr)
@@ -39,9 +58,9 @@ func main() {
 	<-stop
 	slog.Info("shutdown signal received")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("graceful shutdown failed", "err", err)
 		os.Exit(1)
 	}

@@ -10,10 +10,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/vojir-mikulas/vac/api/internal/config"
+	"github.com/vojir-mikulas/vac/api/internal/store"
 	"github.com/vojir-mikulas/vac/api/internal/ui"
 )
 
-func New(cfg config.Config) *http.Server {
+// The store param is threaded through ahead of M4 handlers that will use it.
+func New(cfg config.Config, _ *store.Store) *http.Server {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)

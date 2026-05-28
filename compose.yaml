@@ -1,0 +1,41 @@
+services:
+  vac-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vac
+      POSTGRES_PASSWORD: ${VAC_DB_PASSWORD:?VAC_DB_PASSWORD is required}
+      POSTGRES_DB: vac
+    volumes:
+      - vac_db_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    command: >
+      postgres
+      -c shared_buffers=32MB
+      -c work_mem=2MB
+      -c max_connections=50
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vac -d vac"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  vac-api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      vac-db:
+        condition: service_healthy
+    environment:
+      VAC_PORT: "3000"
+      VAC_HOST: "0.0.0.0"
+      VAC_DATABASE_URL: "postgres://vac:${VAC_DB_PASSWORD}@vac-db:5432/vac?sslmode=disable"
+      VAC_MASTER_KEY: ${VAC_MASTER_KEY:?VAC_MASTER_KEY is required (32 bytes hex)}
+    ports:
+      - "3000:3000"
+
+volumes:
+  vac_db_data:
