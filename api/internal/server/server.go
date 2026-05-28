@@ -36,6 +36,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store) *http.Server {
 		}
 	}
 	tm := auth.NewTOTPManager(s, box)
+	tokm := auth.NewTokenManager(s)
 
 	// One shared limiter across the auth surface: an attacker who burns the
 	// password budget should not then get a fresh budget on /auth/totp.
@@ -51,7 +52,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store) *http.Server {
 	r.Get("/health", handler.Health)
 
 	r.Route("/api", func(r chi.Router) {
-		r.Use(middleware.Auth(sm))
+		r.Use(middleware.Auth(sm, tokm))
 		r.Use(middleware.CSRF)
 
 		// Public — no session required. Setup-admin and the login endpoints
@@ -76,6 +77,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store) *http.Server {
 			r.Get("/auth/sessions", handler.ListSessions(s))
 			r.Delete("/auth/sessions", handler.RevokeOtherSessions(s))
 			r.Delete("/auth/sessions/{id}", handler.RevokeSession(s, sm))
+			r.Get("/auth/api-tokens", handler.ListAPITokens(s))
+			r.Post("/auth/api-tokens", handler.CreateAPIToken(tokm))
+			r.Delete("/auth/api-tokens/{id}", handler.RevokeAPIToken(tokm))
 		})
 
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
