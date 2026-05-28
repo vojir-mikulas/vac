@@ -28,6 +28,8 @@ type Config struct {
 	Exposure           string        `yaml:"exposure"`
 	SessionTTL         time.Duration `yaml:"session_ttl"`
 	SessionTTLExtended time.Duration `yaml:"session_ttl_extended"`
+	LoginRateLimit     int           `yaml:"login_rate_limit"`
+	LoginRateWindow    time.Duration `yaml:"login_rate_window"`
 }
 
 type ServerConfig struct {
@@ -44,6 +46,8 @@ func Default() Config {
 		Exposure:           ExposurePublic,
 		SessionTTL:         7 * 24 * time.Hour,
 		SessionTTLExtended: 30 * 24 * time.Hour,
+		LoginRateLimit:     5,
+		LoginRateWindow:    15 * time.Minute,
 	}
 }
 
@@ -109,6 +113,16 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("VAC_SESSION_TTL_EXTENDED"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.SessionTTLExtended = d
+		}
+	}
+	if v := os.Getenv("VAC_LOGIN_RATE_LIMIT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.LoginRateLimit = n
+		}
+	}
+	if v := os.Getenv("VAC_LOGIN_RATE_WINDOW"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.LoginRateWindow = d
 		}
 	}
 }

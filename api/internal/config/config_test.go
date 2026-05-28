@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestDefault(t *testing.T) {
@@ -137,5 +138,17 @@ func TestLoad_SessionTTLs(t *testing.T) {
 	}
 	if cfg.SessionTTLExtended.Hours() != 48 {
 		t.Errorf("session ttl extended = %v", cfg.SessionTTLExtended)
+	}
+}
+
+func TestLoad_LoginRateLimit(t *testing.T) {
+	t.Setenv("VAC_LOGIN_RATE_LIMIT", "10")
+	t.Setenv("VAC_LOGIN_RATE_WINDOW", "30m")
+	cfg, _ := Load()
+	if cfg.LoginRateLimit != 10 {
+		t.Errorf("login rate limit = %d, want 10", cfg.LoginRateLimit)
+	}
+	if cfg.LoginRateWindow != 30*time.Minute {
+		t.Errorf("login rate window = %v, want 30m", cfg.LoginRateWindow)
 	}
 }

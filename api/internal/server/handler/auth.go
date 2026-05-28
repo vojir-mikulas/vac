@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -72,10 +73,12 @@ func Login(s *store.Store, sm *auth.SessionManager, cfg config.Config) http.Hand
 			// Run bcrypt against a dummy hash so the response timing matches
 			// a real verify — prevents username enumeration via timing.
 			_ = auth.VerifyPassword(dummyHash, req.Password)
+			auditAuthFailure(r, "unknown_user", req.Username, "")
 			WriteError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
 		if err := auth.VerifyPassword(user.PasswordHash, req.Password); err != nil {
+			auditAuthFailure(r, "bad_password", req.Username, user.ID)
 			WriteError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
@@ -182,4 +185,26 @@ func newCSRFToken() (string, error) {
 		return "", errors.New("rand")
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// auditAuthFailure logs failed login / TOTP attempts at WARN so they're picked
+// up by log shippers without needing a dedicated audit pipeline yet. Reason is
+// a short machine-readable tag; the username is logged but never the password
+// or any TOTP material.
+func auditAuthFailure(r *http.Request, reason, username, userID string) {
+	slog.Warn("auth: failed attempt",
+		"reason", reason,
+		"username", username,
+		"user_id", userID,
+		"ip", remoteIPString(r),
+		"user_agent", r.UserAgent(),
+	)
+}
+
+func remoteIPString(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

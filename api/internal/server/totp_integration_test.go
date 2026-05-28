@@ -73,11 +73,15 @@ func setupServerWithKey(t *testing.T) http.Handler {
 		t.Fatalf("rand: %v", err)
 	}
 	cfg.MasterKey = key
+	// Same reason as setupServer — the 5/15min default would throttle the
+	// multi-step 2FA flows in this file.
+	cfg.LoginRateLimit = 100
+	cfg.LoginRateWindow = time.Minute
 	// Default exposure is "public" which sets Secure cookies; httptest
 	// requests are not HTTPS, but Go's cookie jar still records them.
 	// The login_integration_test already relies on this.
 
-	return server.New(cfg, store.New(pool)).Handler
+	return server.New(t.Context(), cfg, store.New(pool)).Handler
 }
 
 func TestTOTPSetupAndLoginFlow(t *testing.T) {

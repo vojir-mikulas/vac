@@ -160,11 +160,13 @@ func TOTPLogin(s *store.Store, sm *auth.SessionManager, tm *auth.TOTPManager, cf
 
 		if req.Code != "" {
 			if err := tm.Verify(r.Context(), user.ID, req.Code); err != nil {
+				auditAuthFailure(r, "bad_totp", user.Username, user.ID)
 				WriteError(w, http.StatusUnauthorized, "invalid code")
 				return
 			}
 		} else {
 			if err := tm.ConsumeRecoveryCode(r.Context(), user.ID, req.RecoveryCode); err != nil {
+				auditAuthFailure(r, "bad_recovery_code", user.Username, user.ID)
 				WriteError(w, http.StatusUnauthorized, "invalid recovery code")
 				return
 			}

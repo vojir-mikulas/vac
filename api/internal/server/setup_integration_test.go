@@ -21,7 +21,9 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
-func setupServer(t *testing.T) http.Handler {
+// setupPool spins up Postgres in a container, applies migrations, and returns
+// a ready-to-use store. Tests build their own server.New around it.
+func setupPool(t *testing.T) *store.Store {
 	t.Helper()
 	ctx := context.Background()
 
@@ -55,8 +57,18 @@ func setupServer(t *testing.T) http.Handler {
 	if err := db.Migrate(ctx, pool); err != nil {
 		t.Fatalf("db.Migrate: %v", err)
 	}
+	return store.New(pool)
+}
 
-	return server.New(config.Default(), store.New(pool)).Handler
+func setupServer(t *testing.T) http.Handler {
+	t.Helper()
+	s := setupPool(t)
+	cfg := config.Default()
+	// Tests fire several auth-rated requests back-to-back from one synthetic
+	// IP; the 5/15min default would false-positive on otherwise valid flows.
+	cfg.LoginRateLimit = 100
+	cfg.LoginRateWindow = time.Minute
+	return server.New(t.Context(), cfg, s).Handler
 }
 
 func do(t *testing.T, h http.Handler, method, path string, body any) (*httptest.ResponseRecorder, map[string]any) {

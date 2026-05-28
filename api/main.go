@@ -52,7 +52,7 @@ func main() {
 		printFirstBootBanner(cfg)
 	}
 
-	srv := server.New(cfg, st)
+	srv := server.New(ctx, cfg, st)
 
 	go func() {
 		slog.Info("vac-api listening", "addr", srv.Addr)
