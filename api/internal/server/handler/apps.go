@@ -30,11 +30,11 @@ var gitURLRe = regexp.MustCompile(`^(?:https?://\S+|git@[^\s:]+:\S+|ssh://git@\S
 var slugRe = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 type createAppRequest struct {
-	Name        string `json:"name"`
-	Slug        string `json:"slug,omitempty"`
-	GitURL      string `json:"git_url"`
-	GitBranch   string `json:"git_branch,omitempty"`
-	ComposeFile string `json:"compose_file,omitempty"`
+	Name        string `json:"name"                    validate:"required,min=1,max=100"`
+	Slug        string `json:"slug,omitempty"          validate:"omitempty,max=63"`
+	GitURL      string `json:"git_url"                 validate:"required,min=1,max=500"`
+	GitBranch   string `json:"git_branch,omitempty"    validate:"omitempty,max=200"`
+	ComposeFile string `json:"compose_file,omitempty"  validate:"omitempty,max=200"`
 }
 
 type updateAppRequest struct {
@@ -81,19 +81,14 @@ func CreateApp(s *store.Store) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
+		// Trim before validation so a whitespace-only name is treated as empty.
 		req.Name = strings.TrimSpace(req.Name)
-		if req.Name == "" {
-			WriteError(w, http.StatusBadRequest, "name is required")
-			return
-		}
-		if len(req.Name) > maxAppNameLen {
-			WriteError(w, http.StatusBadRequest, "name too long")
-			return
-		}
-
 		req.GitURL = strings.TrimSpace(req.GitURL)
-		if req.GitURL == "" {
-			WriteError(w, http.StatusBadRequest, "git_url is required")
+		req.Slug = strings.TrimSpace(req.Slug)
+		req.GitBranch = strings.TrimSpace(req.GitBranch)
+		req.ComposeFile = strings.TrimSpace(req.ComposeFile)
+		if msg, ok := validateStruct(req); !ok {
+			WriteError(w, http.StatusBadRequest, msg)
 			return
 		}
 		if !gitURLRe.MatchString(req.GitURL) {
@@ -101,7 +96,7 @@ func CreateApp(s *store.Store) http.HandlerFunc {
 			return
 		}
 
-		slug := strings.TrimSpace(req.Slug)
+		slug := req.Slug
 		if slug == "" {
 			slug = deriveSlug(req.Name)
 		}
@@ -110,11 +105,11 @@ func CreateApp(s *store.Store) http.HandlerFunc {
 			return
 		}
 
-		branch := strings.TrimSpace(req.GitBranch)
+		branch := req.GitBranch
 		if branch == "" {
 			branch = defaultBranch
 		}
-		composeFile := strings.TrimSpace(req.ComposeFile)
+		composeFile := req.ComposeFile
 		if composeFile == "" {
 			composeFile = defaultComposeFile
 		}

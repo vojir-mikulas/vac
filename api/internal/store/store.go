@@ -4,6 +4,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,4 +23,10 @@ type Store struct {
 
 func New(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
+}
+
+// Ping verifies the database is reachable. Used by /health to distinguish
+// "binary up" from "DB up".
+func (s *Store) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
 }

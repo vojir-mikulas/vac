@@ -49,7 +49,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store) *http.Server {
 	r.Use(chimw.Logger)
 	r.Use(chimw.Timeout(60 * time.Second))
 
-	r.Get("/health", handler.Health)
+	r.Get("/health", handler.Health(s))
 
 	r.Route("/api", func(r chi.Router) {
 		r.Use(middleware.Auth(sm, tokm))

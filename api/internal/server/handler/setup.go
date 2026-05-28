@@ -8,15 +8,13 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
-const minPasswordLength = 8
-
 type setupStatusResponse struct {
 	NeedsSetup bool `json:"needs_setup"`
 }
 
 type setupAdminRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username string `json:"username" validate:"required,min=1,max=64"`
+	Password string `json:"password" validate:"required,min=8,max=256"`
 }
 
 type setupAdminResponse struct {
@@ -46,12 +44,8 @@ func SetupAdmin(s *store.Store) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		if req.Username == "" || req.Password == "" {
-			WriteError(w, http.StatusBadRequest, "username and password are required")
-			return
-		}
-		if len(req.Password) < minPasswordLength {
-			WriteError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		if msg, ok := validateStruct(req); !ok {
+			WriteError(w, http.StatusBadRequest, msg)
 			return
 		}
 

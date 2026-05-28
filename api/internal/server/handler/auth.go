@@ -74,12 +74,12 @@ func Login(s *store.Store, sm *auth.SessionManager, cfg config.Config) http.Hand
 			// a real verify — prevents username enumeration via timing.
 			_ = auth.VerifyPassword(dummyHash, req.Password)
 			auditAuthFailure(r, "unknown_user", req.Username, "")
-			WriteError(w, http.StatusUnauthorized, "invalid credentials")
+			WriteErrorCode(w, http.StatusUnauthorized, CodeInvalidCredentials, "invalid credentials")
 			return
 		}
 		if err := auth.VerifyPassword(user.PasswordHash, req.Password); err != nil {
 			auditAuthFailure(r, "bad_password", req.Username, user.ID)
-			WriteError(w, http.StatusUnauthorized, "invalid credentials")
+			WriteErrorCode(w, http.StatusUnauthorized, CodeInvalidCredentials, "invalid credentials")
 			return
 		}
 

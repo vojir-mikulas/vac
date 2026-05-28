@@ -36,11 +36,11 @@ func CSRF(next http.Handler) http.Handler {
 		csrfCookie, err := r.Cookie(auth.CSRFCookie)
 		csrfHeader := r.Header.Get(auth.CSRFHeader)
 		if err != nil || csrfCookie.Value == "" || csrfHeader == "" {
-			handler.WriteError(w, http.StatusForbidden, "missing csrf token")
+			handler.WriteErrorCode(w, http.StatusForbidden, handler.CodeCSRFMismatch, "missing csrf token")
 			return
 		}
 		if subtle.ConstantTimeCompare([]byte(csrfCookie.Value), []byte(csrfHeader)) != 1 {
-			handler.WriteError(w, http.StatusForbidden, "csrf token mismatch")
+			handler.WriteErrorCode(w, http.StatusForbidden, handler.CodeCSRFMismatch, "csrf token mismatch")
 			return
 		}
 		next.ServeHTTP(w, r)
