@@ -20,14 +20,20 @@ func TestHealth(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	newTestServer(t).ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
+	// 200 when docker is reachable, 503 when it isn't — either is a valid
+	// signal to a load balancer; we only assert the response shape is JSON
+	// and includes the three status fields.
+	if rr.Code != http.StatusOK && rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 200 or 503", rr.Code)
 	}
 	if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
 		t.Errorf("content-type = %q", ct)
 	}
-	if !strings.Contains(rr.Body.String(), `"status":"ok"`) {
-		t.Errorf("body = %q", rr.Body.String())
+	body := rr.Body.String()
+	for _, field := range []string{`"status"`, `"database"`, `"docker"`} {
+		if !strings.Contains(body, field) {
+			t.Errorf("body missing %s field: %s", field, body)
+		}
 	}
 }
 

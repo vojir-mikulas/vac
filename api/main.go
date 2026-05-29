@@ -122,6 +122,9 @@ func probeDockerCLI(parent context.Context) {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "docker", "version", "--format", "{{.Server.Version}}")
+	// Explicit minimal env — never inherit os.Environ, which would leak
+	// VAC_MASTER_KEY into the child process.
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
 	out, err := cmd.Output()
 	if err != nil {
 		slog.Warn("docker CLI probe failed; deployments will not run until the docker socket is reachable", "err", err)
