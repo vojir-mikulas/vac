@@ -93,6 +93,8 @@ func New(ctx context.Context, cfg config.Config, s *store.Store) *http.Server {
 				r.Get("/{id}/ssh-key", handler.GetAppSSHKey(s, keys))
 				r.Post("/{id}/ssh-key/regenerate", handler.RegenerateAppSSHKey(s, keys))
 				r.Delete("/{id}/ssh-key", handler.DeleteAppSSHKey(keys))
+
+				r.Post("/{id}/test-connection", handler.TestConnection(s, keys, nil))
 			})
 		})
 
