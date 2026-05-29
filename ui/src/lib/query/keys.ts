@@ -1,0 +1,27 @@
+// Central query-key factory. Keep keys here so invalidation stays consistent.
+
+export const queryKeys = {
+  auth: {
+    me: ['auth', 'me'] as const,
+    sessions: ['auth', 'sessions'] as const,
+    apiTokens: ['auth', 'api-tokens'] as const,
+  },
+  setup: {
+    status: ['setup', 'status'] as const,
+  },
+  host: {
+    stats: ['host', 'stats'] as const,
+  },
+  notifications: ['notifications'] as const,
+  apps: {
+    all: ['apps'] as const,
+    detail: (id: string) => ['apps', id] as const,
+    services: (id: string) => ['apps', id, 'services'] as const,
+    deployments: (id: string) => ['apps', id, 'deployments'] as const,
+    deployment: (id: string, did: string) => ['apps', id, 'deployments', did] as const,
+    env: (id: string) => ['apps', id, 'env'] as const,
+    domains: (id: string) => ['apps', id, 'domains'] as const,
+    sshKey: (id: string) => ['apps', id, 'ssh-key'] as const,
+    metrics: (id: string, since: string) => ['apps', id, 'metrics', since] as const,
+  },
+} as const

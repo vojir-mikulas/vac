@@ -1,0 +1,57 @@
+import { Check, Loader2, X } from 'lucide-react'
+
+import { cn } from '@/lib/utils'
+import type { DeploymentStatus } from '@/types/api'
+
+// The pipeline stages in order. `status` maps onto the active stage.
+const STEPS = [
+  { key: 'queued', label: 'Queue' },
+  { key: 'cloning', label: 'Clone' },
+  { key: 'building', label: 'Build' },
+  { key: 'deploying', label: 'Deploy' },
+  { key: 'health-checking', label: 'Health' },
+  { key: 'success', label: 'Done' },
+] as const
+
+const ORDER: Record<string, number> = {
+  queued: 0,
+  cloning: 1,
+  building: 2,
+  deploying: 3,
+  'health-checking': 4,
+  success: 5,
+}
+
+export function DeploySteps({ status }: { status: DeploymentStatus }) {
+  const failed = status === 'failed' || status === 'interrupted'
+  const activeIndex = ORDER[status] ?? (failed ? -1 : 0)
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {STEPS.map((step, i) => {
+        const done = !failed && i < activeIndex
+        const active = !failed && i === activeIndex
+        const isFailMarker = failed && i === 0
+        return (
+          <div key={step.key} className="flex items-center gap-1.5">
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-2xs font-medium',
+                done && 'border-ok-border bg-ok-bg text-ok-foreground',
+                active && 'border-warn-border bg-warn-bg text-warn-foreground',
+                isFailMarker && 'border-err-border bg-err-bg text-err-foreground',
+                !done && !active && !isFailMarker && 'border-border text-muted-foreground',
+              )}
+            >
+              {done ? <Check className="size-3" /> : null}
+              {active ? <Loader2 className="size-3 animate-spin" /> : null}
+              {isFailMarker ? <X className="size-3" /> : null}
+              {step.label}
+            </span>
+            {i < STEPS.length - 1 ? <span className="text-muted-foreground">→</span> : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}

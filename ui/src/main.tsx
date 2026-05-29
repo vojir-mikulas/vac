@@ -5,9 +5,28 @@ import { RouterProvider, createRouter } from '@tanstack/react-router'
 
 import './index.css'
 import { routeTree } from './routeTree.gen'
+import { ThemeProvider } from '@/components/theme/theme-provider'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { Toaster } from '@/components/ui/sonner'
+import { NotFoundScreen, RouteErrorScreen } from '@/components/common/route-states'
 
-const queryClient = new QueryClient()
-const router = createRouter({ routeTree, context: { queryClient } })
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+      refetchOnWindowFocus: true,
+    },
+  },
+})
+
+const router = createRouter({
+  routeTree,
+  context: { queryClient },
+  defaultPreload: 'intent',
+  defaultNotFoundComponent: NotFoundScreen,
+  defaultErrorComponent: ({ error }) => <RouteErrorScreen error={error} />,
+})
 
 declare module '@tanstack/react-router' {
   interface Register {
@@ -21,7 +40,12 @@ if (!rootEl) throw new Error('#root element not found')
 createRoot(rootEl).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <ThemeProvider>
+        <TooltipProvider delayDuration={200}>
+          <RouterProvider router={router} />
+          <Toaster />
+        </TooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,
 )

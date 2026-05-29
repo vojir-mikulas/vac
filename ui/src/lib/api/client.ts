@@ -1,0 +1,98 @@
+// Thin typed fetch wrapper around the VAC API.
+//
+// - Always sends the session cookie (`credentials: 'include'`).
+// - Adds the CSRF double-submit header on mutating verbs, reading the
+//   JS-readable `vac_csrf` cookie.
+// - Throws a typed `ApiError` on non-2xx so callers / TanStack Query can
+//   branch on the stable error `code`.
+
+const BASE = '/api'
+const CSRF_COOKIE = 'vac_csrf'
+const CSRF_HEADER = 'X-CSRF-Token'
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+export interface ApiErrorBody {
+  error: string
+  code: string
+}
+
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: string
+
+  constructor(status: number, code: string, message: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+  }
+}
+
+function readCookie(name: string): string | null {
+  const prefix = name + '='
+  const parts = document.cookie ? document.cookie.split('; ') : []
+  for (const part of parts) {
+    if (part.startsWith(prefix)) return decodeURIComponent(part.slice(prefix.length))
+  }
+  return null
+}
+
+interface RequestOptions {
+  method?: string
+  body?: unknown
+  signal?: AbortSignal
+  // `path` is relative to /api unless it starts with '/', in which case it's
+  // treated as an absolute server path (used for non-/api routes).
+}
+
+async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const method = opts.method ?? 'GET'
+  const url = path.startsWith('/') ? path : `${BASE}/${path}`
+
+  const headers: Record<string, string> = {}
+  let body: BodyInit | undefined
+
+  if (opts.body !== undefined) {
+    headers['Content-Type'] = 'application/json'
+    body = JSON.stringify(opts.body)
+  }
+
+  if (!SAFE_METHODS.has(method)) {
+    const token = readCookie(CSRF_COOKIE)
+    if (token) headers[CSRF_HEADER] = token
+  }
+
+  const res = await fetch(url, {
+    method,
+    headers,
+    body,
+    credentials: 'include',
+    signal: opts.signal,
+  })
+
+  if (!res.ok) {
+    let code = 'internal_error'
+    let message = res.statusText
+    try {
+      const parsed = (await res.json()) as ApiErrorBody
+      if (parsed?.code) code = parsed.code
+      if (parsed?.error) message = parsed.error
+    } catch {
+      // non-JSON error body — keep status text
+    }
+    throw new ApiError(res.status, code, message)
+  }
+
+  if (res.status === 204) return undefined as T
+  const text = await res.text()
+  if (!text) return undefined as T
+  return JSON.parse(text) as T
+}
+
+export const api = {
+  get: <T>(path: string, signal?: AbortSignal) => request<T>(path, { signal }),
+  post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
+  put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body }),
+  patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body }),
+  del: <T>(path: string, body?: unknown) => request<T>(path, { method: 'DELETE', body }),
+}

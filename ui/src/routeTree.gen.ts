@@ -9,38 +9,263 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SetupRouteImport } from './routes/setup'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppLogsRouteImport } from './routes/_app/logs'
+import { Route as AppDeploymentsRouteImport } from './routes/_app/deployments'
+import { Route as AppDatabaseRouteImport } from './routes/_app/database'
+import { Route as AppAppsIndexRouteImport } from './routes/_app/apps/index'
+import { Route as AppAppsNewRouteImport } from './routes/_app/apps/new'
+import { Route as AppAppsAppIdRouteImport } from './routes/_app/apps/$appId'
+import { Route as AppAppsAppIdIndexRouteImport } from './routes/_app/apps/$appId/index'
+import { Route as AppAppsAppIdSettingsRouteImport } from './routes/_app/apps/$appId/settings'
+import { Route as AppAppsAppIdServicesRouteImport } from './routes/_app/apps/$appId/services'
+import { Route as AppAppsAppIdOverviewRouteImport } from './routes/_app/apps/$appId/overview'
+import { Route as AppAppsAppIdLogsRouteImport } from './routes/_app/apps/$appId/logs'
+import { Route as AppAppsAppIdEnvironmentRouteImport } from './routes/_app/apps/$appId/environment'
+import { Route as AppAppsAppIdDeploysRouteImport } from './routes/_app/apps/$appId/deploys'
 
+const SetupRoute = SetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppLogsRoute = AppLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDeploymentsRoute = AppDeploymentsRouteImport.update({
+  id: '/deployments',
+  path: '/deployments',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDatabaseRoute = AppDatabaseRouteImport.update({
+  id: '/database',
+  path: '/database',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAppsIndexRoute = AppAppsIndexRouteImport.update({
+  id: '/apps/',
+  path: '/apps/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAppsNewRoute = AppAppsNewRouteImport.update({
+  id: '/apps/new',
+  path: '/apps/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAppsAppIdRoute = AppAppsAppIdRouteImport.update({
+  id: '/apps/$appId',
+  path: '/apps/$appId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAppsAppIdIndexRoute = AppAppsAppIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppAppsAppIdRoute,
+} as any)
+const AppAppsAppIdSettingsRoute = AppAppsAppIdSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppAppsAppIdRoute,
+} as any)
+const AppAppsAppIdServicesRoute = AppAppsAppIdServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => AppAppsAppIdRoute,
+} as any)
+const AppAppsAppIdOverviewRoute = AppAppsAppIdOverviewRouteImport.update({
+  id: '/overview',
+  path: '/overview',
+  getParentRoute: () => AppAppsAppIdRoute,
+} as any)
+const AppAppsAppIdLogsRoute = AppAppsAppIdLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => AppAppsAppIdRoute,
+} as any)
+const AppAppsAppIdEnvironmentRoute = AppAppsAppIdEnvironmentRouteImport.update({
+  id: '/environment',
+  path: '/environment',
+  getParentRoute: () => AppAppsAppIdRoute,
+} as any)
+const AppAppsAppIdDeploysRoute = AppAppsAppIdDeploysRouteImport.update({
+  id: '/deploys',
+  path: '/deploys',
+  getParentRoute: () => AppAppsAppIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
+  '/database': typeof AppDatabaseRoute
+  '/deployments': typeof AppDeploymentsRoute
+  '/logs': typeof AppLogsRoute
+  '/settings': typeof AppSettingsRoute
+  '/apps/$appId': typeof AppAppsAppIdRouteWithChildren
+  '/apps/new': typeof AppAppsNewRoute
+  '/apps/': typeof AppAppsIndexRoute
+  '/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
+  '/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
+  '/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
+  '/apps/$appId/overview': typeof AppAppsAppIdOverviewRoute
+  '/apps/$appId/services': typeof AppAppsAppIdServicesRoute
+  '/apps/$appId/settings': typeof AppAppsAppIdSettingsRoute
+  '/apps/$appId/': typeof AppAppsAppIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
+  '/database': typeof AppDatabaseRoute
+  '/deployments': typeof AppDeploymentsRoute
+  '/logs': typeof AppLogsRoute
+  '/settings': typeof AppSettingsRoute
+  '/apps/new': typeof AppAppsNewRoute
+  '/apps': typeof AppAppsIndexRoute
+  '/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
+  '/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
+  '/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
+  '/apps/$appId/overview': typeof AppAppsAppIdOverviewRoute
+  '/apps/$appId/services': typeof AppAppsAppIdServicesRoute
+  '/apps/$appId/settings': typeof AppAppsAppIdSettingsRoute
+  '/apps/$appId': typeof AppAppsAppIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
+  '/_app/database': typeof AppDatabaseRoute
+  '/_app/deployments': typeof AppDeploymentsRoute
+  '/_app/logs': typeof AppLogsRoute
+  '/_app/settings': typeof AppSettingsRoute
+  '/_app/apps/$appId': typeof AppAppsAppIdRouteWithChildren
+  '/_app/apps/new': typeof AppAppsNewRoute
+  '/_app/apps/': typeof AppAppsIndexRoute
+  '/_app/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
+  '/_app/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
+  '/_app/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
+  '/_app/apps/$appId/overview': typeof AppAppsAppIdOverviewRoute
+  '/_app/apps/$appId/services': typeof AppAppsAppIdServicesRoute
+  '/_app/apps/$appId/settings': typeof AppAppsAppIdSettingsRoute
+  '/_app/apps/$appId/': typeof AppAppsAppIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/setup'
+    | '/database'
+    | '/deployments'
+    | '/logs'
+    | '/settings'
+    | '/apps/$appId'
+    | '/apps/new'
+    | '/apps/'
+    | '/apps/$appId/deploys'
+    | '/apps/$appId/environment'
+    | '/apps/$appId/logs'
+    | '/apps/$appId/overview'
+    | '/apps/$appId/services'
+    | '/apps/$appId/settings'
+    | '/apps/$appId/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/login'
+    | '/setup'
+    | '/database'
+    | '/deployments'
+    | '/logs'
+    | '/settings'
+    | '/apps/new'
+    | '/apps'
+    | '/apps/$appId/deploys'
+    | '/apps/$appId/environment'
+    | '/apps/$appId/logs'
+    | '/apps/$appId/overview'
+    | '/apps/$appId/services'
+    | '/apps/$appId/settings'
+    | '/apps/$appId'
+  id:
+    | '__root__'
+    | '/'
+    | '/_app'
+    | '/login'
+    | '/setup'
+    | '/_app/database'
+    | '/_app/deployments'
+    | '/_app/logs'
+    | '/_app/settings'
+    | '/_app/apps/$appId'
+    | '/_app/apps/new'
+    | '/_app/apps/'
+    | '/_app/apps/$appId/deploys'
+    | '/_app/apps/$appId/environment'
+    | '/_app/apps/$appId/logs'
+    | '/_app/apps/$appId/overview'
+    | '/_app/apps/$appId/services'
+    | '/_app/apps/$appId/settings'
+    | '/_app/apps/$appId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
+  LoginRoute: typeof LoginRoute
+  SetupRoute: typeof SetupRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/setup': {
+      id: '/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof SetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +273,158 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/logs': {
+      id: '/_app/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof AppLogsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/deployments': {
+      id: '/_app/deployments'
+      path: '/deployments'
+      fullPath: '/deployments'
+      preLoaderRoute: typeof AppDeploymentsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/database': {
+      id: '/_app/database'
+      path: '/database'
+      fullPath: '/database'
+      preLoaderRoute: typeof AppDatabaseRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/apps/': {
+      id: '/_app/apps/'
+      path: '/apps'
+      fullPath: '/apps/'
+      preLoaderRoute: typeof AppAppsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/apps/new': {
+      id: '/_app/apps/new'
+      path: '/apps/new'
+      fullPath: '/apps/new'
+      preLoaderRoute: typeof AppAppsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/apps/$appId': {
+      id: '/_app/apps/$appId'
+      path: '/apps/$appId'
+      fullPath: '/apps/$appId'
+      preLoaderRoute: typeof AppAppsAppIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/apps/$appId/': {
+      id: '/_app/apps/$appId/'
+      path: '/'
+      fullPath: '/apps/$appId/'
+      preLoaderRoute: typeof AppAppsAppIdIndexRouteImport
+      parentRoute: typeof AppAppsAppIdRoute
+    }
+    '/_app/apps/$appId/settings': {
+      id: '/_app/apps/$appId/settings'
+      path: '/settings'
+      fullPath: '/apps/$appId/settings'
+      preLoaderRoute: typeof AppAppsAppIdSettingsRouteImport
+      parentRoute: typeof AppAppsAppIdRoute
+    }
+    '/_app/apps/$appId/services': {
+      id: '/_app/apps/$appId/services'
+      path: '/services'
+      fullPath: '/apps/$appId/services'
+      preLoaderRoute: typeof AppAppsAppIdServicesRouteImport
+      parentRoute: typeof AppAppsAppIdRoute
+    }
+    '/_app/apps/$appId/overview': {
+      id: '/_app/apps/$appId/overview'
+      path: '/overview'
+      fullPath: '/apps/$appId/overview'
+      preLoaderRoute: typeof AppAppsAppIdOverviewRouteImport
+      parentRoute: typeof AppAppsAppIdRoute
+    }
+    '/_app/apps/$appId/logs': {
+      id: '/_app/apps/$appId/logs'
+      path: '/logs'
+      fullPath: '/apps/$appId/logs'
+      preLoaderRoute: typeof AppAppsAppIdLogsRouteImport
+      parentRoute: typeof AppAppsAppIdRoute
+    }
+    '/_app/apps/$appId/environment': {
+      id: '/_app/apps/$appId/environment'
+      path: '/environment'
+      fullPath: '/apps/$appId/environment'
+      preLoaderRoute: typeof AppAppsAppIdEnvironmentRouteImport
+      parentRoute: typeof AppAppsAppIdRoute
+    }
+    '/_app/apps/$appId/deploys': {
+      id: '/_app/apps/$appId/deploys'
+      path: '/deploys'
+      fullPath: '/apps/$appId/deploys'
+      preLoaderRoute: typeof AppAppsAppIdDeploysRouteImport
+      parentRoute: typeof AppAppsAppIdRoute
+    }
   }
 }
 
+interface AppAppsAppIdRouteChildren {
+  AppAppsAppIdDeploysRoute: typeof AppAppsAppIdDeploysRoute
+  AppAppsAppIdEnvironmentRoute: typeof AppAppsAppIdEnvironmentRoute
+  AppAppsAppIdLogsRoute: typeof AppAppsAppIdLogsRoute
+  AppAppsAppIdOverviewRoute: typeof AppAppsAppIdOverviewRoute
+  AppAppsAppIdServicesRoute: typeof AppAppsAppIdServicesRoute
+  AppAppsAppIdSettingsRoute: typeof AppAppsAppIdSettingsRoute
+  AppAppsAppIdIndexRoute: typeof AppAppsAppIdIndexRoute
+}
+
+const AppAppsAppIdRouteChildren: AppAppsAppIdRouteChildren = {
+  AppAppsAppIdDeploysRoute: AppAppsAppIdDeploysRoute,
+  AppAppsAppIdEnvironmentRoute: AppAppsAppIdEnvironmentRoute,
+  AppAppsAppIdLogsRoute: AppAppsAppIdLogsRoute,
+  AppAppsAppIdOverviewRoute: AppAppsAppIdOverviewRoute,
+  AppAppsAppIdServicesRoute: AppAppsAppIdServicesRoute,
+  AppAppsAppIdSettingsRoute: AppAppsAppIdSettingsRoute,
+  AppAppsAppIdIndexRoute: AppAppsAppIdIndexRoute,
+}
+
+const AppAppsAppIdRouteWithChildren = AppAppsAppIdRoute._addFileChildren(
+  AppAppsAppIdRouteChildren,
+)
+
+interface AppRouteChildren {
+  AppDatabaseRoute: typeof AppDatabaseRoute
+  AppDeploymentsRoute: typeof AppDeploymentsRoute
+  AppLogsRoute: typeof AppLogsRoute
+  AppSettingsRoute: typeof AppSettingsRoute
+  AppAppsAppIdRoute: typeof AppAppsAppIdRouteWithChildren
+  AppAppsNewRoute: typeof AppAppsNewRoute
+  AppAppsIndexRoute: typeof AppAppsIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppDatabaseRoute: AppDatabaseRoute,
+  AppDeploymentsRoute: AppDeploymentsRoute,
+  AppLogsRoute: AppLogsRoute,
+  AppSettingsRoute: AppSettingsRoute,
+  AppAppsAppIdRoute: AppAppsAppIdRouteWithChildren,
+  AppAppsNewRoute: AppAppsNewRoute,
+  AppAppsIndexRoute: AppAppsIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
+  LoginRoute: LoginRoute,
+  SetupRoute: SetupRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
