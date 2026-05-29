@@ -80,6 +80,60 @@ what we do instead, why, and the trade-off (what we give up / when we'd revisit)
 
 ---
 
+## Phase 4 — Real-time
+
+### D5 — Host stats land in Phase 4, exposed via `GET /api/host/stats` + a `host` WS topic
+
+- **mvp.md says** (§ API Surface → Real-time): the listed WS endpoints are per-app logs/stats and
+  per-deployment build logs; host CPU/RAM/disk is shown on the Global Dashboard (§ UI Structure)
+  but no host-stats endpoint is enumerated. Phase 3's plan explicitly deferred host-level stats to
+  "the Phase 4 stats path".
+- **We do instead:** add `GET /api/host/stats` (snapshot) and a `host` WS topic, sourced from
+  `gopsutil` (CPU/RAM/disk) plus the Phase 3 `reqmetrics.Scraper` for the aggregate request rate.
+- **Why:** the Phase 5 dashboard needs host vitals and Phase 3 left the scraper seam wired exactly
+  for this; an endpoint is the natural surface and `gopsutil` is already an indirect dependency.
+- **Trade-off:** one API/WS surface not spelled out in the mvp's endpoint list. No data model
+  cost (live-only, no stats table per § Real-time Stats).
+
+### D6 — Stats are subscriber-gated and never persisted; runtime logs are always-on
+
+- **mvp.md says** (§ Real-time Stats / § Real-time Logs): both follow the same fan-out hub
+  pattern; it does not specify when each producer runs.
+- **We do instead:** the per-app `docker stats` collector runs **only while a WS subscriber is
+  attached** (stats are live-only, no DB), whereas the `docker logs --follow` runtime-log
+  followers run for every live container regardless of subscribers (logs must persist to the ring
+  buffer for the Logs Explorer and crash-loop forensics).
+- **Why:** running `docker stats` continuously for data nobody is watching wastes CPU; runtime
+  logs must be captured unconditionally because they are persisted.
+- **Trade-off:** a stats subscriber gets no backlog (none exists) and waits one poll interval for
+  the first sample. Acceptable for a live gauge.
+
+### D7 — "TLS certificate expiring" notification is deferred
+
+- **mvp.md says** (§ Notifications): notify when a certificate expires within 14 days.
+- **We do instead:** ship deploy-succeeded / deploy-failed / crash-loop / VAC-restarted in Phase 4
+  and **defer** the cert-expiry event.
+- **Why:** Phase 3 tracks `domains.cert_status` as advisory only (no reliable `not_after` per
+  host); a correct 14-day warning needs real expiry data from a Caddy PKI read-back that Phase 3
+  did not build. Shipping it now would mean a flaky notification.
+- **Trade-off:** no proactive cert-expiry alert in MVP — mitigated because Caddy auto-renews. To
+  revisit when cert read-back exposes per-host `not_after`; then add the event to the existing
+  dispatcher (cheap once the data exists).
+
+### D8 — Notification webhook URLs are encrypted at rest
+
+- **mvp.md says** (§ Notifications / § Configuration): webhook URLs are configured in Settings and
+  overridable via `VAC_NOTIFY_*`; it lists only `VAC_MASTER_KEY`/`VAC_ADMIN_TOKEN` as "secrets".
+- **We do instead:** store the Discord/Slack webhook URLs **encrypted with `crypto.Box`** (like
+  env vars / SSH keys / TOTP secrets), redact them on read, and env-only the overrides.
+- **Why:** a webhook URL is a bearer secret — anyone holding it can post to the channel — so it
+  belongs with the other at-rest secrets rather than as plaintext in a settings row.
+- **Trade-off:** notification settings require `VAC_MASTER_KEY` to be set (same posture as TOTP
+  setup); without it, storing a URL returns a clear error and only the `VAC_NOTIFY_*` env path
+  works.
+
+---
+
 > Maintenance note: when a deviation is later reconciled (e.g. we adopt the mvp's original
 > approach, or update `mvp.md` to match), mark the row **Resolved** with the date and the
 > commit/PR rather than deleting it — the history is the point.

@@ -20,12 +20,17 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/db"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
+	"github.com/vojir-mikulas/vac/api/internal/dockerevents"
+	"github.com/vojir-mikulas/vac/api/internal/logstream"
+	"github.com/vojir-mikulas/vac/api/internal/notify"
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
 	"github.com/vojir-mikulas/vac/api/internal/reqmetrics"
 	"github.com/vojir-mikulas/vac/api/internal/retention"
 	"github.com/vojir-mikulas/vac/api/internal/server"
 	"github.com/vojir-mikulas/vac/api/internal/sshkey"
+	"github.com/vojir-mikulas/vac/api/internal/stats"
 	"github.com/vojir-mikulas/vac/api/internal/store"
+	"github.com/vojir-mikulas/vac/api/internal/ws"
 )
 
 func main() {
@@ -75,6 +80,11 @@ func main() {
 	keys := sshkey.NewManager(st, box)
 	docker := dockercli.New(cfg.DockerSocket)
 
+	// Phase 4: real-time transport. One hub shared by every producer (deploy
+	// pipeline build logs, runtime-log followers, stats collectors) and the WS
+	// handlers.
+	hub := ws.NewHub()
+
 	// Phase 3: reverse proxy. The Caddy admin client + proxy manager drive
 	// routing over the vac-edge network. The manager is the deploy pipeline's
 	// Router (auto-domains + route sync + Caddy-gated health).
@@ -89,8 +99,18 @@ func main() {
 
 	loadCaddyBaseConfig(ctx, cfg, caddyClient, proxyMgr)
 
+	// Outbound notifications (Discord/Slack). Stored webhook URLs are decrypted
+	// with the master key; VAC_NOTIFY_* env vars override them.
+	var notifyBaseURL string
+	if cfg.BaseDomain != "" {
+		notifyBaseURL = "https://" + cfg.BaseDomain
+	}
+	notifier := notify.New(st, box, cfg.NotifyDiscordURL, cfg.NotifySlackURL, notifyBaseURL, slog.Default())
+
 	pipeline := deploy.NewPipeline(st, keys, box, docker, cfg.WorkDir, cfg.HealthCheckTimeout, cfg.HealthCheckRetries, slog.Default())
 	pipeline.Router = proxyMgr
+	pipeline.Hub = hub
+	pipeline.Notifier = notifier
 	worker := deploy.NewPipelineWorker(pipeline, 0)
 	worker.Start(ctx)
 
@@ -99,20 +119,45 @@ func main() {
 	collector := reqmetrics.New(st, cfg.CaddyAccessLog, cfg.CaddyMetricsInterval, slog.Default())
 	go collector.Run(ctx)
 
-	monitor := crashloop.New(docker, docker, st, crashloop.Config{
+	// Real-time stats: per-service collectors (subscriber-gated via the hub's
+	// subscribe hooks) plus host vitals. The host request-rate field reuses the
+	// Caddy /metrics scrape.
+	scraper := reqmetrics.NewScraper(strings.TrimRight(cfg.CaddyAdminURL, "/")+"/metrics", nil)
+	hostCollector := stats.NewHostCollector(scraper, cfg.WorkDir)
+	statsMgr := stats.NewManager(docker, st, hub, hostCollector, cfg.StatsPollInterval, slog.Default())
+	hub.SetCallbacks(statsMgr.OnSubscribe, statsMgr.OnUnsubscribe)
+	statsMgr.Start(ctx)
+
+	// One docker-events stream fans out to the crash-loop monitor and the
+	// runtime-log supervisor (rather than each opening its own).
+	eventBus := dockerevents.NewBus(docker, slog.Default())
+	go eventBus.Run(ctx)
+
+	monitor := crashloop.New(eventBus, docker, st, crashloop.Config{
 		Threshold: cfg.CrashLoopThreshold,
 		Window:    cfg.CrashLoopWindow,
 	}, slog.Default())
+	monitor.SetNotifier(notifier)
 	go monitor.Run(ctx)
+
+	// Runtime-log capture: one follower per running container, writing to the
+	// DB ring buffer and teeing to the hub. Reconciles on deploy/lifecycle, on
+	// container events, and on a periodic resync.
+	logSup := logstream.New(docker, st, st, hub, eventBus, logstream.Config{
+		RingBuffer: cfg.LogRingBuffer,
+	}, slog.Default())
+	go logSup.Run(ctx)
+	pipeline.Reconciler = logSup
 
 	pruner := retention.New(st, retention.Config{
 		RuntimeDays:    cfg.LogRetentionDays,
 		RequestMetrics: cfg.RequestMetricsRetention,
+		RingBuffer:     cfg.LogRingBuffer,
 		HourOfDay:      3,
 	}, slog.Default())
 	go pruner.Run(ctx)
 
-	srv := server.New(ctx, cfg, st, worker, docker, proxyMgr)
+	srv := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier)
 
 	go func() {
 		slog.Info("vac-api listening", "addr", srv.Addr)
@@ -122,10 +167,21 @@ func main() {
 		}
 	}()
 
+	// Notify that the control plane is back up — but not on a genuine first
+	// boot (no admin yet), so a brand-new install doesn't ping a webhook the
+	// operator only just configured via env.
+	if n, err := st.CountUsers(ctx); err == nil && n > 0 {
+		notifier.VACRestarted()
+	}
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 	slog.Info("shutdown signal received")
+
+	// Drop all WebSocket subscribers first so long-lived stream handlers return
+	// and the graceful HTTP shutdown below doesn't block on them.
+	hub.Close()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()

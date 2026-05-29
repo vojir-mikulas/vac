@@ -27,7 +27,7 @@ func TestGoroutineCountStaysBounded(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		ctx, cancel := context.WithCancel(context.Background())
-		srv := New(ctx, config.Default(), nil, nil, nil, nil)
+		srv := New(ctx, config.Default(), nil, nil, nil, nil, nil, nil, nil)
 		// We don't ListenAndServe — we exercise just the construction path
 		// (rate limit eviction goroutine), since that's the one with a
 		// lifetime tied to ctx.

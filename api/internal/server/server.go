@@ -21,13 +21,14 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/sshkey"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 	"github.com/vojir-mikulas/vac/api/internal/ui"
+	"github.com/vojir-mikulas/vac/api/internal/ws"
 )
 
 // New wires the chi router and returns a configured *http.Server. ctx governs
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager) *http.Server {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, hostStats handler.HostStatsProvider, notifier handler.TestSender) *http.Server {
 	// Convert the concrete (possibly-nil) manager into nil-able interface
 	// values so handlers' `== nil` guards behave (a typed-nil pointer in an
 	// interface is not nil).
@@ -41,6 +42,8 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		syncer = pm
 		caddyPin = pm
 	}
+
+	wsOpts := wsAcceptOptions(cfg)
 
 	sm := auth.NewSessionManager(s, cfg.SessionTTL, cfg.SessionTTLExtended)
 
@@ -106,6 +109,13 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			r.Post("/auth/api-tokens", handler.CreateAPIToken(tokm))
 			r.Delete("/auth/api-tokens/{id}", handler.RevokeAPIToken(tokm))
 
+			// Notification settings (Phase 4).
+			r.Get("/settings/notifications", handler.GetNotificationSettings(s, box))
+			r.Put("/settings/notifications", handler.PutNotificationSettings(s, box))
+			if notifier != nil {
+				r.Post("/settings/notifications/test", handler.TestNotification(notifier))
+			}
+
 			r.Route("/apps", func(r chi.Router) {
 				r.Get("/", handler.ListApps(s))
 				r.Post("/", handler.CreateApp(s))
@@ -147,7 +157,25 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Post("/{id}/restart", handler.RestartApp(s, docker, proxyMgr))
 					r.Post("/{id}/services/{name}/restart", handler.RestartService(s, docker, proxyMgr))
 				}
+
+				// Per-app real-time streams (Phase 4). Server-push only.
+				if hub != nil {
+					r.Get("/{id}/logs", handler.RuntimeLogsWS(s, hub, wsOpts))
+					r.Get("/{id}/services/{name}/logs", handler.RuntimeLogsWS(s, hub, wsOpts))
+					r.Get("/{id}/stats", handler.StatsWS(s, hub, wsOpts))
+				}
 			})
+
+			// Real-time WebSocket streams (Phase 4). Server-push only; gated by
+			// RequireSession above + an Origin check in Accept.
+			if hub != nil {
+				r.Get("/deployments/{did}/logs", handler.BuildLogsWS(s, hub, wsOpts))
+			}
+
+			// Host vitals: JSON snapshot, or a live stream on WS upgrade.
+			if hub != nil && hostStats != nil {
+				r.Get("/host/stats", handler.HostStats(hostStats, hub, wsOpts))
+			}
 		})
 
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
@@ -162,4 +190,18 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+}
+
+// wsAcceptOptions derives the WebSocket Origin policy from config. The SPA is
+// served same-origin as the API, so the request's own host is always allowed.
+// We additionally allow the configured base domain (and its subdomains) for
+// reverse-proxy setups. In local-exposure mode the Origin check is disabled —
+// the documented escape hatch for VPN / tunnel access where the Origin host may
+// not match the bind address.
+func wsAcceptOptions(cfg config.Config) ws.AcceptOptions {
+	opts := ws.AcceptOptions{InsecureSkipVerify: cfg.Exposure == config.ExposureLocal}
+	if cfg.BaseDomain != "" {
+		opts.OriginPatterns = []string{cfg.BaseDomain, "*." + cfg.BaseDomain}
+	}
+	return opts
 }

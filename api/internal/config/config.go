@@ -41,6 +41,7 @@ type Config struct {
 	CrashLoopWindow       time.Duration `yaml:"crash_loop_window"`
 	LogRetentionDays      int           `yaml:"log_retention_days"`
 	ActivityRetentionDays int           `yaml:"activity_retention_days"`
+	LogRingBuffer         int           `yaml:"ring_buffer_lines"`
 
 	// Phase 3: reverse proxy & HTTPS.
 	CaddyAdminURL           string        `yaml:"caddy_admin_url"`
@@ -48,9 +49,15 @@ type Config struct {
 	EdgeNetwork             string        `yaml:"edge_network"`
 	CaddyAccessLog          string        `yaml:"caddy_access_log"`
 	CaddyMetricsInterval    time.Duration `yaml:"caddy_metrics_interval"`
+	StatsPollInterval       time.Duration `yaml:"stats_poll_interval"`
 	CaddyAskToken           string        `yaml:"-"` // env-only secret (VAC_CADDY_ASK_TOKEN)
 	RequestMetricsRetention time.Duration `yaml:"request_metrics_retention"`
 	ACMECA                  string        `yaml:"acme_ca"` // override for ACME staging in tests
+
+	// Phase 4: notifications. Webhook URLs are semi-secret — env-only, never in
+	// the config file; they override any UI-stored value.
+	NotifyDiscordURL string `yaml:"-"`
+	NotifySlackURL   string `yaml:"-"`
 }
 
 type ServerConfig struct {
@@ -79,12 +86,14 @@ func Default() Config {
 		CrashLoopWindow:       2 * time.Minute,
 		LogRetentionDays:      7,
 		ActivityRetentionDays: 30,
+		LogRingBuffer:         10000,
 
 		CaddyAdminURL:           "http://vac-proxy:2019",
 		BaseDomain:              "",
 		EdgeNetwork:             "vac-edge",
 		CaddyAccessLog:          "/var/log/caddy/access.log",
 		CaddyMetricsInterval:    10 * time.Second,
+		StatsPollInterval:       2 * time.Second,
 		RequestMetricsRetention: 24 * time.Hour,
 	}
 }
@@ -205,6 +214,11 @@ func applyEnv(cfg *Config) {
 			cfg.ActivityRetentionDays = n
 		}
 	}
+	if v := os.Getenv("VAC_LOG_RING_BUFFER"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.LogRingBuffer = n
+		}
+	}
 
 	if v := os.Getenv("VAC_CADDY_ADMIN_URL"); v != "" {
 		cfg.CaddyAdminURL = v
@@ -223,6 +237,11 @@ func applyEnv(cfg *Config) {
 			cfg.CaddyMetricsInterval = d
 		}
 	}
+	if v := os.Getenv("VAC_STATS_POLL_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.StatsPollInterval = d
+		}
+	}
 	if v := os.Getenv("VAC_CADDY_ASK_TOKEN"); v != "" {
 		cfg.CaddyAskToken = v
 	}
@@ -234,6 +253,8 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("VAC_ACME_CA"); v != "" {
 		cfg.ACMECA = v
 	}
+	cfg.NotifyDiscordURL = os.Getenv("VAC_NOTIFY_DISCORD_URL")
+	cfg.NotifySlackURL = os.Getenv("VAC_NOTIFY_SLACK_URL")
 }
 
 func validate(cfg *Config) {

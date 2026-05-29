@@ -18,6 +18,7 @@ const (
 	DeploymentLogStreamSystem = "system"
 )
 
+// DeploymentLog is one persisted build-log line.
 type DeploymentLog struct {
 	ID           int64
 	DeploymentID string
@@ -34,12 +35,14 @@ type DeploymentLogRow struct {
 	Message     string
 }
 
-// AppendDeploymentLogs does one multi-row INSERT per call. The deploy log
-// writer batches into chunks of ~200 lines or ~250ms to keep insert volume
-// down — empty slices are a no-op.
-func (s *Store) AppendDeploymentLogs(ctx context.Context, deploymentID string, rows []DeploymentLogRow) error {
+// AppendDeploymentLogs does one multi-row INSERT per call and returns the
+// generated row ids in insertion order. The deploy log writer batches into
+// chunks of ~200 lines to keep insert volume down — empty slices are a no-op.
+// The returned ids let the live WS stream tag each frame so a client can dedup
+// the replayed backlog against the live tail.
+func (s *Store) AppendDeploymentLogs(ctx context.Context, deploymentID string, rows []DeploymentLogRow) ([]int64, error) {
 	if len(rows) == 0 {
-		return nil
+		return nil, nil
 	}
 	var b strings.Builder
 	b.WriteString(`INSERT INTO deployment_logs (deployment_id, service_name, stream, message) VALUES `)
@@ -59,8 +62,21 @@ func (s *Store) AppendDeploymentLogs(ctx context.Context, deploymentID string, r
 		b.WriteByte(')')
 		args = append(args, r.ServiceName, r.Stream, r.Message)
 	}
-	_, err := s.pool.Exec(ctx, b.String(), args...)
-	return err
+	b.WriteString(" RETURNING id")
+	dbRows, err := s.pool.Query(ctx, b.String(), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer dbRows.Close()
+	ids := make([]int64, 0, len(rows))
+	for dbRows.Next() {
+		var id int64
+		if err := dbRows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, dbRows.Err()
 }
 
 // ListDeploymentLogs returns build-log rows in insertion order. `afterID` is

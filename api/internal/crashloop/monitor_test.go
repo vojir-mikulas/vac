@@ -32,18 +32,22 @@ type fakeStore struct {
 func (f *fakeStore) GetAppBySlug(_ context.Context, _ string) (store.App, error) {
 	return f.app, nil
 }
+
 func (f *fakeStore) UpdateServiceStatus(_ context.Context, _, _ string, status string, exit *int) error {
 	f.statusUpdates.Add(1)
 	f.lastStatus = status
 	f.lastExitCode = exit
 	return nil
 }
+
 func (f *fakeStore) IncrementServiceRestart(_ context.Context, _, _ string) (int, error) {
 	return 1, nil
 }
-func (f *fakeStore) AppendRuntimeLogs(_ context.Context, _ string, _ []store.RuntimeLogRow) error {
+
+func (f *fakeStore) AppendRuntimeLogs(_ context.Context, _ string, rows []store.RuntimeLogRow) ([]int64, error) {
 	f.logs.Add(1)
-	return nil
+	ids := make([]int64, len(rows))
+	return ids, nil
 }
 
 func TestMonitor_TripsAfterThresholdInWindow(t *testing.T) {

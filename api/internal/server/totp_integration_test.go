@@ -36,7 +36,8 @@ func setupServerWithKey(t *testing.T) http.Handler {
 	t.Helper()
 	ctx := context.Background()
 
-	pgC, err := postgres.Run(ctx,
+	pgC, err := postgres.Run(
+		ctx,
 		"postgres:16-alpine",
 		postgres.WithDatabase("vac"),
 		postgres.WithUsername("vac"),
@@ -81,7 +82,7 @@ func setupServerWithKey(t *testing.T) http.Handler {
 	// requests are not HTTPS, but Go's cookie jar still records them.
 	// The login_integration_test already relies on this.
 
-	return server.New(t.Context(), cfg, store.New(pool)).Handler
+	return server.New(t.Context(), cfg, store.New(pool), nil, nil, nil, nil, nil, nil).Handler
 }
 
 func TestTOTPSetupAndLoginFlow(t *testing.T) {

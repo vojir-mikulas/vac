@@ -6,7 +6,6 @@ package crashloop
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -20,10 +19,11 @@ import (
 
 const composeProjectPrefix = "vac-"
 
-// EventSource provides a stream of container events. dockercli.Compose
-// satisfies it.
-type EventSource interface {
-	Events(ctx context.Context) (<-chan dockercli.Event, error)
+// EventSubscriber yields a stream of container events from a shared bus.
+// *dockerevents.Bus satisfies it. nil disables the Run loop (tests drive
+// Handle directly).
+type EventSubscriber interface {
+	Subscribe() (<-chan dockercli.Event, func())
 }
 
 // ServiceStopper stops a single service in a compose project. The crash-loop
@@ -38,7 +38,13 @@ type MonitorStore interface {
 	GetAppBySlug(ctx context.Context, slug string) (store.App, error)
 	UpdateServiceStatus(ctx context.Context, appID, name, status string, exitCode *int) error
 	IncrementServiceRestart(ctx context.Context, appID, name string) (int, error)
-	AppendRuntimeLogs(ctx context.Context, appID string, rows []store.RuntimeLogRow) error
+	AppendRuntimeLogs(ctx context.Context, appID string, rows []store.RuntimeLogRow) ([]int64, error)
+}
+
+// Notifier fires a notification when a service trips the crash-loop guard.
+// Implemented by notify.Dispatcher; nil disables crash-loop notifications.
+type Notifier interface {
+	CrashLoop(appName, appID, service string, restarts int, exitCode *int)
 }
 
 // Config tunes the monitor. Both fields come from VAC env vars.
@@ -49,11 +55,12 @@ type Config struct {
 
 // Monitor is the long-running supervisor goroutine.
 type Monitor struct {
-	src    EventSource
-	stop   ServiceStopper
-	store  MonitorStore
-	cfg    Config
-	logger *slog.Logger
+	src      EventSubscriber
+	stop     ServiceStopper
+	store    MonitorStore
+	notifier Notifier
+	cfg      Config
+	logger   *slog.Logger
 
 	mu      sync.Mutex
 	windows map[string]*window // key: project+"/"+service
@@ -61,7 +68,7 @@ type Monitor struct {
 }
 
 // New returns a Monitor wired with production deps.
-func New(src EventSource, stop ServiceStopper, s MonitorStore, cfg Config, logger *slog.Logger) *Monitor {
+func New(src EventSubscriber, stop ServiceStopper, s MonitorStore, cfg Config, logger *slog.Logger) *Monitor {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -82,56 +89,29 @@ func New(src EventSource, stop ServiceStopper, s MonitorStore, cfg Config, logge
 	}
 }
 
-// Run subscribes to the event stream and processes die events until ctx is
-// cancelled. If the underlying stream errors, Run retries on a backoff so
-// a daemon restart doesn't permanently disable monitoring.
+// Run subscribes to the shared event bus and processes die events until ctx is
+// cancelled. Reconnection across daemon restarts is owned by the bus, so the
+// subscription channel is stable for the lifetime of this loop.
 func (m *Monitor) Run(ctx context.Context) {
-	backoff := time.Second
+	if m.src == nil {
+		return
+	}
+	ch, cancel := m.src.Subscribe()
+	defer cancel()
 	for {
-		if err := m.runOnce(ctx); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return
-			}
-			m.logger.Warn("crashloop: events stream error; retrying", "err", err, "in", backoff)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(backoff):
-			}
-			if backoff < 30*time.Second {
-				backoff *= 2
-			}
-			continue
-		}
-		// Clean exit (channel closed) — reset backoff and try again.
-		backoff = time.Second
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Second):
-		}
-	}
-}
-
-func (m *Monitor) runOnce(ctx context.Context) error {
-	ch, err := m.src.Events(ctx)
-	if err != nil {
-		return err
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
 		case ev, ok := <-ch:
 			if !ok {
-				return nil
+				return
 			}
 			m.handle(ctx, ev)
 		}
 	}
 }
 
-// handle is the per-event entry point. Public so tests can drive the
+// Handle is the per-event entry point. Public so tests can drive the
 // monitor synchronously without spinning up the goroutine machinery.
 func (m *Monitor) Handle(ctx context.Context, ev dockercli.Event) { m.handle(ctx, ev) }
 
@@ -192,11 +172,18 @@ func (m *Monitor) trip(ctx context.Context, project, service string, ev dockercl
 	if exitCode != nil {
 		msg += " (last exit code " + strconv.Itoa(*exitCode) + ")"
 	}
-	_ = m.store.AppendRuntimeLogs(ctx, app.ID, []store.RuntimeLogRow{
+	_, _ = m.store.AppendRuntimeLogs(ctx, app.ID, []store.RuntimeLogRow{
 		{ServiceName: service, Stream: store.RuntimeLogStreamSystem, Message: msg},
 	})
+	if m.notifier != nil {
+		m.notifier.CrashLoop(app.Name, app.ID, service, count, exitCode)
+	}
 	logger.Info("crashloop: tripped", "count", count, "window", m.cfg.Window)
 }
+
+// SetNotifier wires an optional notifier fired when a service trips. Kept off
+// the constructor so existing call sites and tests are unaffected.
+func (m *Monitor) SetNotifier(n Notifier) { m.notifier = n }
 
 // Reset clears the crash-loop flag for a service so the next sequence of
 // deaths can re-trip. Called by the lifecycle restart handler once the

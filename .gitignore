@@ -43,3 +43,4 @@ yarn-error.log*
 coverage/
 .nyc_output/
 /design
+/design

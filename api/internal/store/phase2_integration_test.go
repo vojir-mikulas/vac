@@ -281,7 +281,7 @@ func TestDeploymentLogsAppendAndList(t *testing.T) {
 		t.Fatalf("CreateDeployment: %v", err)
 	}
 
-	if err := s.AppendDeploymentLogs(ctx, d.ID, nil); err != nil {
+	if _, err := s.AppendDeploymentLogs(ctx, d.ID, nil); err != nil {
 		t.Errorf("empty append should be a no-op: %v", err)
 	}
 
@@ -292,8 +292,10 @@ func TestDeploymentLogsAppendAndList(t *testing.T) {
 		{ServiceName: &web, Stream: store.DeploymentLogStreamStdout, Message: "step 2/5"},
 		{ServiceName: &web, Stream: store.DeploymentLogStreamStderr, Message: "warning: layer cache miss"},
 	}
-	if err := s.AppendDeploymentLogs(ctx, d.ID, rows); err != nil {
+	if ids, err := s.AppendDeploymentLogs(ctx, d.ID, rows); err != nil {
 		t.Fatalf("AppendDeploymentLogs: %v", err)
+	} else if len(ids) != len(rows) {
+		t.Fatalf("AppendDeploymentLogs returned %d ids, want %d", len(ids), len(rows))
 	}
 
 	n, _ := s.CountDeploymentLogs(ctx, d.ID)
@@ -330,7 +332,7 @@ func TestRuntimeLogsAppendListPrune(t *testing.T) {
 		{ServiceName: "web", Stream: store.RuntimeLogStreamStderr, Message: "warn"},
 		{ServiceName: "worker", Stream: store.RuntimeLogStreamStdout, Message: "tick"},
 	}
-	if err := s.AppendRuntimeLogs(ctx, a.ID, rows); err != nil {
+	if _, err := s.AppendRuntimeLogs(ctx, a.ID, rows); err != nil {
 		t.Fatalf("AppendRuntimeLogs: %v", err)
 	}
 

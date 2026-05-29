@@ -10,10 +10,12 @@ import (
 )
 
 type fakeStore struct {
-	calls   atomic.Int64
-	last    time.Time
-	rmCalls atomic.Int64
-	rmLast  time.Time
+	calls     atomic.Int64
+	last      time.Time
+	rmCalls   atomic.Int64
+	rmLast    time.Time
+	trimCalls atomic.Int64
+	trimKeep  int
 }
 
 func (f *fakeStore) DeleteRuntimeLogsOlderThan(_ context.Context, cutoff time.Time) (int64, error) {
@@ -26,6 +28,16 @@ func (f *fakeStore) DeleteRequestMetricsOlderThan(_ context.Context, cutoff time
 	f.rmCalls.Add(1)
 	f.rmLast = cutoff
 	return 7, nil
+}
+
+func (f *fakeStore) ListRuntimeLogServices(_ context.Context) ([]struct{ AppID, ServiceName string }, error) {
+	return []struct{ AppID, ServiceName string }{{AppID: "app-1", ServiceName: "web"}}, nil
+}
+
+func (f *fakeStore) TrimRuntimeLogsToRingBuffer(_ context.Context, _, _ string, keepN int) (int64, error) {
+	f.trimCalls.Add(1)
+	f.trimKeep = keepN
+	return 3, nil
 }
 
 func TestPruneOnce_ComputesCutoffFromRuntimeDays(t *testing.T) {

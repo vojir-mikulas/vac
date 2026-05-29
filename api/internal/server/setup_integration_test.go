@@ -27,7 +27,8 @@ func setupPool(t *testing.T) *store.Store {
 	t.Helper()
 	ctx := context.Background()
 
-	pgC, err := postgres.Run(ctx,
+	pgC, err := postgres.Run(
+		ctx,
 		"postgres:16-alpine",
 		postgres.WithDatabase("vac"),
 		postgres.WithUsername("vac"),
@@ -68,7 +69,7 @@ func setupServer(t *testing.T) http.Handler {
 	// IP; the 5/15min default would false-positive on otherwise valid flows.
 	cfg.LoginRateLimit = 100
 	cfg.LoginRateWindow = time.Minute
-	return server.New(t.Context(), cfg, s).Handler
+	return server.New(t.Context(), cfg, s, nil, nil, nil, nil, nil, nil).Handler
 }
 
 func do(t *testing.T, h http.Handler, method, path string, body any) (*httptest.ResponseRecorder, map[string]any) {

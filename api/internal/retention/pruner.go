@@ -13,6 +13,8 @@ import (
 type PruneStore interface {
 	DeleteRuntimeLogsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteRequestMetricsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
+	ListRuntimeLogServices(ctx context.Context) ([]struct{ AppID, ServiceName string }, error)
+	TrimRuntimeLogsToRingBuffer(ctx context.Context, appID, serviceName string, keepN int) (int64, error)
 }
 
 // Config carries the retention windows. RuntimeDays governs runtime_logs;
@@ -21,6 +23,10 @@ type Config struct {
 	RuntimeDays int
 	// RequestMetrics is the retention for the request-rate window.
 	RequestMetrics time.Duration
+	// RingBuffer caps runtime_logs per (app, service) — the mvp ring buffer.
+	// The live follower trims continuously; this catches stopped-app services
+	// whose follower isn't running. Default 10000.
+	RingBuffer int
 	// Hour of day (0-23) the prune runs in time.Local. Default 3 (03:00).
 	HourOfDay int
 }
@@ -43,6 +49,9 @@ func New(s PruneStore, cfg Config, logger *slog.Logger) *Pruner {
 	}
 	if cfg.RequestMetrics <= 0 {
 		cfg.RequestMetrics = 24 * time.Hour
+	}
+	if cfg.RingBuffer <= 0 {
+		cfg.RingBuffer = 10000
 	}
 	if cfg.HourOfDay < 0 || cfg.HourOfDay > 23 {
 		cfg.HourOfDay = 3
@@ -87,6 +96,23 @@ func (p *Pruner) PruneOnce(ctx context.Context) error {
 		return err
 	}
 	p.logger.Info("retention: pruned request metrics", "deleted", rn, "cutoff", rmCutoff.Format(time.RFC3339))
+
+	// Ring-buffer cap per (app, service) — catches services whose live
+	// follower isn't running to trim them continuously.
+	pairs, err := p.store.ListRuntimeLogServices(ctx)
+	if err != nil {
+		return err
+	}
+	var trimmed int64
+	for _, pr := range pairs {
+		n, err := p.store.TrimRuntimeLogsToRingBuffer(ctx, pr.AppID, pr.ServiceName, p.cfg.RingBuffer)
+		if err != nil {
+			p.logger.Warn("retention: ring-buffer trim failed", "app", pr.AppID, "service", pr.ServiceName, "err", err)
+			continue
+		}
+		trimmed += n
+	}
+	p.logger.Info("retention: ring-buffer trim", "deleted", trimmed, "keep_per_service", p.cfg.RingBuffer)
 	return nil
 }
 

@@ -10,12 +10,14 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Runtime log stream tags.
 const (
 	RuntimeLogStreamStdout = "stdout"
 	RuntimeLogStreamStderr = "stderr"
 	RuntimeLogStreamSystem = "system"
 )
 
+// RuntimeLog is one persisted container log line.
 type RuntimeLog struct {
 	ID          int64
 	AppID       string
@@ -33,10 +35,11 @@ type RuntimeLogRow struct {
 }
 
 // AppendRuntimeLogs is the runtime-log counterpart of AppendDeploymentLogs.
-// Multi-row INSERT, empty slices are a no-op.
-func (s *Store) AppendRuntimeLogs(ctx context.Context, appID string, rows []RuntimeLogRow) error {
+// Multi-row INSERT returning the generated ids in order; empty slices are a
+// no-op. The ids let the live WS stream tag each frame for client-side dedup.
+func (s *Store) AppendRuntimeLogs(ctx context.Context, appID string, rows []RuntimeLogRow) ([]int64, error) {
 	if len(rows) == 0 {
-		return nil
+		return nil, nil
 	}
 	var b strings.Builder
 	b.WriteString(`INSERT INTO runtime_logs (app_id, service_name, stream, message) VALUES `)
@@ -56,8 +59,21 @@ func (s *Store) AppendRuntimeLogs(ctx context.Context, appID string, rows []Runt
 		b.WriteByte(')')
 		args = append(args, r.ServiceName, r.Stream, r.Message)
 	}
-	_, err := s.pool.Exec(ctx, b.String(), args...)
-	return err
+	b.WriteString(" RETURNING id")
+	dbRows, err := s.pool.Query(ctx, b.String(), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer dbRows.Close()
+	ids := make([]int64, 0, len(rows))
+	for dbRows.Next() {
+		var id int64
+		if err := dbRows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, dbRows.Err()
 }
 
 // ListRuntimeLogs returns runtime-log rows newest-first. `beforeID` is a
@@ -113,6 +129,50 @@ func (s *Store) DeleteRuntimeLogsOlderThan(ctx context.Context, cutoff time.Time
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
+}
+
+// TrimRuntimeLogsToRingBuffer enforces the per-service ring buffer from
+// mvp.md § Log Retention: it keeps only the newest keepN rows for one
+// (app, service) and deletes the overflow. Returns the number of rows deleted.
+// Called periodically by the log follower and nightly by the retention pruner.
+func (s *Store) TrimRuntimeLogsToRingBuffer(ctx context.Context, appID, serviceName string, keepN int) (int64, error) {
+	if keepN <= 0 {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM runtime_logs
+		WHERE id IN (
+			SELECT id FROM (
+				SELECT id, row_number() OVER (ORDER BY id DESC) AS rn
+				FROM runtime_logs
+				WHERE app_id = $1 AND service_name = $2
+			) t WHERE t.rn > $3
+		)
+	`, appID, serviceName, keepN)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// ListRuntimeLogServices returns the distinct (app_id, service_name) pairs that
+// currently have runtime logs — the nightly pruner iterates these to apply the
+// ring-buffer trim per service.
+func (s *Store) ListRuntimeLogServices(ctx context.Context) ([]struct{ AppID, ServiceName string }, error) {
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT app_id, service_name FROM runtime_logs`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []struct{ AppID, ServiceName string }
+	for rows.Next() {
+		var p struct{ AppID, ServiceName string }
+		if err := rows.Scan(&p.AppID, &p.ServiceName); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // CountRuntimeLogs is a test helper / UI summary.

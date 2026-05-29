@@ -44,12 +44,27 @@ type Router interface {
 	WaitHealthy(ctx context.Context, appID string) error
 }
 
+// Reconciler attaches runtime-log followers to an app's freshly-(re)created
+// containers after a deploy. Implemented by logstream.Supervisor; nil disables
+// the explicit nudge (the supervisor still reconciles off container events).
+type Reconciler interface {
+	ReconcileApp(ctx context.Context, appID string)
+}
+
+// Notifier fires outbound notifications on deploy outcomes. Implemented by
+// notify.Dispatcher; nil disables notifications.
+type Notifier interface {
+	DeploySucceeded(appName, appID, sha, msg string, dur time.Duration)
+	DeployFailed(appName, appID, errMsg string, dur time.Duration)
+}
+
 // realGit adapts the gitcli package functions to GitClient.
 type realGit struct{}
 
 func (realGit) LsRemote(ctx context.Context, u, b, k string) error {
 	return gitcli.LsRemote(ctx, u, b, k)
 }
+
 func (realGit) Clone(ctx context.Context, u, d, b, k string) error {
 	return gitcli.Clone(ctx, u, d, b, k)
 }
@@ -67,7 +82,10 @@ type Pipeline struct {
 	Docker             DockerClient
 	Git                GitClient
 	HealthChecker      Checker
-	Router             Router // nil → Phase 2 loopback health check fallback
+	Router             Router     // nil → Phase 2 loopback health check fallback
+	Hub                Publisher  // nil → no live build-log streaming
+	Reconciler         Reconciler // nil → no explicit log-follower nudge
+	Notifier           Notifier   // nil → no deploy notifications
 	WorkDir            string
 	HealthCheckTimeout time.Duration
 	HealthCheckRetries int
@@ -110,6 +128,12 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 
 	logger := p.Logger.With("deployment_id", deploymentID, "app", app.Slug)
 	logger.Info("pipeline: starting")
+	runStart := time.Now()
+
+	// Tell live build-log subscribers the stream is finished on every exit
+	// path (success, error, degraded). Deferred first so it runs last — after
+	// the failure-finishing defer below has settled the deployment status.
+	defer PublishBuildEnd(p.Hub, deploymentID)
 
 	// Mark started; any non-nil runErr at the end of the function trips
 	// the failure-finishing block below.
@@ -121,9 +145,12 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 	defer func() {
 		if runErr != nil {
 			msg := runErr.Error()
-			_ = LogSystem(ctx, p.Store, deploymentID, "pipeline failed: "+msg)
+			_ = p.logSystem(ctx, deploymentID, "pipeline failed: "+msg)
 			_ = p.Store.MarkDeploymentFinished(ctx, deploymentID, DeploymentStatusError, &msg)
 			_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusError)
+			if p.Notifier != nil {
+				p.Notifier.DeployFailed(app.Name, app.ID, msg, time.Since(runStart))
+			}
 		}
 	}()
 
@@ -144,7 +171,7 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 	sha, msg, _ := p.Git.HeadCommit(ctx, repoDir)
 	if sha != "" {
 		_ = p.Store.SetDeploymentCommit(ctx, deploymentID, &sha, &msg)
-		_ = LogSystem(ctx, p.Store, deploymentID, fmt.Sprintf("commit: %s — %s", sha[:min(7, len(sha))], msg))
+		_ = p.logSystem(ctx, deploymentID, fmt.Sprintf("commit: %s — %s", sha[:min(7, len(sha))], msg))
 	}
 
 	// ---- Compose detection / wrap ----
@@ -164,7 +191,7 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 			return werr
 		}
 		composeFile = written
-		_ = LogSystem(ctx, p.Store, deploymentID, "no compose file in repo — using auto-generated wrapper for Dockerfile")
+		_ = p.logSystem(ctx, deploymentID, "no compose file in repo — using auto-generated wrapper for Dockerfile")
 	}
 
 	// Compose hash gives us a stable identifier for "was anything that
@@ -175,7 +202,7 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 
 	// .dockerignore warning is purely informational.
 	if warn := compose.WarnIfMissingDockerignore(repoDir); warn != "" {
-		_ = LogSystem(ctx, p.Store, deploymentID, warn)
+		_ = p.logSystem(ctx, deploymentID, warn)
 	}
 
 	// ---- Env file ----
@@ -195,7 +222,7 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		return err
 	}
 	projectName := composeProject(app.Slug)
-	lw := NewLogWriter(ctx, p.Store, deploymentID, store.DeploymentLogStreamStdout, nil)
+	lw := NewLogWriter(ctx, p.Store, p.Hub, deploymentID, store.DeploymentLogStreamStdout, nil)
 	if err := p.Docker.Build(ctx, repoDir, composeFile, projectName, lw); err != nil {
 		_ = lw.Flush()
 		return fmt.Errorf("build: %w", err)
@@ -223,6 +250,12 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		return err
 	}
 
+	// Attach runtime-log followers to the freshly-(re)created containers now
+	// that their ids are persisted, so logs stream from the new generation.
+	if p.Reconciler != nil {
+		p.Reconciler.ReconcileApp(ctx, app.ID)
+	}
+
 	// ---- Routing + health ----
 	// Phase 3: route through Caddy over vac-edge, then gate on Caddy's active
 	// health check (vac-api is off vac-edge, so it can't probe directly). The
@@ -231,18 +264,21 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 	// failure is a real outcome (app → degraded, deploy → error).
 	if p.Router != nil {
 		if err := p.Router.AssignAutoDomains(ctx, app.ID); err != nil {
-			_ = LogSystem(ctx, p.Store, deploymentID, "warning: auto-domain assignment failed: "+err.Error())
+			_ = p.logSystem(ctx, deploymentID, "warning: auto-domain assignment failed: "+err.Error())
 		}
 		if err := p.Router.Sync(ctx, app.ID); err != nil {
-			_ = LogSystem(ctx, p.Store, deploymentID, "warning: route sync failed (will reconcile): "+err.Error())
+			_ = p.logSystem(ctx, deploymentID, "warning: route sync failed (will reconcile): "+err.Error())
 		}
 		if err := p.Router.WaitHealthy(ctx, app.ID); err != nil {
 			msg := "health check failed: " + err.Error()
-			_ = LogSystem(ctx, p.Store, deploymentID, msg)
+			_ = p.logSystem(ctx, deploymentID, msg)
 			_ = p.Store.MarkDeploymentFinished(ctx, deploymentID, DeploymentStatusError, &msg)
 			_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusDegraded)
 			markHTTPServicesDegraded(ctx, p.Store, app.ID)
 			logger.Warn("pipeline: degraded — upstream did not become healthy")
+			if p.Notifier != nil {
+				p.Notifier.DeployFailed(app.Name, app.ID, msg, time.Since(runStart))
+			}
 			return nil
 		}
 	} else {
@@ -254,9 +290,18 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 	// ---- Done ----
 	_ = p.Store.MarkDeploymentFinished(ctx, deploymentID, DeploymentStatusRunning, nil)
 	_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusRunning)
-	_ = LogSystem(ctx, p.Store, deploymentID, "pipeline: complete")
+	_ = p.logSystem(ctx, deploymentID, "pipeline: complete")
 	logger.Info("pipeline: done")
+	if p.Notifier != nil {
+		p.Notifier.DeploySucceeded(app.Name, app.ID, sha, msg, time.Since(runStart))
+	}
 	return nil
+}
+
+// logSystem persists a pipeline-level system message and tees it to live
+// build-log subscribers via the hub (nil-safe).
+func (p *Pipeline) logSystem(ctx context.Context, deploymentID, msg string) error {
+	return LogSystem(ctx, p.Store, p.Hub, deploymentID, msg)
 }
 
 func (p *Pipeline) setStatus(ctx context.Context, deploymentID, status string) error {
@@ -358,7 +403,7 @@ func (p *Pipeline) healthCheck(ctx context.Context, deploymentID string, service
 			continue
 		}
 		url := healthURLForPort(port)
-		_ = LogSystem(ctx, p.Store, deploymentID, fmt.Sprintf("health check: %s → %s", svc.Service, url))
+		_ = p.logSystem(ctx, deploymentID, fmt.Sprintf("health check: %s → %s", svc.Service, url))
 		if err := CheckWithRetry(ctx, p.HealthChecker, url, p.HealthCheckRetries, p.HealthCheckTimeout); err != nil {
 			return fmt.Errorf("health check %s: %w", svc.Service, err)
 		}
