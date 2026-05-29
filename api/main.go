@@ -14,8 +14,12 @@ import (
 	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/config"
+	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/db"
+	"github.com/vojir-mikulas/vac/api/internal/deploy"
+	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 	"github.com/vojir-mikulas/vac/api/internal/server"
+	"github.com/vojir-mikulas/vac/api/internal/sshkey"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
@@ -55,7 +59,21 @@ func main() {
 
 	probeDockerCLI(ctx)
 
-	srv := server.New(ctx, cfg, st)
+	var box *crypto.Box
+	if len(cfg.MasterKey) > 0 {
+		if b, err := crypto.New(cfg.MasterKey); err == nil {
+			box = b
+		} else {
+			slog.Warn("crypto box init failed; encryption disabled", "err", err)
+		}
+	}
+	keys := sshkey.NewManager(st, box)
+	docker := dockercli.New(cfg.DockerSocket)
+	pipeline := deploy.NewPipeline(st, keys, box, docker, cfg.WorkDir, slog.Default())
+	worker := deploy.NewPipelineWorker(pipeline, 0)
+	worker.Start(ctx)
+
+	srv := server.New(ctx, cfg, st, worker)
 
 	go func() {
 		slog.Info("vac-api listening", "addr", srv.Addr)
@@ -76,6 +94,9 @@ func main() {
 		slog.Error("graceful shutdown failed", "err", err)
 		os.Exit(1)
 	}
+	// Cancel pipeline context so the worker exits, then wait for it.
+	cancel()
+	worker.Wait()
 	slog.Info("shutdown complete")
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/auth"
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
+	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/server/handler"
 	"github.com/vojir-mikulas/vac/api/internal/server/middleware"
 	"github.com/vojir-mikulas/vac/api/internal/sshkey"
@@ -22,7 +23,8 @@ import (
 
 // New wires the chi router and returns a configured *http.Server. ctx governs
 // background goroutines (rate limit eviction) — cancel it on shutdown.
-func New(ctx context.Context, cfg config.Config, s *store.Store) *http.Server {
+// `worker` may be nil in tests where the deployment surface is not exercised.
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker) *http.Server {
 	sm := auth.NewSessionManager(s, cfg.SessionTTL, cfg.SessionTTLExtended)
 
 	// box may be nil when VAC_MASTER_KEY is unset — TOTP setup will then
@@ -95,6 +97,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store) *http.Server {
 				r.Delete("/{id}/ssh-key", handler.DeleteAppSSHKey(keys))
 
 				r.Post("/{id}/test-connection", handler.TestConnection(s, keys, nil))
+
+				if worker != nil {
+					r.Post("/{id}/deployments", handler.TriggerDeployment(s, worker))
+					r.Get("/{id}/deployments", handler.ListDeployments(s))
+					r.Get("/{id}/deployments/{did}", handler.GetDeployment(s))
+				}
 			})
 		})
 

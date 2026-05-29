@@ -30,6 +30,17 @@ type Config struct {
 	SessionTTLExtended time.Duration `yaml:"session_ttl_extended"`
 	LoginRateLimit     int           `yaml:"login_rate_limit"`
 	LoginRateWindow    time.Duration `yaml:"login_rate_window"`
+
+	// Phase 2: deployment pipeline configuration.
+	WorkDir               string        `yaml:"work_dir"`
+	DockerSocket          string        `yaml:"docker_socket"`
+	ImageKeepCount        int           `yaml:"image_keep_count"`
+	HealthCheckTimeout    time.Duration `yaml:"health_check_timeout"`
+	HealthCheckRetries    int           `yaml:"health_check_retries"`
+	CrashLoopThreshold    int           `yaml:"crash_loop_threshold"`
+	CrashLoopWindow       time.Duration `yaml:"crash_loop_window"`
+	LogRetentionDays      int           `yaml:"log_retention_days"`
+	ActivityRetentionDays int           `yaml:"activity_retention_days"`
 }
 
 type ServerConfig struct {
@@ -48,6 +59,16 @@ func Default() Config {
 		SessionTTLExtended: 30 * 24 * time.Hour,
 		LoginRateLimit:     5,
 		LoginRateWindow:    15 * time.Minute,
+
+		WorkDir:               "/var/lib/vac/repos",
+		DockerSocket:          "/var/run/docker.sock",
+		ImageKeepCount:        3,
+		HealthCheckTimeout:    30 * time.Second,
+		HealthCheckRetries:    5,
+		CrashLoopThreshold:    5,
+		CrashLoopWindow:       2 * time.Minute,
+		LogRetentionDays:      7,
+		ActivityRetentionDays: 30,
 	}
 }
 
@@ -123,6 +144,48 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("VAC_LOGIN_RATE_WINDOW"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			cfg.LoginRateWindow = d
+		}
+	}
+
+	if v := os.Getenv("VAC_WORK_DIR"); v != "" {
+		cfg.WorkDir = v
+	}
+	if v := os.Getenv("VAC_DOCKER_SOCKET"); v != "" {
+		cfg.DockerSocket = v
+	}
+	if v := os.Getenv("VAC_IMAGE_KEEP_COUNT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.ImageKeepCount = n
+		}
+	}
+	if v := os.Getenv("VAC_HEALTH_CHECK_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.HealthCheckTimeout = d
+		}
+	}
+	if v := os.Getenv("VAC_HEALTH_CHECK_RETRIES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.HealthCheckRetries = n
+		}
+	}
+	if v := os.Getenv("VAC_CRASH_LOOP_THRESHOLD"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.CrashLoopThreshold = n
+		}
+	}
+	if v := os.Getenv("VAC_CRASH_LOOP_WINDOW"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.CrashLoopWindow = d
+		}
+	}
+	if v := os.Getenv("VAC_LOG_RETENTION_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.LogRetentionDays = n
+		}
+	}
+	if v := os.Getenv("VAC_ACTIVITY_RETENTION_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.ActivityRetentionDays = n
 		}
 	}
 }
