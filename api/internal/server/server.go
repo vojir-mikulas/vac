@@ -103,7 +103,11 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Post("/{id}/deployments", handler.TriggerDeployment(s, worker))
 					r.Get("/{id}/deployments", handler.ListDeployments(s))
 					r.Get("/{id}/deployments/{did}", handler.GetDeployment(s))
+					r.Get("/{id}/deployments/{did}/logs", handler.GetDeploymentLogs(s))
 				}
+
+				r.Get("/{id}/env", handler.ListAppEnv(s))
+				r.Put("/{id}/env", handler.ReplaceAppEnv(s, box))
 
 				r.Get("/{id}/services", handler.ListAppServices(s))
 				r.Patch("/{id}/services/{name}", handler.PatchAppService(s))

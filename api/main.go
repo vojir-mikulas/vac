@@ -19,6 +19,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/db"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
+	"github.com/vojir-mikulas/vac/api/internal/retention"
 	"github.com/vojir-mikulas/vac/api/internal/server"
 	"github.com/vojir-mikulas/vac/api/internal/sshkey"
 	"github.com/vojir-mikulas/vac/api/internal/store"
@@ -79,6 +80,12 @@ func main() {
 		Window:    cfg.CrashLoopWindow,
 	}, slog.Default())
 	go monitor.Run(ctx)
+
+	pruner := retention.New(st, retention.Config{
+		RuntimeDays: cfg.LogRetentionDays,
+		HourOfDay:   3,
+	}, slog.Default())
+	go pruner.Run(ctx)
 
 	srv := server.New(ctx, cfg, st, worker, docker)
 
