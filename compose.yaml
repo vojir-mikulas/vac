@@ -36,6 +36,12 @@ services:
       VAC_MASTER_KEY: ${VAC_MASTER_KEY:?VAC_MASTER_KEY is required (32 bytes hex)}
       VAC_WORK_DIR: "/var/lib/vac/repos"
       VAC_DOCKER_SOCKET: "/var/run/docker.sock"
+      VAC_CADDY_ADMIN_URL: "http://vac-proxy:2019"
+      VAC_EDGE_NETWORK: "vac-edge"
+      VAC_CADDY_ACCESS_LOG: "/var/log/caddy/access.log"
+      # Set VAC_BASE_DOMAIN in your .env to enable automatic {app}.{domain}
+      # subdomains. Empty disables them (custom domains still work).
+      VAC_BASE_DOMAIN: "${VAC_BASE_DOMAIN:-}"
     ports:
       - "${VAC_HOST_PORT:-3000}:3000"
     volumes:
@@ -43,12 +49,45 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Persistent working tree for cloned repos + generated compose files.
       - vac_repos:/var/lib/vac/repos
+      # Caddy's JSON access log (read-only) — tailed for request metrics.
+      - vac_caddy_logs:/var/log/caddy:ro
     # Supplementary group so the non-root `vac` user can read the docker socket.
     # Linux: set DOCKER_GID to `getent group docker | cut -d: -f3` in .env.
     # Docker Desktop (macOS/Windows): the default 999 usually works.
     group_add:
       - "${DOCKER_GID:-999}"
 
+  vac-proxy:
+    build:
+      context: ./proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      # Certs + ACME account state — MUST persist or every restart re-issues.
+      - caddy_data:/data
+      # Caddy's own config autosave.
+      - caddy_config:/config
+      # Shared access log, tailed read-only by vac-api for request metrics.
+      - vac_caddy_logs:/var/log/caddy
+    networks:
+      # default: reach vac-api (ask hook) and be reached by vac-api (admin API).
+      - default
+      # vac-edge: reach user app containers by alias. vac-api is intentionally
+      # NOT on this network so user containers can't reach the VAC API.
+      - vac-edge
+
+networks:
+  vac-edge:
+    # Explicit name (no compose project prefix) so VAC can attach app containers
+    # from their own compose projects to the same network by this literal name.
+    name: vac-edge
+
 volumes:
   vac_db_data:
   vac_repos:
+  vac_caddy_logs:
+  caddy_data:
+  caddy_config:

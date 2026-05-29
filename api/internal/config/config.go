@@ -41,6 +41,16 @@ type Config struct {
 	CrashLoopWindow       time.Duration `yaml:"crash_loop_window"`
 	LogRetentionDays      int           `yaml:"log_retention_days"`
 	ActivityRetentionDays int           `yaml:"activity_retention_days"`
+
+	// Phase 3: reverse proxy & HTTPS.
+	CaddyAdminURL           string        `yaml:"caddy_admin_url"`
+	BaseDomain              string        `yaml:"base_domain"`
+	EdgeNetwork             string        `yaml:"edge_network"`
+	CaddyAccessLog          string        `yaml:"caddy_access_log"`
+	CaddyMetricsInterval    time.Duration `yaml:"caddy_metrics_interval"`
+	CaddyAskToken           string        `yaml:"-"` // env-only secret (VAC_CADDY_ASK_TOKEN)
+	RequestMetricsRetention time.Duration `yaml:"request_metrics_retention"`
+	ACMECA                  string        `yaml:"acme_ca"` // override for ACME staging in tests
 }
 
 type ServerConfig struct {
@@ -69,6 +79,13 @@ func Default() Config {
 		CrashLoopWindow:       2 * time.Minute,
 		LogRetentionDays:      7,
 		ActivityRetentionDays: 30,
+
+		CaddyAdminURL:           "http://vac-proxy:2019",
+		BaseDomain:              "",
+		EdgeNetwork:             "vac-edge",
+		CaddyAccessLog:          "/var/log/caddy/access.log",
+		CaddyMetricsInterval:    10 * time.Second,
+		RequestMetricsRetention: 24 * time.Hour,
 	}
 }
 
@@ -187,6 +204,35 @@ func applyEnv(cfg *Config) {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.ActivityRetentionDays = n
 		}
+	}
+
+	if v := os.Getenv("VAC_CADDY_ADMIN_URL"); v != "" {
+		cfg.CaddyAdminURL = v
+	}
+	if v := os.Getenv("VAC_BASE_DOMAIN"); v != "" {
+		cfg.BaseDomain = v
+	}
+	if v := os.Getenv("VAC_EDGE_NETWORK"); v != "" {
+		cfg.EdgeNetwork = v
+	}
+	if v := os.Getenv("VAC_CADDY_ACCESS_LOG"); v != "" {
+		cfg.CaddyAccessLog = v
+	}
+	if v := os.Getenv("VAC_CADDY_METRICS_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.CaddyMetricsInterval = d
+		}
+	}
+	if v := os.Getenv("VAC_CADDY_ASK_TOKEN"); v != "" {
+		cfg.CaddyAskToken = v
+	}
+	if v := os.Getenv("VAC_REQUEST_METRICS_RETENTION"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.RequestMetricsRetention = d
+		}
+	}
+	if v := os.Getenv("VAC_ACME_CA"); v != "" {
+		cfg.ACMECA = v
 	}
 }
 

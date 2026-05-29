@@ -1,0 +1,6 @@
+# Bootstrap config for vac-proxy. Its only job is to expose the admin API on
+# all interfaces so vac-api can reach it over the compose network and POST the
+# real config via /load. VAC owns everything after that — do not add sites here.
+{
+	admin 0.0.0.0:2019
+}

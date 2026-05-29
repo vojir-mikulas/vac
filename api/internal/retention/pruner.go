@@ -12,11 +12,15 @@ import (
 // PruneStore is the slice of *store.Store the pruner writes against.
 type PruneStore interface {
 	DeleteRuntimeLogsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
+	DeleteRequestMetricsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
-// Config carries the retention windows. RuntimeDays governs runtime_logs.
+// Config carries the retention windows. RuntimeDays governs runtime_logs;
+// RequestMetrics governs the request_metrics rolling window (default 24h).
 type Config struct {
 	RuntimeDays int
+	// RequestMetrics is the retention for the request-rate window.
+	RequestMetrics time.Duration
 	// Hour of day (0-23) the prune runs in time.Local. Default 3 (03:00).
 	HourOfDay int
 }
@@ -36,6 +40,9 @@ func New(s PruneStore, cfg Config, logger *slog.Logger) *Pruner {
 	}
 	if cfg.RuntimeDays <= 0 {
 		cfg.RuntimeDays = 7
+	}
+	if cfg.RequestMetrics <= 0 {
+		cfg.RequestMetrics = 24 * time.Hour
 	}
 	if cfg.HourOfDay < 0 || cfg.HourOfDay > 23 {
 		cfg.HourOfDay = 3
@@ -73,6 +80,13 @@ func (p *Pruner) PruneOnce(ctx context.Context) error {
 		return err
 	}
 	p.logger.Info("retention: pruned runtime logs", "deleted", n, "cutoff", cutoff.Format(time.RFC3339))
+
+	rmCutoff := p.now().Add(-p.cfg.RequestMetrics)
+	rn, err := p.store.DeleteRequestMetricsOlderThan(ctx, rmCutoff)
+	if err != nil {
+		return err
+	}
+	p.logger.Info("retention: pruned request metrics", "deleted", rn, "cutoff", rmCutoff.Format(time.RFC3339))
 	return nil
 }
 

@@ -38,6 +38,54 @@ func TestLoad_EnvOverridesDefaults(t *testing.T) {
 	}
 }
 
+func TestDefault_Phase3(t *testing.T) {
+	c := Default()
+	if c.CaddyAdminURL != "http://vac-proxy:2019" {
+		t.Errorf("caddy admin url = %q", c.CaddyAdminURL)
+	}
+	if c.EdgeNetwork != "vac-edge" {
+		t.Errorf("edge network = %q", c.EdgeNetwork)
+	}
+	if c.BaseDomain != "" {
+		t.Errorf("base domain default = %q, want empty", c.BaseDomain)
+	}
+	if c.RequestMetricsRetention != 24*time.Hour {
+		t.Errorf("request metrics retention = %v", c.RequestMetricsRetention)
+	}
+	if c.CaddyMetricsInterval != 10*time.Second {
+		t.Errorf("caddy metrics interval = %v", c.CaddyMetricsInterval)
+	}
+}
+
+func TestLoad_Phase3EnvOverrides(t *testing.T) {
+	t.Setenv("VAC_DATABASE_URL", "postgres://test")
+	t.Setenv("VAC_BASE_DOMAIN", "vac.example.com")
+	t.Setenv("VAC_EDGE_NETWORK", "custom-edge")
+	t.Setenv("VAC_CADDY_ADMIN_URL", "http://localhost:2020")
+	t.Setenv("VAC_CADDY_ASK_TOKEN", "secret")
+	t.Setenv("VAC_REQUEST_METRICS_RETENTION", "12h")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BaseDomain != "vac.example.com" {
+		t.Errorf("base domain = %q", cfg.BaseDomain)
+	}
+	if cfg.EdgeNetwork != "custom-edge" {
+		t.Errorf("edge network = %q", cfg.EdgeNetwork)
+	}
+	if cfg.CaddyAdminURL != "http://localhost:2020" {
+		t.Errorf("caddy admin url = %q", cfg.CaddyAdminURL)
+	}
+	if cfg.CaddyAskToken != "secret" {
+		t.Errorf("ask token = %q", cfg.CaddyAskToken)
+	}
+	if cfg.RequestMetricsRetention != 12*time.Hour {
+		t.Errorf("request metrics retention = %v", cfg.RequestMetricsRetention)
+	}
+}
+
 func TestLoad_YAMLThenEnv(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "vac.yaml")

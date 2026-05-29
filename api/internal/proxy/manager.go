@@ -1,0 +1,311 @@
+package proxy
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/vojir-mikulas/vac/api/internal/caddy"
+	"github.com/vojir-mikulas/vac/api/internal/store"
+)
+
+// Store is the slice of *store.Store the manager reads and writes.
+type Store interface {
+	GetApp(ctx context.Context, id string) (store.App, error)
+	ListDomainsByApp(ctx context.Context, appID string) ([]store.Domain, error)
+	ListAllDomains(ctx context.Context) ([]store.Domain, error)
+	GetDomainByHostname(ctx context.Context, hostname string) (store.Domain, error)
+	CreateDomain(ctx context.Context, appID, serviceName, hostname, typ string) (store.Domain, error)
+	GetService(ctx context.Context, appID, name string) (store.Service, error)
+	ListServicesForApp(ctx context.Context, appID string) ([]store.Service, error)
+	SetCertStatus(ctx context.Context, id, status string) error
+}
+
+// CaddyClient is the slice of *caddy.Client the manager drives.
+type CaddyClient interface {
+	PutRoute(ctx context.Context, id string, r caddy.Route) error
+	DeleteRoute(ctx context.Context, id string) error
+	GetRoutes(ctx context.Context) ([]caddy.Route, error)
+	Upstreams(ctx context.Context) ([]caddy.UpstreamStatus, error)
+	Ping(ctx context.Context) error
+}
+
+// NetworkController is the slice of *dockercli.Compose used for vac-edge.
+type NetworkController interface {
+	NetworkCreate(ctx context.Context, name string) error
+	NetworkConnect(ctx context.Context, network, container, alias string) error
+	NetworkDisconnect(ctx context.Context, network, container string) error
+}
+
+// Config carries the proxy-layer settings.
+type Config struct {
+	EdgeNetwork    string        // vac-edge network name
+	BaseDomain     string        // for automatic subdomains; empty disables them
+	HealthInterval time.Duration // Caddy active health-check interval
+	HealthTimeout  time.Duration // per-check timeout + overall WaitHealthy budget
+	HealthRetries  int           // WaitHealthy poll count
+}
+
+// Manager projects VAC domains into Caddy routes and manages vac-edge
+// attachments. It is constructed once at startup.
+type Manager struct {
+	store  Store
+	caddy  CaddyClient
+	net    NetworkController
+	cfg    Config
+	logger *slog.Logger
+}
+
+// New wires a Manager.
+func New(s Store, c CaddyClient, net NetworkController, cfg Config, logger *slog.Logger) *Manager {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if cfg.EdgeNetwork == "" {
+		cfg.EdgeNetwork = "vac-edge"
+	}
+	if cfg.HealthInterval <= 0 {
+		cfg.HealthInterval = 5 * time.Second
+	}
+	if cfg.HealthTimeout <= 0 {
+		cfg.HealthTimeout = 30 * time.Second
+	}
+	if cfg.HealthRetries <= 0 {
+		cfg.HealthRetries = 5
+	}
+	return &Manager{store: s, caddy: c, net: net, cfg: cfg, logger: logger}
+}
+
+// EnsureNetwork creates vac-edge if it doesn't already exist.
+func (m *Manager) EnsureNetwork(ctx context.Context) error {
+	return m.net.NetworkCreate(ctx, m.cfg.EdgeNetwork)
+}
+
+// Ping checks the Caddy admin API is reachable — backs the /health soft probe.
+func (m *Manager) Ping(ctx context.Context) error {
+	return m.caddy.Ping(ctx)
+}
+
+// routeFor builds the Caddy route for one domain. The upstream dials the
+// service's vac-edge alias on its container port; an active health check lets
+// Caddy (and, via the upstreams endpoint, WaitHealthy) track liveness.
+func (m *Manager) routeFor(d store.Domain, svc store.Service, slug string) caddy.Route {
+	path := "/"
+	if svc.HealthPath != nil && *svc.HealthPath != "" {
+		path = *svc.HealthPath
+	}
+	return caddy.Route{
+		ID:    routeID(d.ID),
+		Match: []caddy.Match{{Host: []string{d.Hostname}}},
+		Handle: []caddy.Handler{{
+			Handler:   "reverse_proxy",
+			Upstreams: []caddy.Upstream{{Dial: m.dial(slug, svc)}},
+			HealthChecks: &caddy.HealthChecks{Active: &caddy.ActiveHealthCheck{
+				Path:     path,
+				Interval: m.cfg.HealthInterval.String(),
+				Timeout:  m.cfg.HealthTimeout.String(),
+			}},
+		}},
+	}
+}
+
+func (m *Manager) dial(slug string, svc store.Service) string {
+	return fmt.Sprintf("%s:%d", alias(slug, svc.ServiceName), portOr(svc.InternalPort))
+}
+
+func portOr(p *int) int {
+	if p != nil {
+		return *p
+	}
+	return 0
+}
+
+// Sync pushes the desired routes for one app (attaching its HTTP containers to
+// vac-edge) and prunes any Caddy routes no longer backed by a domain row.
+func (m *Manager) Sync(ctx context.Context, appID string) error {
+	if err := m.EnsureNetwork(ctx); err != nil {
+		m.logger.Warn("proxy: ensure network", "err", err)
+	}
+	errApply := m.applyApp(ctx, appID)
+	errPrune := m.pruneOrphans(ctx)
+	return errors.Join(errApply, errPrune)
+}
+
+// applyApp attaches the app's routable containers to vac-edge and pushes a
+// route per domain. Domains whose service has no container / internal port yet
+// have their route removed (nothing to route to).
+func (m *Manager) applyApp(ctx context.Context, appID string) error {
+	app, err := m.store.GetApp(ctx, appID)
+	if err != nil {
+		return err
+	}
+	domains, err := m.store.ListDomainsByApp(ctx, appID)
+	if err != nil {
+		return err
+	}
+	services, err := m.store.ListServicesForApp(ctx, appID)
+	if err != nil {
+		return err
+	}
+	byName := make(map[string]store.Service, len(services))
+	for _, s := range services {
+		byName[s.ServiceName] = s
+	}
+
+	attached := make(map[string]bool)
+	var errs []error
+	for _, d := range domains {
+		svc, ok := byName[d.ServiceName]
+		routable := ok && svc.ContainerID != nil && *svc.ContainerID != "" && svc.InternalPort != nil
+		if !routable {
+			// Not deployed yet (or portless) — make sure no stale route lingers.
+			if err := m.caddy.DeleteRoute(ctx, routeID(d.ID)); err != nil {
+				m.logger.Debug("proxy: delete stale route", "domain", d.Hostname, "err", err)
+			}
+			continue
+		}
+		if !attached[*svc.ContainerID] {
+			if err := m.net.NetworkConnect(ctx, m.cfg.EdgeNetwork, *svc.ContainerID, alias(app.Slug, svc.ServiceName)); err != nil {
+				errs = append(errs, fmt.Errorf("attach %s: %w", svc.ServiceName, err))
+				continue
+			}
+			attached[*svc.ContainerID] = true
+		}
+		if err := m.caddy.PutRoute(ctx, routeID(d.ID), m.routeFor(d, svc, app.Slug)); err != nil {
+			errs = append(errs, fmt.Errorf("route %s: %w", d.Hostname, err))
+			_ = m.store.SetCertStatus(ctx, d.ID, store.CertStatusError)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// pruneOrphans deletes any vac-route-* route in Caddy not backed by a current
+// domain row. Handles routes orphaned by a crash between DB delete and Caddy
+// delete, and by domain deletion (the delete handler calls Sync afterwards).
+func (m *Manager) pruneOrphans(ctx context.Context) error {
+	domains, err := m.store.ListAllDomains(ctx)
+	if err != nil {
+		return err
+	}
+	valid := make(map[string]bool, len(domains))
+	for _, d := range domains {
+		valid[routeID(d.ID)] = true
+	}
+	routes, err := m.caddy.GetRoutes(ctx)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, r := range routes {
+		if strings.HasPrefix(r.ID, routeIDPrefix) && !valid[r.ID] {
+			if err := m.caddy.DeleteRoute(ctx, r.ID); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// Teardown removes an app's live routes and detaches its containers from
+// vac-edge, leaving the domain rows intact. Used on a temporary stop so a
+// stopped app returns a clean 502/503 instead of proxying to a dead upstream.
+func (m *Manager) Teardown(ctx context.Context, appID string) error {
+	domains, err := m.store.ListDomainsByApp(ctx, appID)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, d := range domains {
+		if err := m.caddy.DeleteRoute(ctx, routeID(d.ID)); err != nil {
+			m.logger.Debug("proxy: teardown route", "domain", d.Hostname, "err", err)
+		}
+	}
+	services, err := m.store.ListServicesForApp(ctx, appID)
+	if err != nil {
+		return errors.Join(append(errs, err)...)
+	}
+	for _, s := range services {
+		if s.ContainerID != nil && *s.ContainerID != "" {
+			if err := m.net.NetworkDisconnect(ctx, m.cfg.EdgeNetwork, *s.ContainerID); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// Reconcile rebuilds the entire route set and re-attaches live containers from
+// the DB on boot, then prunes orphans. Idempotent.
+func (m *Manager) Reconcile(ctx context.Context) error {
+	if err := m.EnsureNetwork(ctx); err != nil {
+		m.logger.Warn("proxy: reconcile ensure network", "err", err)
+	}
+	domains, err := m.store.ListAllDomains(ctx)
+	if err != nil {
+		return err
+	}
+	apps := make(map[string]bool)
+	for _, d := range domains {
+		apps[d.AppID] = true
+	}
+	var errs []error
+	for appID := range apps {
+		if err := m.applyApp(ctx, appID); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if err := m.pruneOrphans(ctx); err != nil {
+		errs = append(errs, err)
+	}
+	if err := errors.Join(errs...); err != nil {
+		m.logger.Warn("proxy: reconcile completed with errors", "err", err)
+		return err
+	}
+	m.logger.Info("proxy: reconcile complete", "apps", len(apps), "domains", len(domains))
+	return nil
+}
+
+// AssignAutoDomains creates an `auto` domain for each HTTP-exposing service of
+// an app that doesn't already have one, when a base domain is configured.
+// Idempotent — an existing hostname is skipped.
+func (m *Manager) AssignAutoDomains(ctx context.Context, appID string) error {
+	if m.cfg.BaseDomain == "" {
+		return nil
+	}
+	app, err := m.store.GetApp(ctx, appID)
+	if err != nil {
+		return err
+	}
+	services, err := m.store.ListServicesForApp(ctx, appID)
+	if err != nil {
+		return err
+	}
+	var httpServices []store.Service
+	for _, s := range services {
+		if s.InternalPort != nil {
+			httpServices = append(httpServices, s)
+		}
+	}
+	multi := len(httpServices) > 1
+
+	var errs []error
+	for _, s := range httpServices {
+		host := AutoSubdomain(app.Slug, s.ServiceName, m.cfg.BaseDomain, multi)
+		if host == "" {
+			continue
+		}
+		if _, err := m.store.GetDomainByHostname(ctx, host); err == nil {
+			continue // already assigned
+		} else if !errors.Is(err, store.ErrNotFound) {
+			errs = append(errs, err)
+			continue
+		}
+		if _, err := m.store.CreateDomain(ctx, appID, s.ServiceName, host, store.DomainTypeAuto); err != nil && !errors.Is(err, store.ErrConflict) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}

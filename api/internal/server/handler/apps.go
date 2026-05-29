@@ -213,9 +213,12 @@ func UpdateApp(s *store.Store) http.HandlerFunc {
 	}
 }
 
-func DeleteApp(s *store.Store) http.HandlerFunc {
+func DeleteApp(s *store.Store, pm ProxyManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
+		// Tear down routes + vac-edge attachments before the cascade removes
+		// the domain rows we'd need to find them.
+		proxyTeardown(r.Context(), pm, id)
 		if err := s.DeleteApp(r.Context(), id); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				WriteError(w, http.StatusNotFound, "app not found")

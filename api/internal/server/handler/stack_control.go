@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -19,8 +20,33 @@ type StackController interface {
 	Restart(ctx context.Context, projectName, service string) error
 }
 
+// ProxyManager is the slice of *proxy.Manager the lifecycle handlers use to
+// keep Caddy routing + vac-edge attachments in step with the stack. Nil-safe.
+type ProxyManager interface {
+	Sync(ctx context.Context, appID string) error
+	Teardown(ctx context.Context, appID string) error
+}
+
+func proxySync(ctx context.Context, pm ProxyManager, appID string) {
+	if pm == nil {
+		return
+	}
+	if err := pm.Sync(ctx, appID); err != nil {
+		slog.Warn("proxy sync failed", "app", appID, "err", err)
+	}
+}
+
+func proxyTeardown(ctx context.Context, pm ProxyManager, appID string) {
+	if pm == nil {
+		return
+	}
+	if err := pm.Teardown(ctx, appID); err != nil {
+		slog.Warn("proxy teardown failed", "app", appID, "err", err)
+	}
+}
+
 // StartApp starts all stopped services for the app's compose project.
-func StartApp(s *store.Store, ctrl StackController) http.HandlerFunc {
+func StartApp(s *store.Store, ctrl StackController, pm ProxyManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		app, err := loadApp(w, r, s)
 		if err != nil {
@@ -33,12 +59,14 @@ func StartApp(s *store.Store, ctrl StackController) http.HandlerFunc {
 		}
 		applyStatusToAll(r.Context(), s, app.ID, deploy.ServiceStatusRunning)
 		_ = s.SetAppStatus(r.Context(), app.ID, deploy.AppStatusRunning)
+		proxySync(r.Context(), pm, app.ID)
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "started"})
 	}
 }
 
-// StopApp stops all services in the stack.
-func StopApp(s *store.Store, ctrl StackController) http.HandlerFunc {
+// StopApp stops all services in the stack and pulls its live routes so a
+// stopped app returns a clean 502/503 rather than proxying to a dead upstream.
+func StopApp(s *store.Store, ctrl StackController, pm ProxyManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		app, err := loadApp(w, r, s)
 		if err != nil {
@@ -51,12 +79,13 @@ func StopApp(s *store.Store, ctrl StackController) http.HandlerFunc {
 		}
 		applyStatusToAll(r.Context(), s, app.ID, deploy.ServiceStatusStopped)
 		_ = s.SetAppStatus(r.Context(), app.ID, deploy.AppStatusStopped)
+		proxyTeardown(r.Context(), pm, app.ID)
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
 	}
 }
 
 // RestartApp restarts every service in the stack.
-func RestartApp(s *store.Store, ctrl StackController) http.HandlerFunc {
+func RestartApp(s *store.Store, ctrl StackController, pm ProxyManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		app, err := loadApp(w, r, s)
 		if err != nil {
@@ -67,12 +96,13 @@ func RestartApp(s *store.Store, ctrl StackController) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "could not restart stack: "+err.Error())
 			return
 		}
+		proxySync(r.Context(), pm, app.ID)
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "restarted"})
 	}
 }
 
 // RestartService restarts a single named service.
-func RestartService(s *store.Store, ctrl StackController) http.HandlerFunc {
+func RestartService(s *store.Store, ctrl StackController, pm ProxyManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		app, err := loadApp(w, r, s)
 		if err != nil {
@@ -86,6 +116,7 @@ func RestartService(s *store.Store, ctrl StackController) http.HandlerFunc {
 		}
 		// Clear crash-loop marker if user is intentionally restarting it.
 		_ = s.UpdateServiceStatus(r.Context(), app.ID, name, deploy.ServiceStatusRunning, nil)
+		proxySync(r.Context(), pm, app.ID)
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "restarted"})
 	}
 }

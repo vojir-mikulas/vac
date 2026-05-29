@@ -35,6 +35,15 @@ type DockerClient interface {
 	Ps(ctx context.Context, projectName string) ([]dockercli.PsService, error)
 }
 
+// Router projects an app's domains into the reverse proxy and gates a deploy on
+// health via Caddy (Phase 3). When nil — tests, or a deploy on a host without
+// the proxy wired — the pipeline falls back to its Phase 2 loopback probe.
+type Router interface {
+	AssignAutoDomains(ctx context.Context, appID string) error
+	Sync(ctx context.Context, appID string) error
+	WaitHealthy(ctx context.Context, appID string) error
+}
+
 // realGit adapts the gitcli package functions to GitClient.
 type realGit struct{}
 
@@ -58,6 +67,7 @@ type Pipeline struct {
 	Docker             DockerClient
 	Git                GitClient
 	HealthChecker      Checker
+	Router             Router // nil → Phase 2 loopback health check fallback
 	WorkDir            string
 	HealthCheckTimeout time.Duration
 	HealthCheckRetries int
@@ -213,9 +223,32 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		return err
 	}
 
-	// ---- Health check ----
-	if err := p.healthCheck(ctx, deploymentID, services); err != nil {
-		return err
+	// ---- Routing + health ----
+	// Phase 3: route through Caddy over vac-edge, then gate on Caddy's active
+	// health check (vac-api is off vac-edge, so it can't probe directly). The
+	// ordering matters — Caddy must be proxying to the upstream before it can
+	// health-check it. Routing pushes are eventual/best-effort; a health
+	// failure is a real outcome (app → degraded, deploy → error).
+	if p.Router != nil {
+		if err := p.Router.AssignAutoDomains(ctx, app.ID); err != nil {
+			_ = LogSystem(ctx, p.Store, deploymentID, "warning: auto-domain assignment failed: "+err.Error())
+		}
+		if err := p.Router.Sync(ctx, app.ID); err != nil {
+			_ = LogSystem(ctx, p.Store, deploymentID, "warning: route sync failed (will reconcile): "+err.Error())
+		}
+		if err := p.Router.WaitHealthy(ctx, app.ID); err != nil {
+			msg := "health check failed: " + err.Error()
+			_ = LogSystem(ctx, p.Store, deploymentID, msg)
+			_ = p.Store.MarkDeploymentFinished(ctx, deploymentID, DeploymentStatusError, &msg)
+			_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusDegraded)
+			markHTTPServicesDegraded(ctx, p.Store, app.ID)
+			logger.Warn("pipeline: degraded — upstream did not become healthy")
+			return nil
+		}
+	} else {
+		if err := p.healthCheck(ctx, deploymentID, services); err != nil {
+			return err
+		}
 	}
 
 	// ---- Done ----
@@ -282,9 +315,11 @@ func (p *Pipeline) upsertServices(ctx context.Context, appID string, services []
 		seen[s.Service] = true
 		containerID := s.ID
 		port := s.FirstPublishedPort()
+		internal := s.FirstTargetPort()
 		var (
-			cidPtr  *string
-			portPtr *int
+			cidPtr      *string
+			portPtr     *int
+			internalPtr *int
 		)
 		if containerID != "" {
 			cidPtr = &containerID
@@ -292,8 +327,11 @@ func (p *Pipeline) upsertServices(ctx context.Context, appID string, services []
 		if port > 0 {
 			portPtr = &port
 		}
+		if internal > 0 {
+			internalPtr = &internal
+		}
 		status := MapPsStateToServiceStatus(s.State)
-		if _, err := p.Store.UpsertService(ctx, appID, s.Service, cidPtr, portPtr, status); err != nil {
+		if _, err := p.Store.UpsertService(ctx, appID, s.Service, cidPtr, portPtr, internalPtr, status); err != nil {
 			return fmt.Errorf("upsert service %s: %w", s.Service, err)
 		}
 	}
@@ -326,6 +364,21 @@ func (p *Pipeline) healthCheck(ctx context.Context, deploymentID string, service
 		}
 	}
 	return nil
+}
+
+// markHTTPServicesDegraded flips the app's HTTP-exposing services (those with
+// an internal port, hence a route) to degraded after a failed health gate. The
+// stack is up but not serving — workers/DBs without a port are left untouched.
+func markHTTPServicesDegraded(ctx context.Context, s *store.Store, appID string) {
+	rows, err := s.ListServicesForApp(ctx, appID)
+	if err != nil {
+		return
+	}
+	for _, r := range rows {
+		if r.InternalPort != nil {
+			_ = s.UpdateServiceStatus(ctx, appID, r.ServiceName, ServiceStatusDegraded, nil)
+		}
+	}
 }
 
 // composeProject is the docker compose project name VAC uses for every

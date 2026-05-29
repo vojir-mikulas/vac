@@ -10,14 +10,22 @@ import (
 )
 
 type fakeStore struct {
-	calls atomic.Int64
-	last  time.Time
+	calls   atomic.Int64
+	last    time.Time
+	rmCalls atomic.Int64
+	rmLast  time.Time
 }
 
 func (f *fakeStore) DeleteRuntimeLogsOlderThan(_ context.Context, cutoff time.Time) (int64, error) {
 	f.calls.Add(1)
 	f.last = cutoff
 	return 42, nil
+}
+
+func (f *fakeStore) DeleteRequestMetricsOlderThan(_ context.Context, cutoff time.Time) (int64, error) {
+	f.rmCalls.Add(1)
+	f.rmLast = cutoff
+	return 7, nil
 }
 
 func TestPruneOnce_ComputesCutoffFromRuntimeDays(t *testing.T) {

@@ -132,12 +132,16 @@ func TestServicesCRUD(t *testing.T) {
 
 	containerID := "abc123"
 	port := 8080
-	svc, err := s.UpsertService(ctx, a.ID, "web", &containerID, &port, "deploying")
+	internalPort := 3000
+	svc, err := s.UpsertService(ctx, a.ID, "web", &containerID, &port, &internalPort, "deploying")
 	if err != nil {
 		t.Fatalf("UpsertService insert: %v", err)
 	}
 	if svc.ServiceName != "web" || *svc.ContainerID != containerID || *svc.ExposedPort != port {
 		t.Errorf("unexpected: %+v", svc)
+	}
+	if svc.InternalPort == nil || *svc.InternalPort != internalPort {
+		t.Errorf("internal_port not set: %+v", svc.InternalPort)
 	}
 	if svc.Status != "deploying" || svc.RestartCount != 0 {
 		t.Errorf("defaults wrong: status=%s restart=%d", svc.Status, svc.RestartCount)
@@ -161,17 +165,21 @@ func TestServicesCRUD(t *testing.T) {
 		t.Errorf("second increment = %d, want 2", n)
 	}
 
-	domain := "web.example.com"
-	patched, err := s.SetServiceDomain(ctx, a.ID, "web", &domain, nil)
+	healthPath := "/healthz"
+	patched, err := s.SetServiceConfig(ctx, a.ID, "web", nil, nil, &healthPath)
 	if err != nil {
-		t.Fatalf("SetServiceDomain: %v", err)
+		t.Fatalf("SetServiceConfig: %v", err)
 	}
-	if patched.Domain == nil || *patched.Domain != domain {
-		t.Errorf("domain not set: %+v", patched.Domain)
+	if patched.HealthPath == nil || *patched.HealthPath != healthPath {
+		t.Errorf("health_path not set: %+v", patched.HealthPath)
+	}
+	// internal_port should be preserved (COALESCE) across the partial patch.
+	if patched.InternalPort == nil || *patched.InternalPort != internalPort {
+		t.Errorf("internal_port clobbered by patch: %+v", patched.InternalPort)
 	}
 
 	// Add a second service for the List path.
-	if _, err := s.UpsertService(ctx, a.ID, "worker", nil, nil, "running"); err != nil {
+	if _, err := s.UpsertService(ctx, a.ID, "worker", nil, nil, nil, "running"); err != nil {
 		t.Fatalf("UpsertService worker: %v", err)
 	}
 	list, err := s.ListServicesForApp(ctx, a.ID)

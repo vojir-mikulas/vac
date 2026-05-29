@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -18,7 +17,8 @@ type serviceDTO struct {
 	Name         string    `json:"name"`
 	ContainerID  *string   `json:"container_id,omitempty"`
 	ExposedPort  *int      `json:"exposed_port,omitempty"`
-	Domain       *string   `json:"domain,omitempty"`
+	InternalPort *int      `json:"internal_port,omitempty"`
+	HealthPath   *string   `json:"health_path,omitempty"`
 	Status       string    `json:"status"`
 	RestartCount int       `json:"restart_count"`
 	LastExitCode *int      `json:"last_exit_code,omitempty"`
@@ -33,7 +33,8 @@ func toServiceDTO(s store.Service) serviceDTO {
 		Name:         s.ServiceName,
 		ContainerID:  s.ContainerID,
 		ExposedPort:  s.ExposedPort,
-		Domain:       s.Domain,
+		InternalPort: s.InternalPort,
+		HealthPath:   s.HealthPath,
 		Status:       s.Status,
 		RestartCount: s.RestartCount,
 		LastExitCode: s.LastExitCode,
@@ -61,13 +62,16 @@ func ListAppServices(s *store.Store) http.HandlerFunc {
 }
 
 type patchServiceRequest struct {
-	Domain      *string `json:"domain,omitempty"`
-	ExposedPort *int    `json:"exposed_port,omitempty"`
+	ExposedPort  *int    `json:"exposed_port,omitempty"`
+	InternalPort *int    `json:"internal_port,omitempty"`
+	HealthPath   *string `json:"health_path,omitempty"`
 }
 
-// PatchAppService sets the operator-controlled fields on a service —
-// `domain` (placeholder until Caddy lands in Phase 3) and `exposed_port`
-// (override for the health-check fallback in M9).
+// PatchAppService sets the operator-controlled routing fields on a service.
+// internal_port is the container port Caddy dials over vac-edge (auto-detected
+// from the compose port mapping, but settable when the repo only `expose`s a
+// port); health_path is the Caddy active health-check path. Domains are managed
+// via the /domains endpoints, not here.
 func PatchAppService(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		appID := chi.URLParam(r, "id")
@@ -78,25 +82,16 @@ func PatchAppService(s *store.Store) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		if req.Domain != nil {
-			trimmed := strings.TrimSpace(*req.Domain)
-			// Empty string clears the domain; non-empty must look domain-ish.
-			if trimmed != "" && (strings.ContainsAny(trimmed, " \t\n") || !strings.Contains(trimmed, ".")) {
-				WriteError(w, http.StatusBadRequest, "domain must be a valid hostname")
-				return
-			}
-			if trimmed == "" {
-				req.Domain = nil
-			} else {
-				req.Domain = &trimmed
-			}
-		}
 		if req.ExposedPort != nil && (*req.ExposedPort < 1 || *req.ExposedPort > 65535) {
 			WriteError(w, http.StatusBadRequest, "exposed_port must be 1..65535")
 			return
 		}
+		if req.InternalPort != nil && (*req.InternalPort < 1 || *req.InternalPort > 65535) {
+			WriteError(w, http.StatusBadRequest, "internal_port must be 1..65535")
+			return
+		}
 
-		updated, err := s.SetServiceDomain(r.Context(), appID, name, req.Domain, req.ExposedPort)
+		updated, err := s.SetServiceConfig(r.Context(), appID, name, req.ExposedPort, req.InternalPort, req.HealthPath)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				WriteError(w, http.StatusNotFound, "service not found")

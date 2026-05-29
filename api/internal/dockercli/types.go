@@ -43,6 +43,18 @@ func (p PsService) FirstPublishedPort() int {
 	return 0
 }
 
+// FirstTargetPort returns the container-side port for the first publisher
+// that declares one, or 0 if none. Phase 3 routes Caddy to this port over
+// the vac-edge network rather than to a host-published port.
+func (p PsService) FirstTargetPort() int {
+	for _, pub := range p.Publishers {
+		if pub.TargetPort > 0 {
+			return pub.TargetPort
+		}
+	}
+	return 0
+}
+
 // Event is the structured view of a line from `docker events --format json`.
 // Only the fields the crash-loop monitor reads.
 type Event struct {

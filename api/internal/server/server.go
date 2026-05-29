@@ -15,6 +15,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
+	"github.com/vojir-mikulas/vac/api/internal/proxy"
 	"github.com/vojir-mikulas/vac/api/internal/server/handler"
 	"github.com/vojir-mikulas/vac/api/internal/server/middleware"
 	"github.com/vojir-mikulas/vac/api/internal/sshkey"
@@ -24,8 +25,23 @@ import (
 
 // New wires the chi router and returns a configured *http.Server. ctx governs
 // background goroutines (rate limit eviction) — cancel it on shutdown.
-// `worker` may be nil in tests where the deployment surface is not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose) *http.Server {
+// `worker` and `pm` may be nil in tests where the deployment / proxy surface is
+// not exercised.
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager) *http.Server {
+	// Convert the concrete (possibly-nil) manager into nil-able interface
+	// values so handlers' `== nil` guards behave (a typed-nil pointer in an
+	// interface is not nil).
+	var (
+		proxyMgr handler.ProxyManager
+		syncer   handler.RouteSyncer
+		caddyPin handler.CaddyPinger
+	)
+	if pm != nil {
+		proxyMgr = pm
+		syncer = pm
+		caddyPin = pm
+	}
+
 	sm := auth.NewSessionManager(s, cfg.SessionTTL, cfg.SessionTTLExtended)
 
 	// box may be nil when VAC_MASTER_KEY is unset — TOTP setup will then
@@ -54,7 +70,11 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	r.Use(chimw.Logger)
 	r.Use(chimw.Timeout(60 * time.Second))
 
-	r.Get("/health", handler.Health(s))
+	r.Get("/health", handler.Health(s, caddyPin))
+
+	// On-demand-TLS ask hook for Caddy. Unauthenticated by design (Caddy can't
+	// present a session); reachable only on the internal compose network.
+	r.Get("/internal/caddy/ask", handler.CaddyAsk(s, cfg.CaddyAskToken))
 
 	r.Route("/api", func(r chi.Router) {
 		r.Use(middleware.Auth(sm, tokm))
@@ -91,7 +111,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Post("/", handler.CreateApp(s))
 				r.Get("/{id}", handler.GetApp(s))
 				r.Patch("/{id}", handler.UpdateApp(s))
-				r.Delete("/{id}", handler.DeleteApp(s))
+				r.Delete("/{id}", handler.DeleteApp(s, proxyMgr))
 
 				r.Get("/{id}/ssh-key", handler.GetAppSSHKey(s, keys))
 				r.Post("/{id}/ssh-key/regenerate", handler.RegenerateAppSSHKey(s, keys))
@@ -112,11 +132,20 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/{id}/services", handler.ListAppServices(s))
 				r.Patch("/{id}/services/{name}", handler.PatchAppService(s))
 
+				// Domains (Phase 3).
+				r.Get("/{id}/domains", handler.ListAppDomains(s))
+				r.Post("/{id}/services/{name}/domains", handler.AddCustomDomain(s, syncer))
+				r.Delete("/{id}/domains/{domainId}", handler.DeleteAppDomain(s, syncer))
+
+				// Request-rate metrics (Phase 3).
+				r.Get("/{id}/metrics", handler.AppMetrics(s))
+				r.Get("/{id}/services/{name}/metrics", handler.ServiceMetrics(s))
+
 				if docker != nil {
-					r.Post("/{id}/start", handler.StartApp(s, docker))
-					r.Post("/{id}/stop", handler.StopApp(s, docker))
-					r.Post("/{id}/restart", handler.RestartApp(s, docker))
-					r.Post("/{id}/services/{name}/restart", handler.RestartService(s, docker))
+					r.Post("/{id}/start", handler.StartApp(s, docker, proxyMgr))
+					r.Post("/{id}/stop", handler.StopApp(s, docker, proxyMgr))
+					r.Post("/{id}/restart", handler.RestartApp(s, docker, proxyMgr))
+					r.Post("/{id}/services/{name}/restart", handler.RestartService(s, docker, proxyMgr))
 				}
 			})
 		})

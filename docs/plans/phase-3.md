@@ -107,7 +107,8 @@ two apps both have a service literally named `app`, plus reconnect churn). Inste
   permanently** via its `vac-proxy` service definition — no per-deploy connect for Caddy.
 - On each deploy, after `compose up`, VAC connects every HTTP-exposing app container to
   `vac-edge` with a deterministic alias: `docker network connect --alias {slug}--{service}
-  vac-edge <containerID>` (Docker Engine SDK `NetworkConnect`). The `{slug}--{service}` alias is
+  vac-edge <containerID>` (via the `docker network connect` CLI, matching how Phase 2 already
+  shells out to docker rather than using the Engine SDK). The `{slug}--{service}` alias is
   globally unique, so there is no cross-app collision and no dependence on the `-1` container
   index suffix.
 - Each route's upstream is therefore `{slug}--{service}:{internalPort}`, where `internalPort`
@@ -181,7 +182,7 @@ and it is the only approach that yields the per-service sparkline the UI calls f
 |---|---|---|
 | Caddy Admin API client | stdlib `net/http` + `encoding/json` | The Admin API is plain JSON over HTTP; the route/config objects are small structs we own. No SDK exists worth pulling in. |
 | Caddy config structs | hand-written Go structs in `internal/caddy/config.go` | We emit a tiny subset of Caddy's JSON schema (server, route, `reverse_proxy` handler + active health check, `host` matcher). Modelling only what we write keeps it legible. |
-| Docker network management | `github.com/docker/docker/client` (already a Phase 2 dep) | `NetworkConnect` / `NetworkDisconnect` / `NetworkCreate` for `vac-edge`; the Engine SDK is already used for events/inspect/prune. |
+| Docker network management | `docker network` CLI via `os/exec` (internal/dockercli) | `connect` / `disconnect` / `create` for `vac-edge`; matches the codebase's existing CLI-only approach (Phase 2 shells out to docker, not the Engine SDK) — zero new deps. |
 | Access-log tailing | `github.com/nxadm/tail` | Battle-tested follow-with-rotation; reimplementing inode-watch + truncation handling by hand is a known foot-gun. (Fall back to a hand-rolled `os.Seek` poller if we want zero new deps — noted in M6.) |
 | Prometheus text parse (host aggregate) | `github.com/prometheus/common/expfmt` | Already transitively present via the docker client tree; correct exposition-format parsing beats a regex. |
 | Hostname validation | `golang.org/x/net/idna` + stdlib | Punycode/IDNA normalisation and basic label rules for custom domains. |
@@ -401,7 +402,7 @@ is projected into Caddy's route set idempotently and rebuilt on boot.
 
 - `internal/proxy/network.go`:
   - `EnsureNetwork(ctx)` — `NetworkCreate` `vac-edge` if absent (idempotent); called on boot
-  - `Attach(ctx, containerID, alias)` — `NetworkConnect` the container to `vac-edge` with
+  - `Attach(ctx, containerID, alias)` — `docker network connect` the container to `vac-edge` with
     network alias `{slug}--{service}`; ignore "already attached" as success
   - `Detach(ctx, containerID)` — `NetworkDisconnect`, ignore "not attached"
   - `alias(slug, service) string` → `{slug}--{service}` (the upstream DNS name)

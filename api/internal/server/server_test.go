@@ -11,7 +11,7 @@ import (
 
 func newTestServer(t *testing.T) http.Handler {
 	t.Helper()
-	srv := New(t.Context(), config.Default(), nil, nil, nil)
+	srv := New(t.Context(), config.Default(), nil, nil, nil, nil)
 	return srv.Handler
 }
 

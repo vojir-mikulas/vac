@@ -13,12 +13,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/vojir-mikulas/vac/api/internal/caddy"
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/crashloop"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/db"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
+	"github.com/vojir-mikulas/vac/api/internal/proxy"
+	"github.com/vojir-mikulas/vac/api/internal/reqmetrics"
 	"github.com/vojir-mikulas/vac/api/internal/retention"
 	"github.com/vojir-mikulas/vac/api/internal/server"
 	"github.com/vojir-mikulas/vac/api/internal/sshkey"
@@ -71,9 +74,30 @@ func main() {
 	}
 	keys := sshkey.NewManager(st, box)
 	docker := dockercli.New(cfg.DockerSocket)
+
+	// Phase 3: reverse proxy. The Caddy admin client + proxy manager drive
+	// routing over the vac-edge network. The manager is the deploy pipeline's
+	// Router (auto-domains + route sync + Caddy-gated health).
+	caddyClient := caddy.New(cfg.CaddyAdminURL)
+	proxyMgr := proxy.New(st, caddyClient, docker, proxy.Config{
+		EdgeNetwork:    cfg.EdgeNetwork,
+		BaseDomain:     cfg.BaseDomain,
+		HealthInterval: 5 * time.Second,
+		HealthTimeout:  cfg.HealthCheckTimeout,
+		HealthRetries:  cfg.HealthCheckRetries,
+	}, slog.Default())
+
+	loadCaddyBaseConfig(ctx, cfg, caddyClient, proxyMgr)
+
 	pipeline := deploy.NewPipeline(st, keys, box, docker, cfg.WorkDir, cfg.HealthCheckTimeout, cfg.HealthCheckRetries, slog.Default())
+	pipeline.Router = proxyMgr
 	worker := deploy.NewPipelineWorker(pipeline, 0)
 	worker.Start(ctx)
+
+	// Request-rate metrics: tail Caddy's JSON access log and aggregate per
+	// service into the rolling window.
+	collector := reqmetrics.New(st, cfg.CaddyAccessLog, cfg.CaddyMetricsInterval, slog.Default())
+	go collector.Run(ctx)
 
 	monitor := crashloop.New(docker, docker, st, crashloop.Config{
 		Threshold: cfg.CrashLoopThreshold,
@@ -82,12 +106,13 @@ func main() {
 	go monitor.Run(ctx)
 
 	pruner := retention.New(st, retention.Config{
-		RuntimeDays: cfg.LogRetentionDays,
-		HourOfDay:   3,
+		RuntimeDays:    cfg.LogRetentionDays,
+		RequestMetrics: cfg.RequestMetricsRetention,
+		HourOfDay:      3,
 	}, slog.Default())
 	go pruner.Run(ctx)
 
-	srv := server.New(ctx, cfg, st, worker, docker)
+	srv := server.New(ctx, cfg, st, worker, docker, proxyMgr)
 
 	go func() {
 		slog.Info("vac-api listening", "addr", srv.Addr)
@@ -112,6 +137,34 @@ func main() {
 	cancel()
 	worker.Wait()
 	slog.Info("shutdown complete")
+}
+
+// loadCaddyBaseConfig installs VAC's base Caddy config and reconciles routes
+// from the DB. Like the docker probe, failure is non-fatal — VAC must boot on
+// a host where the proxy is briefly unreachable so the operator can recover;
+// the next deploy (or a manual restart) re-pushes the config.
+func loadCaddyBaseConfig(parent context.Context, cfg config.Config, client *caddy.Client, mgr *proxy.Manager) {
+	askURL := os.Getenv("VAC_CADDY_ASK_URL")
+	if askURL == "" {
+		askURL = fmt.Sprintf("http://vac-api:%d/internal/caddy/ask", cfg.Server.Port)
+	}
+	base := caddy.BaseConfig(caddy.BaseOptions{
+		AdminListen:   ":2019",
+		AccessLogPath: cfg.CaddyAccessLog,
+		AskURL:        askURL,
+		ACMECA:        cfg.ACMECA,
+	})
+
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	if err := client.Load(ctx, base); err != nil {
+		slog.Warn("caddy base config load failed; routing will converge once the proxy is reachable", "err", err)
+		return
+	}
+	slog.Info("caddy base config loaded")
+	if err := mgr.Reconcile(parent); err != nil {
+		slog.Warn("caddy route reconcile reported errors", "err", err)
+	}
 }
 
 // probeDockerCLI runs `docker version` once at boot. Failure is logged but
