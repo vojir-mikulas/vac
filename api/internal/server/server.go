@@ -15,6 +15,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/server/handler"
 	"github.com/vojir-mikulas/vac/api/internal/server/middleware"
+	"github.com/vojir-mikulas/vac/api/internal/sshkey"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 	"github.com/vojir-mikulas/vac/api/internal/ui"
 )
@@ -37,6 +38,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store) *http.Server {
 	}
 	tm := auth.NewTOTPManager(s, box)
 	tokm := auth.NewTokenManager(s)
+	keys := sshkey.NewManager(s, box)
 
 	// One shared limiter across the auth surface: an attacker who burns the
 	// password budget should not then get a fresh budget on /auth/totp.
@@ -87,6 +89,10 @@ func New(ctx context.Context, cfg config.Config, s *store.Store) *http.Server {
 				r.Get("/{id}", handler.GetApp(s))
 				r.Patch("/{id}", handler.UpdateApp(s))
 				r.Delete("/{id}", handler.DeleteApp(s))
+
+				r.Get("/{id}/ssh-key", handler.GetAppSSHKey(s, keys))
+				r.Post("/{id}/ssh-key/regenerate", handler.RegenerateAppSSHKey(s, keys))
+				r.Delete("/{id}/ssh-key", handler.DeleteAppSSHKey(keys))
 			})
 		})
 
