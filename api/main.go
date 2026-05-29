@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/config"
+	"github.com/vojir-mikulas/vac/api/internal/crashloop"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/db"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
@@ -72,6 +73,12 @@ func main() {
 	pipeline := deploy.NewPipeline(st, keys, box, docker, cfg.WorkDir, cfg.HealthCheckTimeout, cfg.HealthCheckRetries, slog.Default())
 	worker := deploy.NewPipelineWorker(pipeline, 0)
 	worker.Start(ctx)
+
+	monitor := crashloop.New(docker, docker, st, crashloop.Config{
+		Threshold: cfg.CrashLoopThreshold,
+		Window:    cfg.CrashLoopWindow,
+	}, slog.Default())
+	go monitor.Run(ctx)
 
 	srv := server.New(ctx, cfg, st, worker, docker)
 

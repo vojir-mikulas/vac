@@ -40,6 +40,20 @@ func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, co
 	return a, err
 }
 
+// GetAppBySlug is used by the crash-loop monitor to translate a Docker
+// compose project label back to a VAC app row.
+func (s *Store) GetAppBySlug(ctx context.Context, slug string) (App, error) {
+	var a App
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, name, slug, git_url, git_branch, compose_file, status, created_at, updated_at
+		FROM apps WHERE slug = $1
+	`, slug).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return App{}, ErrNotFound
+	}
+	return a, err
+}
+
 func (s *Store) GetApp(ctx context.Context, id string) (App, error) {
 	var a App
 	err := s.pool.QueryRow(ctx, `
