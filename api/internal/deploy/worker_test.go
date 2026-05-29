@@ -43,14 +43,14 @@ func TestWorker_EnqueueRunsRunner(t *testing.T) {
 }
 
 func TestWorker_QueueFullReturnsErr(t *testing.T) {
-	// Capacity 1, runner blocks until released — the second Enqueue must
-	// see ErrQueueFull rather than block forever.
+	// Capacity 1, the in-flight runner blocks until released so the queue
+	// stays full and the third Enqueue sees ErrQueueFull.
 	release := make(chan struct{})
-	var inFlight sync.WaitGroup
-	inFlight.Add(1)
+	firstStarted := make(chan struct{})
+	var once sync.Once
 	w := deploy.NewWorker(
 		func(_ context.Context, _ string) error {
-			inFlight.Done()
+			once.Do(func() { close(firstStarted) })
 			<-release
 			return nil
 		},
@@ -65,11 +65,10 @@ func TestWorker_QueueFullReturnsErr(t *testing.T) {
 	if err := w.Enqueue("first"); err != nil {
 		t.Fatalf("first Enqueue: %v", err)
 	}
-	inFlight.Wait() // runner is blocked, queue is empty
+	<-firstStarted // worker is now blocked inside the runner
 	if err := w.Enqueue("second"); err != nil {
 		t.Fatalf("second Enqueue (queued): %v", err)
 	}
-	// Third can't be queued — capacity 1 and one slot already taken.
 	if err := w.Enqueue("third"); !errors.Is(err, deploy.ErrQueueFull) {
 		t.Errorf("third Enqueue err = %v, want ErrQueueFull", err)
 	}

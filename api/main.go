@@ -69,7 +69,7 @@ func main() {
 	}
 	keys := sshkey.NewManager(st, box)
 	docker := dockercli.New(cfg.DockerSocket)
-	pipeline := deploy.NewPipeline(st, keys, box, docker, cfg.WorkDir, slog.Default())
+	pipeline := deploy.NewPipeline(st, keys, box, docker, cfg.WorkDir, cfg.HealthCheckTimeout, cfg.HealthCheckRetries, slog.Default())
 	worker := deploy.NewPipelineWorker(pipeline, 0)
 	worker.Start(ctx)
 

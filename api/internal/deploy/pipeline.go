@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/compose"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
@@ -51,29 +52,35 @@ func (realGit) HeadCommit(ctx context.Context, d string) (string, string, error)
 // Pipeline runs the build steps for one deployment. It is constructed once
 // at server startup and reused by the worker for every deployment.
 type Pipeline struct {
-	Store   *store.Store
-	Keys    *sshkey.Manager
-	Box     *crypto.Box
-	Docker  DockerClient
-	Git     GitClient
-	WorkDir string
-	Logger  *slog.Logger
+	Store              *store.Store
+	Keys               *sshkey.Manager
+	Box                *crypto.Box
+	Docker             DockerClient
+	Git                GitClient
+	HealthChecker      Checker
+	WorkDir            string
+	HealthCheckTimeout time.Duration
+	HealthCheckRetries int
+	Logger             *slog.Logger
 }
 
 // NewPipeline wires the production dependencies. Callers can patch the
 // fields post-construction in tests (e.g. swap Git or Docker for fakes).
-func NewPipeline(s *store.Store, keys *sshkey.Manager, box *crypto.Box, docker *dockercli.Compose, workDir string, logger *slog.Logger) *Pipeline {
+func NewPipeline(s *store.Store, keys *sshkey.Manager, box *crypto.Box, docker *dockercli.Compose, workDir string, healthTimeout time.Duration, healthRetries int, logger *slog.Logger) *Pipeline {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Pipeline{
-		Store:   s,
-		Keys:    keys,
-		Box:     box,
-		Docker:  docker,
-		Git:     realGit{},
-		WorkDir: workDir,
-		Logger:  logger,
+		Store:              s,
+		Keys:               keys,
+		Box:                box,
+		Docker:             docker,
+		Git:                realGit{},
+		HealthChecker:      HTTPChecker{},
+		WorkDir:            workDir,
+		HealthCheckTimeout: healthTimeout,
+		HealthCheckRetries: healthRetries,
+		Logger:             logger,
 	}
 }
 
@@ -206,8 +213,10 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		return err
 	}
 
-	// ---- Health check (filled in by M9 — placeholder always passes) ----
-	p.healthCheck(ctx, services)
+	// ---- Health check ----
+	if err := p.healthCheck(ctx, deploymentID, services); err != nil {
+		return err
+	}
 
 	// ---- Done ----
 	_ = p.Store.MarkDeploymentFinished(ctx, deploymentID, DeploymentStatusRunning, nil)
@@ -301,11 +310,22 @@ func (p *Pipeline) upsertServices(ctx context.Context, appID string, services []
 	return nil
 }
 
-// healthCheck is a stub in M7 — M9 replaces this with real HTTP probes.
-// Returning silently is fine: a deploy is considered "running" once
-// `docker compose up` returned and `ps` showed the services.
-func (p *Pipeline) healthCheck(_ context.Context, _ []dockercli.PsService) {
-	// no-op until M9
+// healthCheck probes each service with a published port. Services with no
+// port published are passed through automatically (they may be workers,
+// queues, databases — not HTTP services).
+func (p *Pipeline) healthCheck(ctx context.Context, deploymentID string, services []dockercli.PsService) error {
+	for _, svc := range services {
+		port := svc.FirstPublishedPort()
+		if port == 0 {
+			continue
+		}
+		url := healthURLForPort(port)
+		_ = LogSystem(ctx, p.Store, deploymentID, fmt.Sprintf("health check: %s → %s", svc.Service, url))
+		if err := CheckWithRetry(ctx, p.HealthChecker, url, p.HealthCheckRetries, p.HealthCheckTimeout); err != nil {
+			return fmt.Errorf("health check %s: %w", svc.Service, err)
+		}
+	}
+	return nil
 }
 
 // composeProject is the docker compose project name VAC uses for every
