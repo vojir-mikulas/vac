@@ -74,9 +74,14 @@ func (c *Compose) Down(ctx context.Context, projectName string, removeVolumes bo
 	return nil
 }
 
-// Stop stops a single service in the project. Used by the crash-loop monitor.
+// Stop stops services in the project. If `service` is empty, stops the
+// whole stack. Used by the crash-loop monitor (single service) and the
+// stack-control endpoints (whole stack).
 func (c *Compose) Stop(ctx context.Context, projectName, service string) error {
-	args := []string{"compose", "-p", projectName, "stop", service}
+	args := []string{"compose", "-p", projectName, "stop"}
+	if service != "" {
+		args = append(args, service)
+	}
 	cmd := c.command(ctx, "", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -85,9 +90,27 @@ func (c *Compose) Stop(ctx context.Context, projectName, service string) error {
 	return nil
 }
 
-// Restart restarts a single service. Used by the lifecycle endpoints.
+// Start starts previously-stopped services. Idempotent — already-running
+// services are left alone.
+func (c *Compose) Start(ctx context.Context, projectName, service string) error {
+	args := []string{"compose", "-p", projectName, "start"}
+	if service != "" {
+		args = append(args, service)
+	}
+	cmd := c.command(ctx, "", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return mapCmdError(err, out)
+	}
+	return nil
+}
+
+// Restart restarts services. Empty `service` restarts the whole stack.
 func (c *Compose) Restart(ctx context.Context, projectName, service string) error {
-	args := []string{"compose", "-p", projectName, "restart", service}
+	args := []string{"compose", "-p", projectName, "restart"}
+	if service != "" {
+		args = append(args, service)
+	}
 	cmd := c.command(ctx, "", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

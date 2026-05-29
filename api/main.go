@@ -73,7 +73,7 @@ func main() {
 	worker := deploy.NewPipelineWorker(pipeline, 0)
 	worker.Start(ctx)
 
-	srv := server.New(ctx, cfg, st, worker)
+	srv := server.New(ctx, cfg, st, worker, docker)
 
 	go func() {
 		slog.Info("vac-api listening", "addr", srv.Addr)

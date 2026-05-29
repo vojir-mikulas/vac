@@ -14,6 +14,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
+	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 	"github.com/vojir-mikulas/vac/api/internal/server/handler"
 	"github.com/vojir-mikulas/vac/api/internal/server/middleware"
 	"github.com/vojir-mikulas/vac/api/internal/sshkey"
@@ -24,7 +25,7 @@ import (
 // New wires the chi router and returns a configured *http.Server. ctx governs
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` may be nil in tests where the deployment surface is not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker) *http.Server {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose) *http.Server {
 	sm := auth.NewSessionManager(s, cfg.SessionTTL, cfg.SessionTTLExtended)
 
 	// box may be nil when VAC_MASTER_KEY is unset — TOTP setup will then
@@ -102,6 +103,16 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Post("/{id}/deployments", handler.TriggerDeployment(s, worker))
 					r.Get("/{id}/deployments", handler.ListDeployments(s))
 					r.Get("/{id}/deployments/{did}", handler.GetDeployment(s))
+				}
+
+				r.Get("/{id}/services", handler.ListAppServices(s))
+				r.Patch("/{id}/services/{name}", handler.PatchAppService(s))
+
+				if docker != nil {
+					r.Post("/{id}/start", handler.StartApp(s, docker))
+					r.Post("/{id}/stop", handler.StopApp(s, docker))
+					r.Post("/{id}/restart", handler.RestartApp(s, docker))
+					r.Post("/{id}/services/{name}/restart", handler.RestartService(s, docker))
 				}
 			})
 		})
