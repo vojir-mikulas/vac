@@ -7,5 +7,10 @@ FROM caddy:2-alpine
 
 COPY Caddyfile /etc/caddy/Caddyfile
 
-# The base image's default CMD already runs:
-#   caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+# Run with --resume so a proxy restart reloads the config VAC last pushed via
+# the admin API (autosaved to /config/caddy/autosave.json, a persisted volume)
+# instead of reverting to the admin-only bootstrap Caddyfile and dropping every
+# route. On first boot no autosave exists yet, so Caddy falls back to --config
+# and vac-api POSTs the real config (which is then autosaved). vac-api also
+# self-heals a missing server tree on the next deploy as a belt-and-braces.
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile", "--resume"]
