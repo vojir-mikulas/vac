@@ -251,13 +251,48 @@ func loadCaddyBaseConfig(parent context.Context, cfg config.Config, client *cadd
 		ACMECA:        cfg.ACMECA,
 	})
 
-	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
-	defer cancel()
-	if err := client.Load(ctx, base); err != nil {
-		slog.Warn("caddy base config load failed; routing will converge once the proxy is reachable", "err", err)
+	// Hand the same base config to the manager so it can self-heal whenever the
+	// proxy restarts back to its admin-only bootstrap config (per-deploy and on
+	// boot reconcile, via Manager.ensureBaseConfig).
+	mgr.SetBaseConfig(base)
+
+	// A just-started proxy can lose the boot race, so retry the initial Load with
+	// capped exponential backoff (1s, 2s, 4s, 8s...) for up to ~30s. Each attempt
+	// uses its own short timeout. Non-fatal: if every attempt fails, the
+	// per-deploy ensureBaseConfig will recover once the proxy is reachable.
+	const overallBudget = 30 * time.Second
+	deadline := time.Now().Add(overallBudget)
+	backoff := time.Second
+	loaded := false
+	for attempt := 1; ; attempt++ {
+		ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+		err := client.Load(ctx, base)
+		cancel()
+		if err == nil {
+			loaded = true
+			slog.Info("caddy base config loaded", "attempt", attempt)
+			break
+		}
+		if time.Now().After(deadline) {
+			slog.Warn("caddy base config load failed; routing will converge once the proxy is reachable", "err", err, "attempts", attempt)
+			break
+		}
+		slog.Warn("caddy base config load failed; retrying", "err", err, "attempt", attempt, "backoff", backoff.String())
+		select {
+		case <-parent.Done():
+			return
+		case <-time.After(backoff):
+		}
+		if backoff < 8*time.Second {
+			backoff *= 2
+			if backoff > 8*time.Second {
+				backoff = 8 * time.Second
+			}
+		}
+	}
+	if !loaded {
 		return
 	}
-	slog.Info("caddy base config loaded")
 	if err := mgr.Reconcile(parent); err != nil {
 		slog.Warn("caddy route reconcile reported errors", "err", err)
 	}

@@ -85,7 +85,8 @@ func (c *fakeCaddy) GetRoutes(_ context.Context) ([]caddy.Route, error) {
 func (c *fakeCaddy) Upstreams(_ context.Context) ([]caddy.UpstreamStatus, error) {
 	return c.upstreams, nil
 }
-func (c *fakeCaddy) Ping(_ context.Context) error { return nil }
+func (c *fakeCaddy) Ping(_ context.Context) error                  { return nil }
+func (c *fakeCaddy) Load(_ context.Context, _ *caddy.Config) error { return nil }
 
 type fakeNet struct {
 	connected    map[string]string // container -> alias

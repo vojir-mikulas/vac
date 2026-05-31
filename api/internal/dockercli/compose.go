@@ -35,7 +35,9 @@ func New(socket string) *Compose { return &Compose{Socket: socket} }
 // progressively. The compose project name distinguishes user stacks from
 // VAC internals.
 func (c *Compose) Build(ctx context.Context, projectDir, composeFile, projectName string, out io.Writer) error {
-	args := []string{"compose", "-p", projectName, "-f", composeFile, "build", "--progress", "plain"}
+	// --progress is a GLOBAL compose flag and must precede the `build`
+	// subcommand; placing it after build works but compose warns about it.
+	args := []string{"compose", "--progress", "plain", "-p", projectName, "-f", composeFile, "build"}
 	cmd := c.command(ctx, projectDir, args...)
 	// BuildKit is the modern builder — Compose v2 picks it up from
 	// DOCKER_BUILDKIT=1 the same way the standalone CLI does.

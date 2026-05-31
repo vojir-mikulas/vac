@@ -31,6 +31,7 @@ type CaddyClient interface {
 	GetRoutes(ctx context.Context) ([]caddy.Route, error)
 	Upstreams(ctx context.Context) ([]caddy.UpstreamStatus, error)
 	Ping(ctx context.Context) error
+	Load(ctx context.Context, cfg *caddy.Config) error
 }
 
 // NetworkController is the slice of *dockercli.Compose used for vac-edge.
@@ -54,11 +55,12 @@ type Config struct {
 // Manager projects VAC domains into Caddy routes and manages vac-edge
 // attachments. It is constructed once at startup.
 type Manager struct {
-	store  Store
-	caddy  CaddyClient
-	net    NetworkController
-	cfg    Config
-	logger *slog.Logger
+	store      Store
+	caddy      CaddyClient
+	net        NetworkController
+	cfg        Config
+	logger     *slog.Logger
+	baseConfig *caddy.Config // re-pushed to self-heal a Caddy restart; nil disables
 }
 
 // New wires a Manager.
@@ -81,9 +83,41 @@ func New(s Store, c CaddyClient, net NetworkController, cfg Config, logger *slog
 	return &Manager{store: s, caddy: c, net: net, cfg: cfg, logger: logger}
 }
 
+// SetBaseConfig records the base Caddy config so the manager can self-heal a
+// proxy restart (see ensureBaseConfig). Called once at startup; safe to leave
+// unset, which disables the self-heal probe.
+func (m *Manager) SetBaseConfig(cfg *caddy.Config) { m.baseConfig = cfg }
+
 // EnsureNetwork creates vac-edge if it doesn't already exist.
 func (m *Manager) EnsureNetwork(ctx context.Context) error {
 	return m.net.NetworkCreate(ctx, m.cfg.EdgeNetwork)
+}
+
+// isMissingServer reports whether a Caddy error indicates VAC's base server
+// tree is absent (Caddy reverted to the admin-only bootstrap config after a
+// restart). Such errors carry "invalid traversal path" for config/apps/http.
+func isMissingServer(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "invalid traversal path")
+}
+
+// ensureBaseConfig makes sure Caddy still has VAC's base server tree. Caddy
+// loses it on restart (it boots from the admin-only Caddyfile), after which
+// every route push fails with "invalid traversal path". A cheap GetRoutes
+// probe detects the missing tree; we re-POST the base config to restore it.
+// Best-effort and idempotent — a probe error that is NOT a missing-server
+// signal (e.g. proxy unreachable) is left for the caller's own push to surface.
+func (m *Manager) ensureBaseConfig(ctx context.Context) {
+	if m.baseConfig == nil {
+		return
+	}
+	if _, err := m.caddy.GetRoutes(ctx); err == nil || !isMissingServer(err) {
+		return
+	}
+	if err := m.caddy.Load(ctx, m.baseConfig); err != nil {
+		m.logger.Warn("proxy: reload base config failed", "err", err)
+		return
+	}
+	m.logger.Info("proxy: reloaded base config (caddy had reverted to bootstrap)")
 }
 
 // Ping checks the Caddy admin API is reachable — backs the /health soft probe.
@@ -131,6 +165,7 @@ func (m *Manager) Sync(ctx context.Context, appID string) error {
 	if err := m.EnsureNetwork(ctx); err != nil {
 		m.logger.Warn("proxy: ensure network", "err", err)
 	}
+	m.ensureBaseConfig(ctx)
 	errApply := m.applyApp(ctx, appID)
 	errControl := m.applyControlRoute(ctx)
 	errPrune := m.pruneOrphans(ctx)
@@ -284,6 +319,7 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 	if err := m.EnsureNetwork(ctx); err != nil {
 		m.logger.Warn("proxy: reconcile ensure network", "err", err)
 	}
+	m.ensureBaseConfig(ctx)
 	domains, err := m.store.ListAllDomains(ctx)
 	if err != nil {
 		return err
