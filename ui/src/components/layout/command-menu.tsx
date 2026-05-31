@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Boxes, Database, Plus, Rocket, ScrollText, Settings } from 'lucide-react'
+import { Boxes, Database, Plus, Rocket, Settings } from 'lucide-react'
 
 import {
   CommandDialog,
@@ -17,7 +17,6 @@ const PAGES = [
   { to: '/apps/new', label: 'New App', icon: Plus },
   { to: '/deployments', label: 'Deployments', icon: Rocket },
   { to: '/database', label: 'Database', icon: Database },
-  { to: '/logs', label: 'Logs', icon: ScrollText },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const
 

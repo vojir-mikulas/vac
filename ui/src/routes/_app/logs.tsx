@@ -1,7 +1,6 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Navigate } from '@tanstack/react-router'
 
-import { LogExplorer } from '@/features/logs/log-explorer'
-
+// TODO: Log Explorer page (post-MVP). See docs/plans/phase5-dashboard-ui.md.
 export const Route = createFileRoute('/_app/logs')({
-  component: LogExplorer,
+  component: () => <Navigate to="/apps" replace />,
 })

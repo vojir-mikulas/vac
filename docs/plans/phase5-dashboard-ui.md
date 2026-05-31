@@ -313,7 +313,7 @@ Read the named file as source of truth for spacing/colors before building.
 | · Environment | `…/environment` | ″ | key/value editor, per-var show/hide, **paste .env import**, "Restart required" banner |
 | · Settings | `…/settings` | ″ | General, Source (branch/autodeploy + webhook URL), Runtime (RAM/health/restart policy), Danger zone |
 | **Deployments (global)** | `/deployments` | `view-deployments.jsx` | metrics (avg build time, today, success rate, in-progress), in-progress step indicator, cross-app timeline |
-| **Log Explorer** | `/logs` | (prototype placeholder) | cross-app LogViewer, app/service/time/level filters, tail toggle, export |
+| **Log Explorer** | `/logs` | (prototype placeholder) | cross-app LogViewer, app/service/time/level filters, tail toggle, export — **TODO: deferred post-MVP. Route stubbed (redirects to `/apps`) and hidden from sidebar/command menu.** |
 | **Database** | `/database` | `view-database.jsx` | shared Postgres status, backups info (MVP read-only) |
 | **Account Settings** | `/settings` | `view-settings.jsx` | profile, sessions list + revoke, 2FA setup (QR)/disable, API tokens, Notifications (Discord/Slack webhooks) |
 | **Onboarding** | `/setup` | `view-onboarding.jsx` | first-boot wizard (create admin, base domain, finish) |
