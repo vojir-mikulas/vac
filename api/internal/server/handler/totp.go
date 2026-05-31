@@ -143,7 +143,7 @@ func TOTPLogin(s *store.Store, sm *auth.SessionManager, tm *auth.TOTPManager, cf
 		}
 		sess, user, err := sm.LookupPreAuth(r.Context(), c.Value)
 		if err != nil {
-			clearPreAuthCookie(w, cfg.SecureCookies())
+			clearPreAuthCookie(w, r)
 			WriteError(w, http.StatusUnauthorized, "pre-auth session invalid or expired")
 			return
 		}
@@ -182,13 +182,13 @@ func TOTPLogin(s *store.Store, sm *auth.SessionManager, tm *auth.TOTPManager, cf
 			remember, _ = strconv.ParseBool(rc.Value)
 		}
 		// Clear the carrier cookies now that we're upgrading.
-		clearPreAuthCookie(w, cfg.SecureCookies())
+		clearPreAuthCookie(w, r)
 		http.SetCookie(w, &http.Cookie{
 			Name:     "vac_pre_remember",
 			Value:    "",
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   cfg.SecureCookies(),
+			Secure:   secureForRequest(r),
 			SameSite: http.SameSiteStrictMode,
 			MaxAge:   -1,
 		})

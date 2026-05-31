@@ -82,7 +82,12 @@ case "$cmd" in
   set-domain)
     [ $# -ge 1 ] || { echo "usage: vac set-domain <domain>" >&2; exit 1; }
     set_env VAC_BASE_DOMAIN "$1"; dc up -d vac-api
-    echo "Base domain set to $1. Point A *.$1 and A $1 at this host." ;;
+    printf 'Base domain set to %s.\n' "$1"
+    printf 'Dashboard will be reachable at:  https://vac.%s\n' "$1"
+    printf 'DNS records to create:\n'
+    printf '  A   vac.%s   → this host\n' "$1"
+    printf '  A   *.%s     → this host   (for deployed apps)\n' "$1"
+    printf 'TLS certificates are issued automatically by Let'"'"'s Encrypt once DNS points here.\n' ;;
   unset-domain) set_env VAC_BASE_DOMAIN ""; dc up -d vac-api; echo "Automatic subdomains disabled." ;;
   config)    cat "$ENVF" ;;
   version|--version|-v)
@@ -120,8 +125,8 @@ vac — manage this VAC install ($DIR)
   vac version                      show the running and pinned versions
   vac logs [service]               tail logs
   vac upgrade [version]            pull + recreate (optionally pin a version)
-  vac set-domain <domain>          enable automatic HTTPS subdomains
-  vac unset-domain                 disable automatic subdomains
+  vac set-domain <domain>          serve dashboard on HTTPS + enable app subdomains
+  vac unset-domain                 disable HTTPS dashboard and app subdomains
   vac reset-password <username>    set a new password and revoke sessions
   vac up | down | restart [service]
   vac config                       print the .env
@@ -220,13 +225,14 @@ IP="$(curl -fsS https://api.ipify.org 2>/dev/null || true)"
 
 printf '\n%s VAC is up.%s\n\n' "$B$G" "$N"
 if [ -n "$VAC_DOMAIN" ]; then
-  printf '  Dashboard:  %shttps://%s%s   (once DNS + TLS settle)\n' "$B" "$VAC_DOMAIN" "$N"
-  printf '  Direct:     http://%s:%s\n' "$IP" "$VAC_HOST_PORT"
-  printf '\n  DNS: point %sA *.%s%s and %sA %s%s at this host (%s).\n' "$B" "$VAC_DOMAIN" "$N" "$B" "$VAC_DOMAIN" "$N" "$IP"
+  printf '  Dashboard:  %shttps://vac.%s%s   (once DNS + TLS settle)\n' "$B" "$VAC_DOMAIN" "$N"
+  printf '  Direct:     http://%s:%s   (recovery / pre-DNS fallback)\n' "$IP" "$VAC_HOST_PORT"
+  printf '\n  DNS: point %sA vac.%s%s and %sA *.%s%s at this host (%s).\n' "$B" "$VAC_DOMAIN" "$N" "$B" "$VAC_DOMAIN" "$N" "$IP"
 else
   printf '  Dashboard:  %shttp://%s:%s%s\n' "$B" "$IP" "$VAC_HOST_PORT" "$N"
-  printf '\n  Add a domain later for automatic HTTPS subdomains:\n'
-  printf '    %svac set-domain vac.example.com%s\n' "$B" "$N"
+  printf '\n  Add a domain later to put the dashboard on HTTPS and enable\n'
+  printf '  automatic app subdomains:\n'
+  printf '    %svac set-domain example.com%s\n' "$B" "$N"
 fi
 printf '\n  Open the dashboard to create your admin account.\n'
 printf '  Manage:  %svac status | vac logs | vac upgrade | vac down%s\n\n' "$B" "$N"

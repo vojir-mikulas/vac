@@ -126,6 +126,8 @@ func main() {
 	proxyMgr := proxy.New(st, caddyClient, docker, proxy.Config{
 		EdgeNetwork:    cfg.EdgeNetwork,
 		BaseDomain:     cfg.BaseDomain,
+		ControlDomain:  cfg.ControlDomain,
+		ControlPort:    cfg.Server.Port,
 		HealthInterval: 5 * time.Second,
 		HealthTimeout:  cfg.HealthCheckTimeout,
 		HealthRetries:  cfg.HealthCheckRetries,

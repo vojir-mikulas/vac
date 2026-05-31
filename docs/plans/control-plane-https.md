@@ -16,8 +16,9 @@ By the end of this work:
 2. `vac set-domain example.com` puts the dashboard on `https://vac.example.com`
    with a real Let's Encrypt cert, no extra steps.
 3. The UI warns the operator when traffic is unencrypted and points at the fix.
-4. (Deferred) Operators with no domain can still get HTTPS via an `nip.io` URL
-   printed on first boot.
+4. (Deferred) Operators with no domain can still get HTTPS via a real Let's
+   Encrypt certificate issued directly for the host's public IP — printed on
+   first boot.
 
 ## Background
 
@@ -75,14 +76,13 @@ in place*; the missing pieces are (a) a Caddy route for the dashboard host, and
 
 ### Out (deferred)
 
-- **Phase 3 — IP-only HTTPS via nip.io (deferred).** Print
-  `https://<ip>.nip.io` on first boot when no domain is set; rely on Caddy's
-  on-demand TLS to obtain a Let's Encrypt cert for that hostname the first
-  time it is hit. Tracked but not implemented in this milestone. Reason: the
-  nip.io / sslip.io services are third-party DNS, LE rate limits apply, and
-  some corporate networks block them — worth the marginal UX win once the
-  primary path (domain) is solid. See § Phase 3 — Deferred below for the
-  shape it should take.
+- **Phase 3 — IP-only HTTPS via a Let's Encrypt IP certificate (deferred).**
+  Caddy obtains a real LE cert for the host's public IPv4 using LE's
+  short-lived certificate profile; first-boot prints `https://<ip>` as the
+  preferred dashboard URL. Tracked but not implemented in this milestone — it
+  depends on Caddy's short-lived-profile config story stabilizing and on
+  validating the 6-day renewal cadence in our deployment. See § Phase 3 —
+  Deferred below for the shape it should take.
 - **`VAC_TRUSTED_PROXY` switch.** Gating XFP trust on a source-IP or
   upstream-marker is reasonable hardening but unnecessary for v1 — vac-proxy
   is the only thing in front of vac-api in the bundled architecture.
@@ -183,27 +183,52 @@ helper needs to honor it).
   HTTPS).
 - `http://<ip>:3000` continues to work as a recovery path.
 
-### Phase 3 — IP-only HTTPS via nip.io (deferred)
+### Phase 3 — IP-only HTTPS via a Let's Encrypt IP certificate (deferred)
 
 Not in this milestone. Captured here so the eventual implementer has the same
 shape in mind.
 
+Since mid-2025, Let's Encrypt issues certificates whose SAN is an IP address,
+delivered via the **short-lived certificate profile** (~6-day lifetime,
+auto-renewed by Caddy). This means a freshly-installed VAC on a public VPS
+can serve `https://<vps-ip>` with a real, browser-trusted cert and no DNS
+involved at all.
+
 - On first boot when `VAC_BASE_DOMAIN` is unset, the installer detects the
-  host's primary public IPv4 and prints both URLs:
+  host's primary public IPv4 (best-effort: `ip route get 1`, falling back to
+  an external IP-echo service if asked) and prints:
 
   ```
-  Dashboard:  http://<ip>:3000             (plain HTTP, works immediately)
-              https://<ip>.nip.io          (HTTPS, may take ~30s for the cert)
+  Dashboard:  https://<ip>             (HTTPS, may take ~30s for the cert)
+              http://<ip>:3000         (plain HTTP fallback / recovery)
   ```
 
-- The Caddy ask-hook accepts `*.nip.io` hostnames when they resolve to a host
-  IP we control, gated by a config flag like `VAC_ALLOW_NIPIO=true` (default
-  off) so this never happens silently.
-- `vac set-domain` and the printed message continue to be the recommended
-  path; `nip.io` is the "I just want to click around" fallback.
-- Open questions before implementing: rate-limit headroom against LE for
-  *.nip.io; whether to support sslip.io as a fallback when nip.io DNS is
-  blocked; how to invalidate the nip.io route after a real domain is set.
+- vac-proxy's Caddy config gains a route for the literal IP host → upstream
+  `vac-api:3000`, with TLS configured to use LE's short-lived profile
+  (`tls { issuer acme { profile shortlived } }` or the equivalent
+  directory URL on the Caddy version we ship). The ask-hook allowlists
+  the host's public IP.
+- Challenge is `tls-alpn-01` on :443 (already published by vac-proxy). No
+  HTTP-01 fallback needed; if :443 is unreachable from LE, the operator is
+  going to need a domain regardless.
+- A config flag like `VAC_PUBLIC_IP=auto|<ip>|off` controls the behavior.
+  Default `auto` — detect once at install and write it into `.env`; the
+  operator can disable it explicitly with `off` for hosts behind CGNAT, in a
+  corporate lab, or any setup where :443 isn't world-reachable.
+- The route is **idempotent against `vac set-domain`**: setting a base
+  domain doesn't tear down the IP route; both keep working until the
+  operator explicitly opts out. (The dashboard banner from Phase 1 stays
+  honest — it's only shown when the *current* `window.location.protocol`
+  is plain HTTP, so visiting via the IP HTTPS URL clears it.)
+- Open questions before implementing:
+  - Confirm the Caddy version VAC ships supports short-lived profile config
+    cleanly; if not, bump the proxy image first.
+  - Decide whether to also offer the same IP-cert flow for an IPv6 address
+    (probably yes, costs nothing extra once the v4 path works).
+  - What happens when the VPS IP changes (e.g. snapshot restore on a new
+    instance): detect on boot, re-issue, log a warning. Operators rebuilding
+    a host should expect a few minutes of "browser can't verify" before the
+    new cert lands.
 
 ---
 
@@ -228,8 +253,15 @@ shape in mind.
 - **No first-boot self-signed cert.** Considered and rejected. Caddy's
   internal CA gives a "your connection is not private" page; we'd be trading
   one broken-looking experience (sessions silently dropping) for another
-  (browser warning). Plain HTTP plus a banner is more honest and unblocks
-  Phase 3's nip.io path later.
+  (browser warning). Plain HTTP plus a banner is more honest and gets out of
+  the way once Phase 3 ships real LE IP certs.
+- **LE IP certs vs nip.io for Phase 3.** Chosen: LE IP certs. The nip.io path
+  (a `<ip>.nip.io` wildcard wrapping the IP) is the older trick that worked
+  before LE supported IP SANs; it relies on a third-party DNS service in the
+  trust path, has a `VAC_ALLOW_NIPIO`-shaped opt-in cost, and gains nothing
+  IP certs don't. The only edge case where nip.io still wins is hosts where
+  port 443 isn't reachable from LE — and in that case neither path works
+  reliably, so the operator needs a domain regardless.
 
 ---
 
@@ -265,5 +297,9 @@ Phase 2:
 - `docs/deployment.md`
 - `README.md` (the dashboard URL snippet)
 
-Phase 3 (deferred): `scripts/install.sh`, `api/internal/proxy/manager.go`,
-plus a new `VAC_ALLOW_NIPIO` config.
+Phase 3 (deferred): `scripts/install.sh` (public-IP detection on install,
+first-boot URL), `api/internal/proxy/manager.go` (IP-host route on the
+short-lived TLS profile), `api/internal/caddy/config.go` (ask-hook IP
+allowlist), `api/internal/config/config.go` (new `VAC_PUBLIC_IP` knob),
+and possibly a Caddy image bump in `proxy/Dockerfile` if the version we ship
+doesn't yet expose short-lived-profile config.

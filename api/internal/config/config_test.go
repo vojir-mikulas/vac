@@ -177,6 +177,39 @@ func TestLoad_InvalidExposureFallsBack(t *testing.T) {
 	}
 }
 
+func TestLoad_ControlDomainDefaultsFromBaseDomain(t *testing.T) {
+	t.Setenv("VAC_BASE_DOMAIN", "example.com")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ControlDomain != "vac.example.com" {
+		t.Errorf("control domain = %q, want vac.example.com", cfg.ControlDomain)
+	}
+}
+
+func TestLoad_ControlDomainExplicitOverride(t *testing.T) {
+	t.Setenv("VAC_BASE_DOMAIN", "example.com")
+	t.Setenv("VAC_CONTROL_DOMAIN", "admin.example.com")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ControlDomain != "admin.example.com" {
+		t.Errorf("control domain = %q, want admin.example.com", cfg.ControlDomain)
+	}
+}
+
+func TestLoad_ControlDomainEmptyWithoutBaseDomain(t *testing.T) {
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ControlDomain != "" {
+		t.Errorf("control domain = %q, want empty when no base domain", cfg.ControlDomain)
+	}
+}
+
 func TestLoad_SessionTTLs(t *testing.T) {
 	t.Setenv("VAC_SESSION_TTL", "2h")
 	t.Setenv("VAC_SESSION_TTL_EXTENDED", "48h")

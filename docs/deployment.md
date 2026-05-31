@@ -176,22 +176,35 @@ your admin account.
 
 ### Adding a domain later
 
-Automatic `https://{app}.vac.example.com` subdomains need a base domain. Set it
-any time after install:
+A base domain puts the dashboard on **HTTPS** and enables automatic
+`https://{app}.example.com` subdomains. Set it any time after install:
 
 ```bash
-vac set-domain vac.example.com
+vac set-domain example.com
 ```
 
 DNS required (point at the VPS public IP):
 
 ```
-A    vac.example.com      → <server-ip>
-A    *.vac.example.com    → <server-ip>     # wildcard for app subdomains
+A    vac.example.com    → <server-ip>     # dashboard (HTTPS)
+A    *.example.com      → <server-ip>     # wildcard for app subdomains
 ```
 
-Caddy provisions TLS automatically once DNS resolves. Custom per-service domains
-are managed in the dashboard (Settings → domains) regardless of the base domain.
+By default the dashboard moves to `https://vac.<domain>`, leaving the apex
+free for an app or marketing page. To pin a different host (apex included),
+set `VAC_CONTROL_DOMAIN=admin.example.com` in `/opt/vac/.env` and
+`vac restart vac-api`.
+
+Caddy provisions TLS automatically once DNS resolves. `http://<server-ip>:3000`
+keeps working as a recovery fallback for hosts that get locked out of DNS or
+ACME. Custom per-service domains are managed in the dashboard (Settings →
+domains) regardless of the base domain.
+
+> **Trust boundary.** Inside the bundled deployment, vac-proxy is the only
+> reverse proxy in front of vac-api and sets `X-Forwarded-Proto: https` so the
+> dashboard knows when to mark cookies `Secure`. Do not stack another reverse
+> proxy in front that strips or rewrites that header — the dashboard will
+> silently drop login cookies if you do.
 
 ### The `vac` command
 
@@ -199,8 +212,8 @@ are managed in the dashboard (Settings → domains) regardless of the base domai
 vac status               show running services
 vac logs [service]       tail logs (e.g. vac logs vac-api)
 vac upgrade [version]    pull + recreate (optionally pin: vac upgrade v0.6.0)
-vac set-domain <domain>  enable automatic HTTPS subdomains
-vac unset-domain         disable automatic subdomains
+vac set-domain <domain>  serve dashboard on HTTPS + enable app subdomains
+vac unset-domain         disable HTTPS dashboard and app subdomains
 vac up | down | restart [service]
 vac config               print /opt/vac/.env
 ```

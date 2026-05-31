@@ -259,6 +259,56 @@ func TestAssignAutoDomains(t *testing.T) {
 	}
 }
 
+func TestApplyControlRoute_PushedWhenSet(t *testing.T) {
+	s := &fakeStore{app: store.App{ID: "a1", Slug: "blog"}}
+	c := newFakeCaddy()
+	m := New(s, c, newFakeNet(), Config{
+		EdgeNetwork:    "vac-edge",
+		ControlDomain:  "vac.example.com",
+		ControlPort:    3000,
+		HealthInterval: time.Second,
+		HealthTimeout:  time.Second,
+		HealthRetries:  1,
+	}, nil)
+
+	if err := m.applyControlRoute(context.Background()); err != nil {
+		t.Fatalf("applyControlRoute: %v", err)
+	}
+	r, ok := c.put[controlRouteID]
+	if !ok {
+		t.Fatalf("control route not pushed: %+v", c.put)
+	}
+	if len(r.Match) != 1 || len(r.Match[0].Host) != 1 || r.Match[0].Host[0] != "vac.example.com" {
+		t.Errorf("control route host = %+v", r.Match)
+	}
+	if len(r.Handle) != 1 || r.Handle[0].Upstreams[0].Dial != "vac-api:3000" {
+		t.Errorf("control route dial = %+v", r.Handle)
+	}
+	if !m.IsControlDomain("VAC.example.com") {
+		t.Error("IsControlDomain should match case-insensitively")
+	}
+	if m.IsControlDomain("other.example.com") {
+		t.Error("IsControlDomain matched a non-control host")
+	}
+}
+
+func TestApplyControlRoute_NoopWhenEmpty(t *testing.T) {
+	s := &fakeStore{app: store.App{ID: "a1", Slug: "blog"}}
+	c := newFakeCaddy()
+	m := New(s, c, newFakeNet(), Config{EdgeNetwork: "vac-edge"}, nil)
+
+	if err := m.applyControlRoute(context.Background()); err != nil {
+		t.Fatalf("applyControlRoute: %v", err)
+	}
+	if _, ok := c.put[controlRouteID]; ok {
+		t.Errorf("control route should not be pushed when ControlDomain is empty")
+	}
+	// And the manager should report no host as the control domain.
+	if m.IsControlDomain("vac.example.com") {
+		t.Error("IsControlDomain returned true with empty ControlDomain")
+	}
+}
+
 func TestAssignAutoDomains_MultiService(t *testing.T) {
 	s := &fakeStore{
 		app: store.App{ID: "a1", Slug: "shop"},

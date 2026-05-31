@@ -37,11 +37,13 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		proxyMgr handler.ProxyManager
 		syncer   handler.RouteSyncer
 		caddyPin handler.CaddyPinger
+		ctrlChk  handler.ControlDomainChecker
 	)
 	if pm != nil {
 		proxyMgr = pm
 		syncer = pm
 		caddyPin = pm
+		ctrlChk = pm
 	}
 
 	wsOpts := wsAcceptOptions(cfg)
@@ -79,7 +81,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 
 	// On-demand-TLS ask hook for Caddy. Unauthenticated by design (Caddy can't
 	// present a session); reachable only on the internal compose network.
-	r.Get("/internal/caddy/ask", handler.CaddyAsk(s, cfg.CaddyAskToken))
+	r.Get("/internal/caddy/ask", handler.CaddyAsk(s, cfg.CaddyAskToken, ctrlChk))
 
 	r.Route("/api", func(r chi.Router) {
 		r.Use(middleware.BodyLimit(middleware.MaxBodyBytes))

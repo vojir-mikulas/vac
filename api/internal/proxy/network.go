@@ -17,3 +17,8 @@ func routeID(domainID string) string {
 }
 
 const routeIDPrefix = "vac-route-"
+
+// controlRouteID is the reserved @id for the dashboard's own Caddy route. The
+// prune sweep keeps it as long as a ControlDomain is configured — see
+// pruneOrphans.
+const controlRouteID = "vac-control-route"

@@ -44,6 +44,8 @@ type NetworkController interface {
 type Config struct {
 	EdgeNetwork    string        // vac-edge network name
 	BaseDomain     string        // for automatic subdomains; empty disables them
+	ControlDomain  string        // hostname the dashboard is served on; empty disables the route
+	ControlPort    int           // port vac-api listens on inside the compose network
 	HealthInterval time.Duration // Caddy active health-check interval
 	HealthTimeout  time.Duration // per-check timeout + overall WaitHealthy budget
 	HealthRetries  int           // WaitHealthy poll count
@@ -130,8 +132,9 @@ func (m *Manager) Sync(ctx context.Context, appID string) error {
 		m.logger.Warn("proxy: ensure network", "err", err)
 	}
 	errApply := m.applyApp(ctx, appID)
+	errControl := m.applyControlRoute(ctx)
 	errPrune := m.pruneOrphans(ctx)
-	return errors.Join(errApply, errPrune)
+	return errors.Join(errApply, errControl, errPrune)
 }
 
 // applyApp attaches the app's routable containers to vac-edge and pushes a
@@ -209,6 +212,44 @@ func (m *Manager) pruneOrphans(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// applyControlRoute pushes (or removes) the dashboard's Caddy route. With a
+// ControlDomain set the dashboard is served HTTPS on it; with no domain we
+// remove any stale route so the operator can hit the host-published port
+// without Caddy intercepting the hostname later.
+func (m *Manager) applyControlRoute(ctx context.Context) error {
+	if m.cfg.ControlDomain == "" {
+		if err := m.caddy.DeleteRoute(ctx, controlRouteID); err != nil {
+			m.logger.Debug("proxy: delete stale control route", "err", err)
+		}
+		return nil
+	}
+	port := m.cfg.ControlPort
+	if port <= 0 {
+		port = 3000
+	}
+	route := caddy.Route{
+		ID:    controlRouteID,
+		Match: []caddy.Match{{Host: []string{m.cfg.ControlDomain}}},
+		Handle: []caddy.Handler{{
+			Handler:   "reverse_proxy",
+			Upstreams: []caddy.Upstream{{Dial: fmt.Sprintf("vac-api:%d", port)}},
+			HealthChecks: &caddy.HealthChecks{Active: &caddy.ActiveHealthCheck{
+				Path:     "/health",
+				Interval: m.cfg.HealthInterval.String(),
+				Timeout:  m.cfg.HealthTimeout.String(),
+			}},
+		}},
+	}
+	return m.caddy.PutRoute(ctx, controlRouteID, route)
+}
+
+// IsControlDomain reports whether host is the configured control-plane
+// hostname. Used by the on-demand TLS ask hook to allow Caddy to issue a cert
+// for the dashboard without a matching domain row in the DB.
+func (m *Manager) IsControlDomain(host string) bool {
+	return m.cfg.ControlDomain != "" && strings.EqualFold(host, m.cfg.ControlDomain)
+}
+
 // Teardown removes an app's live routes and detaches its containers from
 // vac-edge, leaving the domain rows intact. Used on a temporary stop so a
 // stopped app returns a clean 502/503 instead of proxying to a dead upstream.
@@ -256,6 +297,9 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 		if err := m.applyApp(ctx, appID); err != nil {
 			errs = append(errs, err)
 		}
+	}
+	if err := m.applyControlRoute(ctx); err != nil {
+		errs = append(errs, err)
 	}
 	if err := m.pruneOrphans(ctx); err != nil {
 		errs = append(errs, err)

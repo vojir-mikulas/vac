@@ -46,6 +46,7 @@ type Config struct {
 	// Phase 3: reverse proxy & HTTPS.
 	CaddyAdminURL           string        `yaml:"caddy_admin_url"`
 	BaseDomain              string        `yaml:"base_domain"`
+	ControlDomain           string        `yaml:"control_domain"`
 	EdgeNetwork             string        `yaml:"edge_network"`
 	CaddyAccessLog          string        `yaml:"caddy_access_log"`
 	CaddyMetricsInterval    time.Duration `yaml:"caddy_metrics_interval"`
@@ -226,6 +227,9 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("VAC_BASE_DOMAIN"); v != "" {
 		cfg.BaseDomain = v
 	}
+	if v := os.Getenv("VAC_CONTROL_DOMAIN"); v != "" {
+		cfg.ControlDomain = v
+	}
 	if v := os.Getenv("VAC_EDGE_NETWORK"); v != "" {
 		cfg.EdgeNetwork = v
 	}
@@ -264,6 +268,12 @@ func validate(cfg *Config) {
 	if cfg.Exposure != ExposurePublic && cfg.Exposure != ExposureLocal {
 		slog.Warn("VAC_EXPOSURE is invalid; falling back to public", "value", cfg.Exposure)
 		cfg.Exposure = ExposurePublic
+	}
+	// Derive the default control-plane hostname from BaseDomain when the
+	// operator hasn't pinned one. vac.<domain> keeps the apex free for an
+	// app or marketing page; VAC_CONTROL_DOMAIN overrides (apex included).
+	if cfg.ControlDomain == "" && cfg.BaseDomain != "" {
+		cfg.ControlDomain = "vac." + cfg.BaseDomain
 	}
 }
 

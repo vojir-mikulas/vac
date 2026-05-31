@@ -91,7 +91,7 @@ func Login(s *store.Store, sm *auth.SessionManager, cfg config.Config) http.Hand
 				WriteError(w, http.StatusInternalServerError, "could not create pre-auth session")
 				return
 			}
-			setPreAuthCookie(w, preToken, auth.PreAuthTTL, cfg.SecureCookies())
+			setPreAuthCookie(w, r, preToken, auth.PreAuthTTL)
 			// Carry the "remember me" preference through the pre-auth step
 			// so the eventual full session honours it.
 			http.SetCookie(w, &http.Cookie{
@@ -99,7 +99,7 @@ func Login(s *store.Store, sm *auth.SessionManager, cfg config.Config) http.Hand
 				Value:    strconv.FormatBool(req.Remember),
 				Path:     "/",
 				HttpOnly: true,
-				Secure:   cfg.SecureCookies(),
+				Secure:   secureForRequest(r),
 				SameSite: http.SameSiteStrictMode,
 				MaxAge:   int(auth.PreAuthTTL.Seconds()),
 			})
@@ -126,8 +126,8 @@ func issueFullSession(w http.ResponseWriter, r *http.Request, sm *auth.SessionMa
 		return
 	}
 	ttl := sm.TTL(remember)
-	setSessionCookie(w, token, ttl, cfg.SecureCookies())
-	setCSRFCookie(w, csrf, ttl, cfg.SecureCookies())
+	setSessionCookie(w, r, token, ttl)
+	setCSRFCookie(w, r, csrf, ttl)
 	WriteJSON(w, http.StatusOK, meResponse{
 		ID:          user.ID,
 		Username:    user.Username,
@@ -148,8 +148,8 @@ func Logout(sm *auth.SessionManager, cfg config.Config) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "could not revoke session")
 			return
 		}
-		clearSessionCookie(w, cfg.SecureCookies())
-		clearCSRFCookie(w, cfg.SecureCookies())
+		clearSessionCookie(w, r)
+		clearCSRFCookie(w, r)
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "logged out"})
 	}
 }
