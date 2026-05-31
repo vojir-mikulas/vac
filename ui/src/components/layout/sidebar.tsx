@@ -17,9 +17,7 @@ export function Sidebar() {
     <aside className="sticky top-0 hidden h-svh w-sidebar shrink-0 flex-col border-r bg-surface-1 md:flex">
       <div className="border-b px-4.5 pb-3 pt-4.5">
         <Link to="/apps" className="flex w-full items-center gap-2.5">
-          <div className="grid size-7 place-items-center rounded-md bg-foreground font-mono text-xs font-bold text-background shadow-[inset_0_0_0_1px_var(--brand),inset_0_-8px_0_var(--brand)]">
-            <span className="-mt-0.5">v</span>
-          </div>
+          <img src="/vac-logo.svg" alt="" aria-hidden="true" className="size-7 rounded-md" />
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold tracking-tight">VAC</span>
             <span className="font-mono text-2xs text-muted-foreground">Containers</span>

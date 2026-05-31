@@ -11,9 +11,7 @@ export function AuthShell({
     <div className="flex min-h-svh items-center justify-center bg-surface-1 px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
-          <div className="grid size-10 place-items-center rounded-lg bg-foreground font-mono text-base font-bold text-background shadow-[inset_0_0_0_1px_var(--brand),inset_0_-10px_0_var(--brand)]">
-            <span className="-mt-0.5">v</span>
-          </div>
+          <img src="/vac-logo.svg" alt="VAC" className="size-10 rounded-lg" />
           <div>
             <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
             {description ? (
