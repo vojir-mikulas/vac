@@ -33,7 +33,7 @@ func TestDetect_FallsBackToDockerCompose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Source != compose.SourceDockerComposeYAML {
+	if res.Source != compose.SourceDockerComposeYML {
 		t.Errorf("source = %s, want docker-compose.yml", res.Source)
 	}
 }

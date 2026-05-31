@@ -1,0 +1,66 @@
+import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+
+import { Card } from '@/components/ui/card'
+import { StatusPill } from '@/components/common/status-pill'
+import { LogViewer } from '@/components/common/log-viewer'
+import { DeploySteps } from '@/features/app-detail/deploy-steps'
+import { useDeployments } from '@/lib/api/deployments'
+import { useDeploymentLogs } from '@/lib/ws/use-log-stream'
+import { isDeployActive } from '@/lib/deploy-status'
+import { queryKeys } from '@/lib/query/keys'
+import { formatDuration, shortSha } from '@/lib/format'
+import type { Deployment } from '@/types/api'
+
+// LiveDeployBanner surfaces the app's currently-running deploy across every
+// tab: pipeline step, elapsed time, and a live (pinned-tail) build log. It
+// renders nothing when no deploy is in progress.
+export function LiveDeployBanner({ appId }: { appId: string }) {
+  const { data: deployments } = useDeployments(appId)
+  // The list is newest-first, so the first active row is the current deploy.
+  const active = deployments?.find((d) => isDeployActive(d.status))
+  if (!active) return null
+  return <ActiveDeploy key={active.id} appId={appId} deployment={active} />
+}
+
+function ActiveDeploy({ appId, deployment }: { appId: string; deployment: Deployment }) {
+  const qc = useQueryClient()
+  const elapsed = useElapsed(deployment.started_at ?? deployment.triggered_at)
+  const { lines } = useDeploymentLogs(deployment.id, true, () => {
+    qc.invalidateQueries({ queryKey: queryKeys.apps.deployments(appId) })
+  })
+
+  return (
+    <Card className="mb-5 gap-3 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Deploying</span>
+            <StatusPill status={deployment.status} size="sm" />
+          </div>
+          <div className="mt-1 font-mono text-2xs text-muted-foreground">
+            {deployment.commit_message ?? 'Deploy'} · {shortSha(deployment.commit_sha)} ·{' '}
+            {formatDuration(elapsed)} elapsed
+          </div>
+        </div>
+      </div>
+
+      <DeploySteps status={deployment.status} />
+
+      <LogViewer lines={lines} className="h-64" emptyLabel="Waiting for build output…" />
+    </Card>
+  )
+}
+
+// useElapsed returns whole seconds since `start`, ticking once a second while
+// the deploy is live.
+function useElapsed(start: string): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1_000)
+    return () => clearInterval(id)
+  }, [])
+  const startMs = new Date(start).getTime()
+  if (Number.isNaN(startMs)) return 0
+  return Math.max(0, Math.floor((now - startMs) / 1_000))
+}

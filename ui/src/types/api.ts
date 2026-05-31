@@ -3,6 +3,21 @@
 
 export type AppStatus = 'running' | 'degraded' | 'stopped' | 'building' | 'crashed' | string
 
+// Build adapters (mirrors api/internal/adapter). build_kind selects the adapter;
+// build_config carries its kind-specific knobs (only relevant fields are set).
+export type BuildKind = 'auto' | 'compose' | 'dockerfile' | 'framework' | 'static'
+
+export interface BuildConfig {
+  composePath?: string
+  dockerfilePath?: string
+  framework?: string
+  buildCommand?: string
+  startCommand?: string
+  port?: number
+  staticDir?: string
+  spaFallback?: boolean
+}
+
 export interface App {
   id: string
   name: string
@@ -10,6 +25,8 @@ export interface App {
   git_url: string
   git_branch: string
   compose_file: string
+  build_kind: BuildKind
+  build_config: BuildConfig
   status: AppStatus
   created_at: string
   updated_at: string
@@ -21,6 +38,8 @@ export interface CreateAppInput {
   git_url: string
   git_branch?: string
   compose_file?: string
+  build_kind?: BuildKind
+  build_config?: BuildConfig
 }
 
 export interface UpdateAppInput {
@@ -28,6 +47,8 @@ export interface UpdateAppInput {
   git_url?: string
   git_branch?: string
   compose_file?: string
+  build_kind?: BuildKind
+  build_config?: BuildConfig
 }
 
 export type ServiceStatus = 'running' | 'stopped' | 'crashed' | 'building' | string
@@ -53,14 +74,17 @@ export interface UpdateServiceInput {
   health_path?: string
 }
 
+// Mirrors api/internal/deploy/status.go. Terminal states are `running`
+// (succeeded), `error` (failed), and `interrupted`. See lib/deploy-status.ts
+// for the success/failed/active classifiers.
 export type DeploymentStatus =
   | 'queued'
   | 'cloning'
   | 'building'
   | 'deploying'
   | 'health-checking'
-  | 'success'
-  | 'failed'
+  | 'running'
+  | 'error'
   | 'interrupted'
   | string
 
@@ -85,8 +109,12 @@ export interface DeploymentLogLine {
   ts: string
 }
 
-export interface EnvVarKey {
+// One env var as returned by the list endpoint. `value` is present only for
+// non-sensitive keys; sensitive keys omit it and are revealed on demand.
+export interface EnvVar {
   key: string
+  sensitive: boolean
+  value?: string
 }
 
 export interface Domain {
@@ -114,6 +142,7 @@ export interface HostStats {
   disk_used_bytes: number
   disk_total_bytes: number
   request_rate: number
+  host_ip: string
 }
 
 export interface SSHKey {

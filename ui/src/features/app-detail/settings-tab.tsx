@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { SectionHeader } from '@/components/common/section-header'
 import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
+import { BuildSourcePicker, type BuildSourceValue } from '@/features/apps/build-source'
 import { useApp, useDeleteApp, useUpdateApp } from '@/lib/api/apps'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { App } from '@/types/api'
@@ -41,6 +42,19 @@ function SettingsForm({ app }: { app: App }) {
   const [gitUrl, setGitUrl] = useState(app.git_url)
   const [branch, setBranch] = useState(app.git_branch)
   const [composeFile, setComposeFile] = useState(app.compose_file)
+  const [build, setBuild] = useState<BuildSourceValue>({
+    build_kind: app.build_kind ?? 'auto',
+    build_config: app.build_config ?? {},
+  })
+
+  const saveBuild = () =>
+    update.mutate(
+      { build_kind: build.build_kind, build_config: build.build_config },
+      {
+        onSuccess: () => toast.success('Build source updated'),
+        onError: (e) => toast.error(e.message),
+      },
+    )
 
   const saveGeneral = () =>
     update.mutate(
@@ -132,6 +146,18 @@ function SettingsForm({ app }: { app: App }) {
         <div className="mt-4">
           <DeployKeyCard appId={appId} gitUrl={app.git_url} />
         </div>
+      </section>
+
+      <section>
+        <SectionHeader>Build</SectionHeader>
+        <Card className="gap-5 p-5">
+          <BuildSourcePicker value={build} onChange={setBuild} />
+          <div className="flex justify-end">
+            <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveBuild}>
+              Save
+            </Button>
+          </div>
+        </Card>
       </section>
 
       <section>

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/caddy"
@@ -61,6 +62,31 @@ type Manager struct {
 	cfg        Config
 	logger     *slog.Logger
 	baseConfig *caddy.Config // re-pushed to self-heal a Caddy restart; nil disables
+
+	mu                 sync.RWMutex
+	baseDomainOverride string // runtime override from instance_settings; "" = use cfg.BaseDomain
+	hasOverride        bool
+}
+
+// SetBaseDomain installs a runtime base-domain override (from the DB-backed
+// instance settings), used for automatic subdomains in place of the config
+// value. Safe for concurrent use; call after a settings change or at boot.
+func (m *Manager) SetBaseDomain(domain string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.baseDomainOverride = domain
+	m.hasOverride = true
+}
+
+// baseDomain returns the effective base domain: the runtime override when set,
+// otherwise the startup config value.
+func (m *Manager) baseDomain() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.hasOverride {
+		return m.baseDomainOverride
+	}
+	return m.cfg.BaseDomain
 }
 
 // New wires a Manager.
@@ -352,7 +378,8 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 // an app that doesn't already have one, when a base domain is configured.
 // Idempotent — an existing hostname is skipped.
 func (m *Manager) AssignAutoDomains(ctx context.Context, appID string) error {
-	if m.cfg.BaseDomain == "" {
+	baseDomain := m.baseDomain()
+	if baseDomain == "" {
 		return nil
 	}
 	app, err := m.store.GetApp(ctx, appID)
@@ -373,7 +400,7 @@ func (m *Manager) AssignAutoDomains(ctx context.Context, appID string) error {
 
 	var errs []error
 	for _, s := range httpServices {
-		host := AutoSubdomain(app.Slug, s.ServiceName, m.cfg.BaseDomain, multi)
+		host := AutoSubdomain(app.Slug, s.ServiceName, baseDomain, multi)
 		if host == "" {
 			continue
 		}

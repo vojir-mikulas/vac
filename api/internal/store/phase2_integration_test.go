@@ -19,7 +19,7 @@ import (
 func testApp(t *testing.T, s *store.Store, slug string) store.App {
 	t.Helper()
 	ctx := context.Background()
-	a, err := s.CreateApp(ctx, "Test "+slug, slug, "git@github.com:vojir-mikulas/test.git", "main", "compose.yaml")
+	a, err := s.CreateApp(ctx, "Test "+slug, slug, "git@github.com:vojir-mikulas/test.git", "main", "compose.yaml", "auto", nil)
 	if err != nil {
 		t.Fatalf("CreateApp: %v", err)
 	}
@@ -376,8 +376,8 @@ func TestEnvVarsReplaceAll(t *testing.T) {
 	sealedHello, _ := box.Seal([]byte("hello"))
 	sealedWorld, _ := box.Seal([]byte("world"))
 	first := []store.EnvVarInput{
-		{Key: "GREETING", Value: sealedHello},
-		{Key: "TARGET", Value: sealedWorld},
+		{Key: "GREETING", Value: sealedHello, Sensitive: false},
+		{Key: "TARGET", Value: sealedWorld, Sensitive: true},
 	}
 	if err := s.ReplaceEnvVars(ctx, a.ID, first); err != nil {
 		t.Fatalf("ReplaceEnvVars first: %v", err)
@@ -397,6 +397,13 @@ func TestEnvVarsReplaceAll(t *testing.T) {
 	openedHello, err := box.Open(got[0].Value)
 	if err != nil || string(openedHello) != "hello" {
 		t.Errorf("decrypted GREETING = %q, err=%v", openedHello, err)
+	}
+	// Sensitivity flag round-trips per row.
+	if got[0].Sensitive {
+		t.Errorf("GREETING should be non-sensitive")
+	}
+	if !got[1].Sensitive {
+		t.Errorf("TARGET should be sensitive")
 	}
 
 	// Replace-all semantics — pre-existing rows disappear.

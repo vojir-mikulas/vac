@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useWebSocket } from '@/lib/ws/use-websocket'
 import type { BuildLogData, RuntimeLogData, WsFrame } from '@/types/api'
@@ -50,14 +50,27 @@ function useLogAccumulator() {
 }
 
 // Live build-log stream for one deployment. WS replays persisted lines then
-// tails; a `build-end` frame flips `done`.
-export function useDeploymentLogs(did: string, enabled = true) {
+// tails; a `build-end` frame flips `done` and tears the socket down so it
+// never reconnects/re-replays (the source of the old "error spam" loop).
+// `onDone` fires exactly once when the stream terminates — callers use it to
+// settle the deployment's cached status.
+export function useDeploymentLogs(did: string, enabled = true, onDone?: () => void) {
   const { lines, done, setDone, push } = useLogAccumulator()
+
+  const onDoneRef = useRef(onDone)
+  useEffect(() => {
+    onDoneRef.current = onDone
+  })
+  const doneFiredRef = useRef(false)
 
   const onFrame = useCallback(
     (frame: WsFrame) => {
       if (frame.type === 'build-end') {
         setDone(true)
+        if (!doneFiredRef.current) {
+          doneFiredRef.current = true
+          onDoneRef.current?.()
+        }
         return
       }
       if (frame.type === 'build') {
@@ -74,7 +87,8 @@ export function useDeploymentLogs(did: string, enabled = true) {
     [push, setDone],
   )
 
-  useWebSocket(`/api/deployments/${did}/logs`, { enabled, onFrame })
+  // Disable once done so the socket closes and does not reconnect/replay.
+  useWebSocket(`/api/deployments/${did}/logs`, { enabled: enabled && !done, onFrame })
   return { lines, done }
 }
 

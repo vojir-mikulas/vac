@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, RotateCw } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -12,6 +13,7 @@ import { LogViewer } from '@/components/common/log-viewer'
 import { DeploySteps } from '@/features/app-detail/deploy-steps'
 import { useDeployments, useTriggerDeploy } from '@/lib/api/deployments'
 import { useDeploymentLogs } from '@/lib/ws/use-log-stream'
+import { queryKeys } from '@/lib/query/keys'
 import { cn } from '@/lib/utils'
 import { durationBetween, relativeTime, shortSha } from '@/lib/format'
 import type { Deployment } from '@/types/api'
@@ -66,7 +68,7 @@ function DeployRow({ deployment }: { deployment: Deployment }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-4 px-5 py-3.5 text-left"
+        className="flex cursor-pointer items-center gap-4 px-5 py-3.5 text-left"
       >
         <ChevronDown
           className={cn(
@@ -94,14 +96,19 @@ function DeployRow({ deployment }: { deployment: Deployment }) {
               {deployment.error}
             </p>
           ) : null}
-          <BuildLogs did={deployment.id} />
+          <BuildLogs appId={deployment.app_id} did={deployment.id} />
         </div>
       ) : null}
     </Card>
   )
 }
 
-function BuildLogs({ did }: { did: string }) {
-  const { lines } = useDeploymentLogs(did)
+function BuildLogs({ appId, did }: { appId: string; did: string }) {
+  const qc = useQueryClient()
+  // When the build stream terminates, settle the deployment list so the row's
+  // status flips to its terminal value immediately rather than on the next poll.
+  const { lines } = useDeploymentLogs(did, true, () => {
+    qc.invalidateQueries({ queryKey: queryKeys.apps.deployments(appId) })
+  })
   return <LogViewer lines={lines} className="h-80" emptyLabel="No build output." />
 }

@@ -132,6 +132,103 @@ what we do instead, why, and the trade-off (what we give up / when we'd revisit)
   setup); without it, storing a URL returns a clear error and only the `VAC_NOTIFY_*` env path
   works.
 
+### D9 — Per-key env sensitivity, but every value stays sealed at rest
+
+- **mvp.md says** (§ Secrets / § Configuration): env vars are encrypted at rest with
+  `crypto.Box` and never returned by the API — the UI renders `●●●●` for every key.
+- **We do instead** (improvements plan `04-env-overhaul`): each env var carries a
+  `sensitive BOOLEAN` flag (migration `00016`). **Non-sensitive** values are returned
+  decrypted by `GET /apps/{id}/env` so the UI can show/edit them inline; **sensitive**
+  values are still withheld and only disclosed through an explicit
+  `GET /apps/{id}/env/{key}/reveal` call (audit-logged via `slog`). Crucially, **every row
+  remains sealed at rest** regardless of the flag — we picked the plan's "uniform" option
+  (seal everything; gate read-back on `sensitive`) over a separate `value_plain` column.
+- **Why:** it preserves the "encrypted at rest" invariant verbatim — there is no plaintext
+  column on disk — while still letting operators read and edit ordinary config (`NODE_ENV`,
+  `PORT`) the way Vercel does. The flag is purely a read-back policy, not an at-rest one.
+- **Trade-off:** the list endpoint now decrypts non-sensitive values on read, so it needs
+  `VAC_MASTER_KEY` to be set (returns 503 otherwise) — previously list worked key-less since
+  it returned no values. Full-replace `PUT` semantics are unchanged; the UI resolves any
+  unrevealed sensitive values (via reveal) before submitting so a save never drops a secret.
+
+---
+
+## Improvements batch (2026-05-31) — settings/instance
+
+### D — Runtime-editable base domain lives in a DB singleton, not just config
+
+- **Context:** auto-subdomains need a base domain, previously config-only (`VAC_BASE_DOMAIN`),
+  set at boot and read by `proxy.Manager`.
+- **We do instead:** a singleton `instance_settings` row (migration `00018`) holds a
+  runtime-editable `base_domain`. The Domains settings tab reads/writes it via
+  `GET/PUT /api/instance/base-domain`. On write, the handler persists to the DB **and** calls
+  `proxy.Manager.SetBaseDomain` (a mutex-guarded override) so new auto-domains use it
+  immediately; on boot, `main` loads the row into the manager. Empty falls back to config.
+- **Why:** operators expected to set the base domain from the dashboard without redeploying the
+  control plane. The override is additive — when unset, behaviour is identical to before.
+- **Trade-off:** the effective base domain now has two sources (DB row wins over config). The
+  manager reads it through `baseDomain()` rather than `cfg.BaseDomain` directly.
+
+### D — Instance control-plane restart is a self-exit relying on the container restart policy
+
+- **Context:** the Danger-zone "Restart control plane" must restart vac-api + vac-proxy while
+  leaving app containers on `vac-edge` running. vac-api cannot cleanly `docker restart` itself
+  from inside the dying container.
+- **We do instead:** `POST /api/instance/restart-control-plane` restarts `vac-proxy` synchronously
+  via `docker restart` (raw container, `dockercli.RestartContainers`), responds `202`, then sends
+  itself `SIGTERM` after a short delay. Graceful shutdown runs and the container's
+  `restart: unless-stopped` policy brings vac-api (and the in-process worker) back. The UI shows a
+  "reconnecting…" state and reloads once the API answers again.
+- **Why:** a child `docker restart vac-api` spawned from within vac-api is racy (the child can die
+  with its parent). Leaning on the restart policy is deterministic and needs no host agent.
+- **Trade-off:** requires the deployment to set a restart policy on `vac-api` (the prod compose
+  does). If it doesn't, vac-api stays down after the self-exit. App containers are untouched.
+
+### D — Instance reset wipes app stacks + rows but preserves the control-plane schema
+
+- **Context:** Danger-zone "Reset instance" must wipe apps/deployments/databases behind a typed
+  confirmation.
+- **We do instead:** `POST /api/instance/reset` requires the body to echo `RESET` (re-validated
+  server-side, rejected `400` otherwise), then for each app runs `docker compose down -v`
+  (containers + volumes) and `DeleteApp` (cascades deployments/services/domains/env). The control
+  plane, its users/sessions, and the schema survive. Best-effort per app so one stuck stack can't
+  block the wipe; counts of removed/failed are returned.
+- **Why:** "reset" means start clean on apps, not re-bootstrap the operator account. Typed
+  confirmation on both client and server guards an irreversible action.
+- **Trade-off:** orphaned images aren't pruned here (the existing image-retention pruner handles
+  that); a failed `down` still deletes the row, so a wedged stack may need manual `docker` cleanup.
+
+### D — VPS public IP is surfaced via host stats and the DNS-check endpoint
+
+- **Context:** the sidebar host row and the per-domain DNS guidance need the VPS's public IP.
+- **We do instead:** `config.PublicIPAddr()` returns `VAC_PUBLIC_IP` when set, else best-effort
+  outbound-interface detection (a UDP "dial" that opens no socket). It feeds `host_ip` in the
+  host-stats payload and the `GET /api/instance/dns-check` comparison (resolve a hostname
+  server-side, compare to the VPS IP → `points_here`).
+- **Why:** copy-pasteable A-record values and a live "is it pointed here yet?" check need the real
+  address, not a placeholder.
+- **Trade-off:** auto-detection returns the primary route's source IP, which on a NAT'd host may
+  differ from the true public IP — operators set `VAC_PUBLIC_IP` to override.
+
+### D — Build adapters resolve to a compose file; `compose_file` kept for back-compat
+
+- **Context:** plan 03 adds build adapters (compose / dockerfile / framework / static) so users
+  can deploy more than a hand-written compose file. Schema gains `apps.build_kind` (default
+  `auto`) and `apps.build_config` (JSONB).
+- **We do instead:** every adapter ultimately *produces a compose file* the existing pipeline
+  builds & ups — the deploy path stays compose-driven, so the vac-edge routing and Caddy
+  health-gating invariants (D2/D3) hold unchanged. The legacy `compose_file` column is **kept**
+  rather than folded into `build_config.composePath`: when the compose adapter's `composePath`
+  is empty, the pipeline falls back to `compose_file`, so pre-adapter apps deploy untouched.
+  Generated adapters (dockerfile/static/framework) write a `compose.yaml` (plus an nginx conf or
+  `Dockerfile.vac`) into the repo working tree, regenerated every deploy.
+- **Why:** preserving `compose_file` avoids a data migration and keeps plan 02's `DetectAt`
+  detection/override behaviour working as the compose adapter's core.
+- **Trade-off:** two places nominally describe "where the compose file is" (the column and
+  `build_config.composePath`); the column is authoritative only when `build_kind` is `auto` or
+  `compose`. Static/framework routing relies on the generated service publishing a port so VAC
+  auto-detects its internal port (the same mechanism as a user compose with `ports:`).
+
 ---
 
 > Maintenance note: when a deviation is later reconciled (e.g. we adopt the mvp's original

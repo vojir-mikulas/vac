@@ -1,6 +1,7 @@
 import { Check, Loader2, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { isDeployFailed, isDeploySucceeded } from '@/lib/deploy-status'
 import type { DeploymentStatus } from '@/types/api'
 
 // The pipeline stages in order. `status` maps onto the active stage.
@@ -19,12 +20,14 @@ const ORDER: Record<string, number> = {
   building: 2,
   deploying: 3,
   'health-checking': 4,
-  success: 5,
 }
 
 export function DeploySteps({ status }: { status: DeploymentStatus }) {
-  const failed = status === 'failed' || status === 'interrupted'
-  const activeIndex = ORDER[status] ?? (failed ? -1 : 0)
+  const failed = isDeployFailed(status)
+  const succeeded = isDeploySucceeded(status)
+  // On success every step (including the final "Done") reads as complete;
+  // on failure no step is "active" and step 0 carries the failure marker.
+  const activeIndex = succeeded ? STEPS.length : (ORDER[status] ?? (failed ? -1 : 0))
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">

@@ -8,6 +8,9 @@ import { queryKeys } from '@/lib/query/keys'
 
 export const Route = createFileRoute('/_app')({
   beforeLoad: async ({ context }) => {
+    // TEMP (local UI preview, do not commit): skip auth/setup guard so the
+    // dashboard renders without a backend.
+    return
     const { queryClient } = context
 
     // First boot: no admin user yet → send to the onboarding wizard.

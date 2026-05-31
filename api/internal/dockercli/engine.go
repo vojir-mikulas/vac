@@ -59,6 +59,23 @@ func (c *Compose) Events(ctx context.Context) (<-chan Event, error) {
 	return out, nil
 }
 
+// RestartContainers runs `docker restart <name>...` against raw containers (not
+// compose projects). Used by the instance-level control-plane restart, which
+// bounces the vac-* infrastructure containers by name. A missing/unknown name
+// surfaces as an error.
+func (c *Compose) RestartContainers(ctx context.Context, names ...string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	args := append([]string{"restart"}, names...)
+	cmd := c.command(ctx, "", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return mapCmdError(err, out)
+	}
+	return nil
+}
+
 // Inspect runs `docker inspect <id>` and returns the raw JSON. Callers
 // decode the bits they need (the full ContainerJSON shape is hundreds of
 // fields — not worth modelling).

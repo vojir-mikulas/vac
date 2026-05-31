@@ -19,6 +19,7 @@ const VARIANTS: Record<string, Variant> = {
   'health-checking': { label: 'Health check', tone: 'warn', pulse: true },
   queued: { label: 'Queued', tone: 'muted', pulse: true },
   crashed: { label: 'Crashed', tone: 'err' },
+  error: { label: 'Failed', tone: 'err' },
   failed: { label: 'Failed', tone: 'err' },
   interrupted: { label: 'Interrupted', tone: 'err' },
   stopped: { label: 'Stopped', tone: 'muted' },

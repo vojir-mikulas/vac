@@ -38,13 +38,18 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		syncer   handler.RouteSyncer
 		caddyPin handler.CaddyPinger
 		ctrlChk  handler.ControlDomainChecker
+		baseDom  handler.BaseDomainSetter
 	)
 	if pm != nil {
 		proxyMgr = pm
 		syncer = pm
 		caddyPin = pm
 		ctrlChk = pm
+		baseDom = pm
 	}
+
+	// VPS public address for the DNS-setup guidance and sidebar host row.
+	hostIP := cfg.PublicIPAddr()
 
 	wsOpts := wsAcceptOptions(cfg)
 
@@ -121,6 +126,20 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Post("/settings/notifications/test", handler.TestNotification(notifier))
 			}
 
+			// Instance-level settings & operations (info, base domain, DNS
+			// check, danger-zone control-plane ops).
+			r.Route("/instance", func(r chi.Router) {
+				r.Get("/info", handler.InstanceInfo(cfg))
+				r.Get("/base-domain", handler.GetBaseDomain(s, cfg))
+				r.Put("/base-domain", handler.PutBaseDomain(s, cfg, baseDom))
+				r.Get("/dns-check", handler.DNSCheck(hostIP))
+				if docker != nil {
+					r.Post("/restart-control-plane", handler.RestartControlPlane(docker))
+					r.Post("/stop-all-apps", handler.StopAllApps(s, docker, proxyMgr))
+					r.Post("/reset", handler.ResetInstance(s, docker, proxyMgr))
+				}
+			})
+
 			r.Route("/apps", func(r chi.Router) {
 				r.Get("/", handler.ListApps(s))
 				r.Post("/", handler.CreateApp(s))
@@ -141,8 +160,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Get("/{id}/deployments/{did}/logs", handler.GetDeploymentLogs(s))
 				}
 
-				r.Get("/{id}/env", handler.ListAppEnv(s))
+				r.Get("/{id}/env", handler.ListAppEnv(s, box))
 				r.Put("/{id}/env", handler.ReplaceAppEnv(s, box))
+				r.Get("/{id}/env/{key}/reveal", handler.RevealAppEnv(s, box))
 
 				r.Get("/{id}/services", handler.ListAppServices(s))
 				r.Patch("/{id}/services/{name}", handler.PatchAppService(s))

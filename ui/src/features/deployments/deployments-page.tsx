@@ -13,9 +13,8 @@ import { useApps } from '@/lib/api/apps'
 import { deploymentsApi } from '@/lib/api/deployments'
 import { queryKeys } from '@/lib/query/keys'
 import { durationBetween, formatDuration, relativeTime, shortSha } from '@/lib/format'
+import { isDeployActive, isDeploySucceeded, isDeployTerminal } from '@/lib/deploy-status'
 import type { Deployment } from '@/types/api'
-
-const ACTIVE = new Set(['queued', 'cloning', 'building', 'deploying', 'health-checking'])
 
 interface Row extends Deployment {
   appName: string
@@ -44,7 +43,7 @@ export function DeploymentsPage() {
   rows.sort((a, b) => new Date(b.triggered_at).getTime() - new Date(a.triggered_at).getTime())
 
   const metrics = computeMetrics(rows)
-  const active = rows.filter((r) => ACTIVE.has(r.status))
+  const active = rows.filter((r) => isDeployActive(r.status))
 
   return (
     <PageContainer>
@@ -86,6 +85,11 @@ export function DeploymentsPage() {
         />
       ) : (
         <Card className="gap-0 p-0">
+          <div className="flex items-center gap-4 border-b px-5 py-2.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+            <span className="w-32 shrink-0">App</span>
+            <span className="flex-1">Commit</span>
+            <span className="shrink-0">Status</span>
+          </div>
           {rows.slice(0, 50).map((d, i) => (
             <div
               key={d.id}
@@ -127,11 +131,11 @@ function computeMetrics(rows: Row[]) {
 
   for (const d of rows) {
     if (new Date(d.triggered_at).getTime() >= startMs) today++
-    if (d.status === 'success' || d.status === 'failed') {
+    if (isDeployTerminal(d.status)) {
       terminal++
-      if (d.status === 'success') success++
+      if (isDeploySucceeded(d.status)) success++
     }
-    if (d.status === 'success' && d.started_at && d.finished_at) {
+    if (isDeploySucceeded(d.status) && d.started_at && d.finished_at) {
       const ms = new Date(d.finished_at).getTime() - new Date(d.started_at).getTime()
       if (ms > 0) {
         buildTotal += ms

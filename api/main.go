@@ -72,6 +72,10 @@ func main() {
 		slog.Error("config load failed", "err", err)
 		os.Exit(1)
 	}
+	// Surface build metadata through config so the instance-info endpoint can
+	// report it without importing main.
+	cfg.Version, cfg.Commit, cfg.BuildDate = version, commit, buildDate
+	hostIP := cfg.PublicIPAddr()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -133,6 +137,14 @@ func main() {
 		HealthRetries:  cfg.HealthCheckRetries,
 	}, slog.Default())
 
+	// Apply any runtime base-domain override saved in instance_settings so it
+	// survives restarts (the UI writes both the DB and the live manager).
+	if settings, err := st.GetInstanceSettings(ctx); err != nil {
+		slog.Warn("could not load instance settings; using config base domain", "err", err)
+	} else if settings.BaseDomain != "" {
+		proxyMgr.SetBaseDomain(settings.BaseDomain)
+	}
+
 	loadCaddyBaseConfig(ctx, cfg, caddyClient, proxyMgr)
 
 	// Outbound notifications (Discord/Slack). Stored webhook URLs are decrypted
@@ -159,7 +171,7 @@ func main() {
 	// subscribe hooks) plus host vitals. The host request-rate field reuses the
 	// Caddy /metrics scrape.
 	scraper := reqmetrics.NewScraper(strings.TrimRight(cfg.CaddyAdminURL, "/")+"/metrics", nil)
-	hostCollector := stats.NewHostCollector(scraper, cfg.WorkDir)
+	hostCollector := stats.NewHostCollector(scraper, cfg.WorkDir, hostIP)
 	statsMgr := stats.NewManager(docker, st, hub, hostCollector, cfg.StatsPollInterval, slog.Default())
 	hub.SetCallbacks(statsMgr.OnSubscribe, statsMgr.OnUnsubscribe)
 	statsMgr.Start(ctx)

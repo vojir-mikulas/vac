@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"time"
@@ -55,10 +56,21 @@ type Config struct {
 	RequestMetricsRetention time.Duration `yaml:"request_metrics_retention"`
 	ACMECA                  string        `yaml:"acme_ca"` // override for ACME staging in tests
 
+	// PublicIP is the VPS's public address, surfaced in the dashboard (sidebar
+	// host row) and used by the per-app DNS-setup guidance so operators see the
+	// exact A-record value. Empty triggers best-effort outbound-IP detection.
+	PublicIP string `yaml:"public_ip"`
+
 	// Phase 4: notifications. Webhook URLs are semi-secret — env-only, never in
 	// the config file; they override any UI-stored value.
 	NotifyDiscordURL string `yaml:"-"`
 	NotifySlackURL   string `yaml:"-"`
+
+	// Build metadata injected by main() from ldflags vars; surfaced by the
+	// instance-info endpoint. Not read from env/yaml.
+	Version   string `yaml:"-"`
+	Commit    string `yaml:"-"`
+	BuildDate string `yaml:"-"`
 }
 
 type ServerConfig struct {
@@ -257,6 +269,9 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("VAC_ACME_CA"); v != "" {
 		cfg.ACMECA = v
 	}
+	if v := os.Getenv("VAC_PUBLIC_IP"); v != "" {
+		cfg.PublicIP = v
+	}
 	cfg.NotifyDiscordURL = os.Getenv("VAC_NOTIFY_DISCORD_URL")
 	cfg.NotifySlackURL = os.Getenv("VAC_NOTIFY_SLACK_URL")
 }
@@ -280,6 +295,29 @@ func validate(cfg *Config) {
 // Addr returns the host:port string used by the HTTP server.
 func (c Config) Addr() string {
 	return fmt.Sprintf("%s:%d", c.Server.Host, c.Server.Port)
+}
+
+// PublicIPAddr returns the configured public IP, or a best-effort detection of
+// the primary outbound interface address when unset. Detection opens no
+// connection (UDP "dial" only selects a route) so it's cheap and offline-safe;
+// it returns "" if no route can be determined.
+func (c Config) PublicIPAddr() string {
+	if c.PublicIP != "" {
+		return c.PublicIP
+	}
+	return detectOutboundIP()
+}
+
+func detectOutboundIP() string {
+	conn, err := net.Dial("udp", "1.1.1.1:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	if a, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+		return a.IP.String()
+	}
+	return ""
 }
 
 // SecureCookies returns true when cookies must carry the Secure flag (HTTPS

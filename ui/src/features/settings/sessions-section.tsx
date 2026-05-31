@@ -3,6 +3,7 @@ import { Monitor } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -66,9 +67,9 @@ export function SessionsSection() {
                 <div className="flex items-center gap-2 text-sm">
                   <span className="truncate">{s.user_agent ?? 'Unknown device'}</span>
                   {s.is_current ? (
-                    <span className="rounded bg-ok-bg px-1.5 py-0.5 text-2xs font-medium text-ok-foreground">
+                    <Badge variant="success" className="px-1.5 py-0 text-2xs">
                       This device
-                    </span>
+                    </Badge>
                   ) : null}
                 </div>
                 <div className="font-mono text-2xs text-muted-foreground">

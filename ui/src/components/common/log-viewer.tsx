@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowDown } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
 import { cn } from '@/lib/utils'
@@ -11,6 +12,10 @@ const LEVEL_CLASS: Record<LogLevel, string> = {
   warn: 'text-warn-foreground',
   error: 'text-err-foreground',
 }
+
+// Distance from the bottom (px) within which we consider the viewport "pinned"
+// to the tail and keep auto-scrolling as new lines arrive.
+const PIN_THRESHOLD = 24
 
 function timeOf(ts: string): string {
   const d = new Date(ts)
@@ -40,9 +45,32 @@ export function LogViewer({
     overscan: 12,
   })
 
-  // Stick to the bottom while auto-scroll is on and new lines arrive.
+  // `pinned` drives auto-scroll; `atBottom` drives the jump affordance. They
+  // track the same condition but pinned is a ref so the new-lines effect reads
+  // the latest value without re-subscribing.
+  const pinnedRef = useRef(autoScroll)
+  const [atBottom, setAtBottom] = useState(true)
+
+  const recomputePinned = useCallback(() => {
+    const el = parentRef.current
+    if (!el) return
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    const isBottom = distance <= PIN_THRESHOLD
+    pinnedRef.current = isBottom
+    setAtBottom((prev) => (prev === isBottom ? prev : isBottom))
+  }, [])
+
+  const jumpToLatest = useCallback(() => {
+    if (lines.length === 0) return
+    pinnedRef.current = true
+    setAtBottom(true)
+    virtualizer.scrollToIndex(lines.length - 1, { align: 'end' })
+  }, [lines.length, virtualizer])
+
+  // Stick to the bottom only while pinned. A user who scrolls up unpins and is
+  // left where they are until they jump back to the tail.
   useEffect(() => {
-    if (autoScroll && lines.length > 0) {
+    if (autoScroll && pinnedRef.current && lines.length > 0) {
       virtualizer.scrollToIndex(lines.length - 1, { align: 'end' })
     }
   }, [autoScroll, lines.length, virtualizer])
@@ -61,36 +89,52 @@ export function LogViewer({
   }
 
   return (
-    <div
-      ref={parentRef}
-      className={cn(
-        'h-112 overflow-auto rounded-xl border bg-console p-3 font-mono text-xs leading-5',
-        className,
-      )}
-    >
-      <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
-        {virtualizer.getVirtualItems().map((item) => {
-          const line = lines[item.index]!
-          return (
-            <div
-              key={line.key}
-              className="absolute left-0 flex w-full gap-2 px-1 whitespace-pre-wrap"
-              style={{ top: 0, transform: `translateY(${item.start}px)` }}
-            >
-              <span className="shrink-0 text-console-muted">{timeOf(line.ts)}</span>
-              {showService && line.service ? (
-                <span
-                  className="shrink-0 font-medium"
-                  style={{ color: serviceColorVar(line.service) }}
-                >
-                  {line.service}
+    <div className="relative">
+      <div
+        ref={parentRef}
+        onScroll={recomputePinned}
+        className={cn(
+          'h-112 overflow-auto rounded-xl border bg-console p-3 font-mono text-xs leading-5',
+          className,
+        )}
+      >
+        <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+          {virtualizer.getVirtualItems().map((item) => {
+            const line = lines[item.index]!
+            return (
+              <div
+                key={line.key}
+                className="absolute left-0 flex w-full gap-2 px-1 whitespace-pre-wrap"
+                style={{ top: 0, transform: `translateY(${item.start}px)` }}
+              >
+                <span className="shrink-0 text-console-muted">{timeOf(line.ts)}</span>
+                {showService && line.service ? (
+                  <span
+                    className="shrink-0 font-medium"
+                    style={{ color: serviceColorVar(line.service) }}
+                  >
+                    {line.service}
+                  </span>
+                ) : null}
+                <span className={cn('min-w-0 flex-1', LEVEL_CLASS[line.level])}>
+                  {line.message}
                 </span>
-              ) : null}
-              <span className={cn('min-w-0 flex-1', LEVEL_CLASS[line.level])}>{line.message}</span>
-            </div>
-          )
-        })}
+              </div>
+            )
+          })}
+        </div>
       </div>
+
+      {!atBottom ? (
+        <button
+          type="button"
+          onClick={jumpToLatest}
+          className="absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-surface-2 px-3 py-1 text-2xs font-medium shadow-sm hover:bg-surface-2/70"
+        >
+          <ArrowDown className="size-3" />
+          Jump to latest
+        </button>
+      ) : null}
     </div>
   )
 }

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/vojir-mikulas/vac/api/internal/adapter"
 	"github.com/vojir-mikulas/vac/api/internal/compose"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
@@ -174,25 +175,29 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		_ = p.logSystem(ctx, deploymentID, fmt.Sprintf("commit: %s — %s", sha[:min(7, len(sha))], msg))
 	}
 
-	// ---- Compose detection / wrap ----
-	res, err := compose.Detect(repoDir)
+	// ---- Build adapter: resolve/produce the compose file ----
+	// Adapters formalize every build source (compose / dockerfile / framework /
+	// static) down to a compose file VAC builds & ups; the rest of the pipeline
+	// stays compose-driven, preserving the vac-edge routing + Caddy health
+	// invariants. build_kind="auto" detects the kind from the cloned repo.
+	cfg, err := adapter.ParseConfig(app.BuildConfig)
 	if err != nil {
 		return err
 	}
-	composeFile := res.Path
-	if res.Source == compose.SourceGenerated {
-		// The wrap lives inside repo/ so its `build: .` resolves to the
-		// repo working tree. The next pull's reset --hard does not touch
-		// untracked files, so the wrap survives — but we re-write every
-		// deploy in case the template changes.
-		wrapPath := filepath.Join(repoDir, "compose.yaml")
-		written, werr := compose.Wrap(wrapPath)
-		if werr != nil {
-			return werr
-		}
-		composeFile = written
-		_ = p.logSystem(ctx, deploymentID, "no compose file in repo — using auto-generated wrapper for Dockerfile")
+	// Back-compat: an empty configured compose path falls back to the legacy
+	// per-app compose_file column.
+	if cfg.ComposePath == "" {
+		cfg.ComposePath = app.ComposeFile
 	}
+	ad, err := adapter.For(app.BuildKind, repoDir)
+	if err != nil {
+		return err
+	}
+	composeFile, err := ad.Prepare(ctx, repoDir, cfg)
+	if err != nil {
+		return err
+	}
+	_ = p.logSystem(ctx, deploymentID, "build source: "+ad.Kind())
 
 	// Compose hash gives us a stable identifier for "was anything that
 	// would affect this deploy actually different from last time".

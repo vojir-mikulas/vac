@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/vojir-mikulas/vac/api/internal/adapter"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
@@ -37,33 +38,43 @@ var slugRe = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 var gitRefRe = regexp.MustCompile(`^[A-Za-z0-9._/][A-Za-z0-9._/-]*$`)
 
 type createAppRequest struct {
-	Name        string `json:"name"                    validate:"required,min=1,max=100"`
-	Slug        string `json:"slug,omitempty"          validate:"omitempty,max=63"`
-	GitURL      string `json:"git_url"                 validate:"required,min=1,max=500"`
-	GitBranch   string `json:"git_branch,omitempty"    validate:"omitempty,max=200"`
-	ComposeFile string `json:"compose_file,omitempty"  validate:"omitempty,max=200"`
+	Name        string          `json:"name"                    validate:"required,min=1,max=100"`
+	Slug        string          `json:"slug,omitempty"          validate:"omitempty,max=63"`
+	GitURL      string          `json:"git_url"                 validate:"required,min=1,max=500"`
+	GitBranch   string          `json:"git_branch,omitempty"    validate:"omitempty,max=200"`
+	ComposeFile string          `json:"compose_file,omitempty"  validate:"omitempty,max=200"`
+	BuildKind   string          `json:"build_kind,omitempty"    validate:"omitempty,max=32"`
+	BuildConfig json.RawMessage `json:"build_config,omitempty"`
 }
 
 type updateAppRequest struct {
-	Name        *string `json:"name,omitempty"`
-	GitURL      *string `json:"git_url,omitempty"`
-	GitBranch   *string `json:"git_branch,omitempty"`
-	ComposeFile *string `json:"compose_file,omitempty"`
+	Name        *string         `json:"name,omitempty"`
+	GitURL      *string         `json:"git_url,omitempty"`
+	GitBranch   *string         `json:"git_branch,omitempty"`
+	ComposeFile *string         `json:"compose_file,omitempty"`
+	BuildKind   *string         `json:"build_kind,omitempty"`
+	BuildConfig json.RawMessage `json:"build_config,omitempty"`
 }
 
 type appDTO struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Slug        string    `json:"slug"`
-	GitURL      string    `json:"git_url"`
-	GitBranch   string    `json:"git_branch"`
-	ComposeFile string    `json:"compose_file"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Slug        string          `json:"slug"`
+	GitURL      string          `json:"git_url"`
+	GitBranch   string          `json:"git_branch"`
+	ComposeFile string          `json:"compose_file"`
+	BuildKind   string          `json:"build_kind"`
+	BuildConfig json.RawMessage `json:"build_config"`
+	Status      string          `json:"status"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
 func toAppDTO(a store.App) appDTO {
+	bc := a.BuildConfig
+	if len(bc) == 0 {
+		bc = json.RawMessage("{}")
+	}
 	return appDTO{
 		ID:          a.ID,
 		Name:        a.Name,
@@ -71,10 +82,38 @@ func toAppDTO(a store.App) appDTO {
 		GitURL:      a.GitURL,
 		GitBranch:   a.GitBranch,
 		ComposeFile: a.ComposeFile,
+		BuildKind:   a.BuildKind,
+		BuildConfig: bc,
 		Status:      a.Status,
 		CreatedAt:   a.CreatedAt,
 		UpdatedAt:   a.UpdatedAt,
 	}
+}
+
+// validBuildKinds is the set accepted on the wire.
+var validBuildKinds = map[string]bool{
+	adapter.KindAuto:       true,
+	adapter.KindCompose:    true,
+	adapter.KindDockerfile: true,
+	adapter.KindFramework:  true,
+	adapter.KindStatic:     true,
+}
+
+// normalizeBuildConfig validates a (kind, raw build_config) pair and returns
+// the canonical JSON to persist (unknown fields dropped). A blank raw → "{}".
+func normalizeBuildConfig(kind string, raw json.RawMessage) (json.RawMessage, string, bool) {
+	cfg, err := adapter.ParseConfig(raw)
+	if err != nil {
+		return nil, "invalid build_config json", false
+	}
+	if err := adapter.Validate(kind, cfg); err != nil {
+		return nil, err.Error(), false
+	}
+	canonical, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, "invalid build_config", false
+	}
+	return canonical, "", true
 }
 
 // CreateApp persists a new app record. Slug is derived from Name when not
@@ -123,7 +162,21 @@ func CreateApp(s *store.Store) http.HandlerFunc {
 			composeFile = defaultComposeFile
 		}
 
-		a, err := s.CreateApp(r.Context(), req.Name, slug, req.GitURL, branch, composeFile)
+		buildKind := strings.TrimSpace(req.BuildKind)
+		if buildKind == "" {
+			buildKind = adapter.KindAuto
+		}
+		if !validBuildKinds[buildKind] {
+			WriteError(w, http.StatusBadRequest, "build_kind must be one of auto, compose, dockerfile, framework, static")
+			return
+		}
+		buildConfig, msg, ok := normalizeBuildConfig(buildKind, req.BuildConfig)
+		if !ok {
+			WriteError(w, http.StatusBadRequest, msg)
+			return
+		}
+
+		a, err := s.CreateApp(r.Context(), req.Name, slug, req.GitURL, branch, composeFile, buildKind, buildConfig)
 		if err != nil {
 			if errors.Is(err, store.ErrConflict) {
 				WriteError(w, http.StatusConflict, "slug already in use")
@@ -214,8 +267,31 @@ func UpdateApp(s *store.Store) http.HandlerFunc {
 			}
 			req.ComposeFile = &trimmed
 		}
+		if req.BuildKind != nil {
+			trimmed := strings.TrimSpace(*req.BuildKind)
+			if !validBuildKinds[trimmed] {
+				WriteError(w, http.StatusBadRequest, "build_kind must be one of auto, compose, dockerfile, framework, static")
+				return
+			}
+			req.BuildKind = &trimmed
+		}
+		// Validate build_config against the kind being set (or, when the kind is
+		// unchanged in this request, structurally). Persist the canonical form.
+		var buildConfig json.RawMessage
+		if req.BuildConfig != nil {
+			kindForValidation := adapter.KindAuto
+			if req.BuildKind != nil {
+				kindForValidation = *req.BuildKind
+			}
+			canonical, msg, ok := normalizeBuildConfig(kindForValidation, req.BuildConfig)
+			if !ok {
+				WriteError(w, http.StatusBadRequest, msg)
+				return
+			}
+			buildConfig = canonical
+		}
 
-		a, err := s.UpdateApp(r.Context(), id, req.Name, req.GitURL, req.GitBranch, req.ComposeFile)
+		a, err := s.UpdateApp(r.Context(), id, req.Name, req.GitURL, req.GitBranch, req.ComposeFile, req.BuildKind, buildConfig)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				WriteError(w, http.StatusNotFound, "app not found")

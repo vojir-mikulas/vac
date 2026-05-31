@@ -1,18 +1,51 @@
 import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+
+/**
+ * Copy `value` to the clipboard. Uses the async Clipboard API when available
+ * (HTTPS / localhost) and falls back to a hidden-textarea + execCommand path
+ * for insecure contexts (plain HTTP), where `navigator.clipboard` is undefined.
+ * Returns true on success.
+ */
+export async function copyToClipboard(value: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value)
+      return true
+    } catch {
+      // fall through to the legacy path
+    }
+  }
+
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = value
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.top = '-9999px'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
 
 export function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false)
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value)
+    const ok = await copyToClipboard(value)
+    if (ok) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // clipboard unavailable (insecure context) — no-op
+    } else {
+      toast.error('Copy failed — select the text and copy manually.')
     }
   }
 

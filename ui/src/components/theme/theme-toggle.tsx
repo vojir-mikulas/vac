@@ -1,19 +1,44 @@
-import { Moon, Sun } from 'lucide-react'
+import { Monitor, Moon, Sun } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { useTheme } from '@/components/theme/theme-provider'
+import { cn } from '@/lib/utils'
+import { useTheme, type Theme } from '@/components/theme/theme-provider'
+
+const OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'system', label: 'System', icon: Monitor },
+]
 
 export function ThemeToggle() {
-  const { theme, toggleTheme } = useTheme()
+  const { theme, setTheme } = useTheme()
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      onClick={toggleTheme}
-      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-      title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+    <div
+      role="radiogroup"
+      aria-label="Theme"
+      className="inline-flex items-center gap-0.5 rounded-md border bg-surface-1 p-0.5"
     >
-      {theme === 'dark' ? <Sun /> : <Moon />}
-    </Button>
+      {OPTIONS.map((opt) => {
+        const active = theme === opt.value
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            aria-label={opt.label}
+            title={opt.label}
+            onClick={() => setTheme(opt.value)}
+            className={cn(
+              'flex size-7 cursor-pointer items-center justify-center rounded transition-colors',
+              active
+                ? 'bg-surface-2 text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <opt.icon className="size-3.5" />
+          </button>
+        )
+      })}
+    </div>
   )
 }

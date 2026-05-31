@@ -162,6 +162,32 @@ func (s *Store) SetDeploymentComposeHash(ctx context.Context, id, hash string) e
 	return nil
 }
 
+// ReapStuckDeployments settles deployments that have sat in a non-terminal
+// state for longer than olderThan, marking them `error`. This is the periodic
+// safety net complementing the boot-time sweep: it catches a row the worker
+// never picked up (e.g. a crash between enqueue and start while the process
+// stayed up) or a pipeline that hung with no further status transitions.
+//
+// Age is measured from when work began (started_at) or, for never-started
+// rows, when they were queued (triggered_at). The timeout must be generous
+// enough not to reap a legitimately long build; if a still-running pipeline is
+// reaped, its eventual terminal write simply wins back the row (benign).
+func (s *Store) ReapStuckDeployments(ctx context.Context, olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan)
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE deployments
+		SET status      = 'error',
+		    error       = COALESCE(error, 'deploy timed out — no progress for too long'),
+		    finished_at = COALESCE(finished_at, NOW())
+		WHERE status IN ('queued', 'cloning', 'building', 'deploying', 'health-checking')
+		  AND COALESCE(started_at, triggered_at) < $1
+	`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // MarkInProgressDeploymentsInterrupted runs once at boot — any row stuck in a
 // non-terminal state from a previous run becomes `interrupted`. This is the
 // graceful-interrupt mechanism from mvp.md § Graceful Shutdown.

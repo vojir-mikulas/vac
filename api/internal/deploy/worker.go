@@ -21,14 +21,28 @@ type RunnerFunc func(ctx context.Context, deploymentID string) error
 // store.MarkInProgressDeploymentsInterrupted satisfies this signature.
 type SweeperFunc func(ctx context.Context) (int64, error)
 
+// ReaperFunc runs periodically to settle deployments that have hung in a
+// non-terminal state for too long. store.ReapStuckDeployments (bound to a
+// timeout) satisfies this signature.
+type ReaperFunc func(ctx context.Context) (int64, error)
+
+// Reaper defaults. The timeout is deliberately generous: it must exceed the
+// slowest realistic build so it never reaps a deploy that's still working.
+const (
+	defaultReapInterval = 1 * time.Minute
+	defaultReapTimeout  = 30 * time.Minute
+)
+
 // Worker is the single-goroutine deployment runner. One worker per process
 // — concurrent deploys would thrash the build I/O on a typical VPS.
 type Worker struct {
-	run    RunnerFunc
-	sweep  SweeperFunc
-	queue  chan string
-	wg     sync.WaitGroup
-	logger *slog.Logger
+	run          RunnerFunc
+	sweep        SweeperFunc
+	reap         ReaperFunc
+	reapInterval time.Duration
+	queue        chan string
+	wg           sync.WaitGroup
+	logger       *slog.Logger
 }
 
 // NewWorker returns a worker with the given queue capacity. capacity=0
@@ -49,9 +63,15 @@ func NewWorker(run RunnerFunc, sweep SweeperFunc, capacity int, logger *slog.Log
 	}
 }
 
-// NewPipelineWorker is the production constructor — wraps a *Pipeline.
+// NewPipelineWorker is the production constructor — wraps a *Pipeline and
+// enables the periodic stuck-deployment reaper.
 func NewPipelineWorker(p *Pipeline, capacity int) *Worker {
-	return NewWorker(p.Run, p.Store.MarkInProgressDeploymentsInterrupted, capacity, p.Logger)
+	w := NewWorker(p.Run, p.Store.MarkInProgressDeploymentsInterrupted, capacity, p.Logger)
+	w.reap = func(ctx context.Context) (int64, error) {
+		return p.Store.ReapStuckDeployments(ctx, defaultReapTimeout)
+	}
+	w.reapInterval = defaultReapInterval
+	return w
 }
 
 // Start kicks off the worker goroutine. Returns immediately. The goroutine
@@ -70,6 +90,10 @@ func (w *Worker) Start(ctx context.Context) {
 		}
 	}
 
+	if w.reap != nil && w.reapInterval > 0 {
+		w.startReaper(ctx)
+	}
+
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
@@ -86,6 +110,30 @@ func (w *Worker) Start(ctx context.Context) {
 				if err := w.run(ctx, id); err != nil {
 					w.logger.Error("worker: pipeline failed",
 						"deployment_id", id, "err", err, "duration", time.Since(start))
+				}
+			}
+		}
+	}()
+}
+
+// startReaper runs the stuck-deployment reaper on a ticker until ctx is
+// cancelled. It's a best-effort safety net — failures are logged, not fatal.
+func (w *Worker) startReaper(ctx context.Context) {
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		ticker := time.NewTicker(w.reapInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				n, err := w.reap(ctx)
+				if err != nil {
+					w.logger.Warn("worker: reap stuck deployments failed", "err", err)
+				} else if n > 0 {
+					w.logger.Warn("worker: reaped stuck deployments", "count", n)
 				}
 			}
 		}

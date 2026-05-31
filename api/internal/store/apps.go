@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -20,19 +21,30 @@ type App struct {
 	GitURL      string
 	GitBranch   string
 	ComposeFile string
+	// BuildKind selects the deploy adapter (auto|compose|dockerfile|framework|
+	// static); BuildConfig holds its adapter-specific JSON knobs. The store
+	// keeps BuildConfig opaque — the adapter/handler layers own its shape.
+	BuildKind   string
+	BuildConfig json.RawMessage
 	Status      string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
 
-func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, composeFile string) (App, error) {
+func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, composeFile, buildKind string, buildConfig json.RawMessage) (App, error) {
+	if buildKind == "" {
+		buildKind = "auto"
+	}
+	if len(buildConfig) == 0 {
+		buildConfig = json.RawMessage("{}")
+	}
 	var a App
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO apps (name, slug, git_url, git_branch, compose_file)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, name, slug, git_url, git_branch, compose_file, status, created_at, updated_at
-	`, name, slug, gitURL, gitBranch, composeFile).Scan(
-		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt,
+		INSERT INTO apps (name, slug, git_url, git_branch, compose_file, build_kind, build_config)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, created_at, updated_at
+	`, name, slug, gitURL, gitBranch, composeFile, buildKind, buildConfig).Scan(
+		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if isUniqueViolation(err) {
 		return App{}, ErrConflict
@@ -45,9 +57,9 @@ func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, co
 func (s *Store) GetAppBySlug(ctx context.Context, slug string) (App, error) {
 	var a App
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, slug, git_url, git_branch, compose_file, status, created_at, updated_at
+		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, created_at, updated_at
 		FROM apps WHERE slug = $1
-	`, slug).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt)
+	`, slug).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.CreatedAt, &a.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return App{}, ErrNotFound
 	}
@@ -57,9 +69,9 @@ func (s *Store) GetAppBySlug(ctx context.Context, slug string) (App, error) {
 func (s *Store) GetApp(ctx context.Context, id string) (App, error) {
 	var a App
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, slug, git_url, git_branch, compose_file, status, created_at, updated_at
+		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, created_at, updated_at
 		FROM apps WHERE id = $1
-	`, id).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt)
+	`, id).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.CreatedAt, &a.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return App{}, ErrNotFound
 	}
@@ -68,7 +80,7 @@ func (s *Store) GetApp(ctx context.Context, id string) (App, error) {
 
 func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, name, slug, git_url, git_branch, compose_file, status, created_at, updated_at
+		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, created_at, updated_at
 		FROM apps ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -78,7 +90,7 @@ func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 	var out []App
 	for rows.Next() {
 		var a App
-		if err := rows.Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -86,22 +98,30 @@ func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 	return out, rows.Err()
 }
 
-// UpdateApp applies a partial patch: any of the *string fields that are nil
-// stay as they were. Returns the row post-update. Slug is intentionally not
-// patchable — once set it's a stable URL handle.
-func (s *Store) UpdateApp(ctx context.Context, id string, name, gitURL, gitBranch, composeFile *string) (App, error) {
+// UpdateApp applies a partial patch: any of the fields that are nil stay as
+// they were. Returns the row post-update. Slug is intentionally not patchable —
+// once set it's a stable URL handle.
+func (s *Store) UpdateApp(ctx context.Context, id string, name, gitURL, gitBranch, composeFile, buildKind *string, buildConfig json.RawMessage) (App, error) {
 	var a App
+	// buildConfig is a JSONB column, so a nil RawMessage must reach the query as
+	// a typed nil (not an empty []byte) for COALESCE to keep the existing value.
+	var bc any
+	if buildConfig != nil {
+		bc = buildConfig
+	}
 	err := s.pool.QueryRow(ctx, `
 		UPDATE apps SET
 			name         = COALESCE($2, name),
 			git_url      = COALESCE($3, git_url),
 			git_branch   = COALESCE($4, git_branch),
 			compose_file = COALESCE($5, compose_file),
+			build_kind   = COALESCE($6, build_kind),
+			build_config = COALESCE($7, build_config),
 			updated_at   = NOW()
 		WHERE id = $1
-		RETURNING id, name, slug, git_url, git_branch, compose_file, status, created_at, updated_at
-	`, id, name, gitURL, gitBranch, composeFile).Scan(
-		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.Status, &a.CreatedAt, &a.UpdatedAt,
+		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, created_at, updated_at
+	`, id, name, gitURL, gitBranch, composeFile, buildKind, bc).Scan(
+		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return App{}, ErrNotFound

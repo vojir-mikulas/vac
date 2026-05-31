@@ -42,7 +42,7 @@ export function TrafficChart({ appId }: { appId: string }) {
               type="button"
               onClick={() => setRange(r.value)}
               className={cn(
-                'rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                'cursor-pointer rounded-md px-2 py-1 text-xs font-medium transition-colors',
                 range === r.value
                   ? 'bg-surface-2 text-foreground'
                   : 'text-muted-foreground hover:text-foreground',

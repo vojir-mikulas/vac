@@ -59,7 +59,7 @@ function InsecureHTTPBanner() {
           window.sessionStorage.setItem(BANNER_DISMISS_KEY, '1')
           setShow(false)
         }}
-        className="shrink-0 rounded p-1 hover:bg-warn-foreground/10"
+        className="shrink-0 cursor-pointer rounded p-1 hover:bg-warn-foreground/10"
       >
         <X className="size-3.5" />
       </button>

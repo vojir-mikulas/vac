@@ -71,7 +71,7 @@ func TestManager_MintGetOpenRotateDelete(t *testing.T) {
 	ctx := context.Background()
 	mgr := sshkey.NewManager(s, newBox(t))
 
-	a, err := s.CreateApp(ctx, "Demo", "demo-mgr", "git@github.com:vojir-mikulas/demo.git", "main", "compose.yaml")
+	a, err := s.CreateApp(ctx, "Demo", "demo-mgr", "git@github.com:vojir-mikulas/demo.git", "main", "compose.yaml", "auto", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestManager_MintRefusesWithoutBox(t *testing.T) {
 	ctx := context.Background()
 	mgr := sshkey.NewManager(s, nil)
 
-	a, err := s.CreateApp(ctx, "Demo", "demo-nobox", "git@github.com:x/y.git", "main", "compose.yaml")
+	a, err := s.CreateApp(ctx, "Demo", "demo-nobox", "git@github.com:x/y.git", "main", "compose.yaml", "auto", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

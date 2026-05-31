@@ -13,6 +13,10 @@ export const queryKeys = {
     stats: ['host', 'stats'] as const,
   },
   notifications: ['notifications'] as const,
+  instance: {
+    info: ['instance', 'info'] as const,
+    baseDomain: ['instance', 'base-domain'] as const,
+  },
   apps: {
     all: ['apps'] as const,
     detail: (id: string) => ['apps', id] as const,

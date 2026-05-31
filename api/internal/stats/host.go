@@ -18,6 +18,7 @@ type HostSnapshot struct {
 	DiskUsedBytes  uint64  `json:"disk_used_bytes"`
 	DiskTotalBytes uint64  `json:"disk_total_bytes"`
 	RequestRate    float64 `json:"request_rate"` // requests/sec, from the Caddy scrape delta
+	HostIP         string  `json:"host_ip"`      // VPS public address; static, shown in the sidebar
 }
 
 // RequestScraper returns the cumulative Caddy request count. *reqmetrics.Scraper
@@ -31,6 +32,7 @@ type RequestScraper interface {
 type HostCollector struct {
 	scraper  RequestScraper
 	diskPath string
+	hostIP   string
 
 	mu        sync.Mutex
 	lastTotal float64
@@ -39,12 +41,13 @@ type HostCollector struct {
 }
 
 // NewHostCollector wires a collector. diskPath is the filesystem whose usage is
-// reported (the VAC data volume); empty falls back to "/".
-func NewHostCollector(scraper RequestScraper, diskPath string) *HostCollector {
+// reported (the VAC data volume); empty falls back to "/". hostIP is the static
+// VPS address echoed in every snapshot (may be empty if undetectable).
+func NewHostCollector(scraper RequestScraper, diskPath, hostIP string) *HostCollector {
 	if diskPath == "" {
 		diskPath = "/"
 	}
-	return &HostCollector{scraper: scraper, diskPath: diskPath}
+	return &HostCollector{scraper: scraper, diskPath: diskPath, hostIP: hostIP}
 }
 
 // Snapshot reads current host vitals. The CPU reading samples briefly so a
@@ -64,6 +67,7 @@ func (h *HostCollector) Snapshot(ctx context.Context) HostSnapshot {
 		snap.DiskTotalBytes = du.Total
 	}
 	snap.RequestRate = h.requestRate(ctx)
+	snap.HostIP = h.hostIP
 	return snap
 }
 

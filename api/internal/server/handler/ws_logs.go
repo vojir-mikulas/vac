@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -53,8 +54,12 @@ func BuildLogsWS(s *store.Store, hub *ws.Hub, opts ws.AcceptOptions) http.Handle
 
 		// Re-check after replay: if the deploy settled while we were setting up
 		// (its build-end frame may have been published before we subscribed),
-		// the replayed backlog is already the whole story.
+		// the replayed backlog is already the whole story. Send the terminator
+		// so the client stops reconnecting instead of re-replaying in a loop.
 		if d, err := s.GetDeployment(r.Context(), did); err == nil && deploy.IsTerminalDeploymentStatus(d.Status) {
+			if end, ferr := ws.Control(ws.TypeBuildEnd, time.Now()); ferr == nil {
+				_ = conn.WriteText(r.Context(), end)
+			}
 			return
 		}
 
@@ -64,7 +69,7 @@ func BuildLogsWS(s *store.Store, hub *ws.Hub, opts ws.AcceptOptions) http.Handle
 				return true, false
 			}
 			if f.Type == ws.TypeBuildEnd {
-				return true, true // terminator: drop it, end the stream
+				return false, true // forward the terminator, then end the stream
 			}
 			if f.ID != 0 && f.ID <= maxID {
 				return true, false // already replayed

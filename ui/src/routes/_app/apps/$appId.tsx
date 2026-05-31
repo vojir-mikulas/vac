@@ -3,6 +3,7 @@ import { GitBranch, Globe, Lock, RotateCw } from 'lucide-react'
 
 import { PageContainer } from '@/components/layout/app-shell'
 import { AppStatsProvider } from '@/features/app-detail/stats-context'
+import { LiveDeployBanner } from '@/features/app-detail/live-deploy-banner'
 import { StatusPill } from '@/components/common/status-pill'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -78,6 +79,8 @@ function AppDetailLayout() {
           Deploy from HEAD
         </Button>
       </div>
+
+      <LiveDeployBanner appId={appId} />
 
       <div className="mb-6 flex gap-1 overflow-x-auto border-b">
         {TABS.map((tab) => (

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
+import { isDeployActive } from '@/lib/deploy-status'
 import type { Deployment, DeploymentLogLine } from '@/types/api'
 
 export const deploymentsApi = {
@@ -18,15 +19,13 @@ export const deploymentsApi = {
   },
 }
 
-const ACTIVE_STATUSES = new Set(['queued', 'cloning', 'building', 'deploying', 'health-checking'])
-
 export function useDeployments(appId: string) {
   return useQuery({
     queryKey: queryKeys.apps.deployments(appId),
     queryFn: () => deploymentsApi.list(appId),
     // Poll while a deployment is mid-pipeline so its status advances live.
     refetchInterval: (query) =>
-      (query.state.data ?? []).some((d) => ACTIVE_STATUSES.has(d.status)) ? 3_000 : false,
+      (query.state.data ?? []).some((d) => isDeployActive(d.status)) ? 3_000 : false,
   })
 }
 

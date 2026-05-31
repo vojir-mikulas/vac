@@ -8,26 +8,30 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// EnvVar is one app env-var record. Value is sealed by crypto.Box upstream;
-// the store never sees plaintext.
+// EnvVar is one app env-var record. Value is sealed by crypto.Box upstream
+// (every row, sensitive or not); the store never sees plaintext. The
+// `Sensitive` flag governs whether the API will return the decrypted value on
+// list — see docs/deviations.md D9.
 type EnvVar struct {
 	ID        string
 	AppID     string
 	Key       string
 	Value     []byte
+	Sensitive bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
 // EnvVarInput is the write shape for ReplaceEnvVars.
 type EnvVarInput struct {
-	Key   string
-	Value []byte
+	Key       string
+	Value     []byte
+	Sensitive bool
 }
 
 func (s *Store) ListEnvVarsForApp(ctx context.Context, appID string) ([]EnvVar, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, app_id, key, value, created_at, updated_at
+		SELECT id, app_id, key, value, sensitive, created_at, updated_at
 		FROM env_vars WHERE app_id = $1
 		ORDER BY key
 	`, appID)
@@ -38,7 +42,7 @@ func (s *Store) ListEnvVarsForApp(ctx context.Context, appID string) ([]EnvVar, 
 	var out []EnvVar
 	for rows.Next() {
 		var v EnvVar
-		if err := rows.Scan(&v.ID, &v.AppID, &v.Key, &v.Value, &v.CreatedAt, &v.UpdatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.AppID, &v.Key, &v.Value, &v.Sensitive, &v.CreatedAt, &v.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -60,8 +64,8 @@ func (s *Store) ReplaceEnvVars(ctx context.Context, appID string, vars []EnvVarI
 	}
 	for _, v := range vars {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO env_vars (app_id, key, value) VALUES ($1, $2, $3)
-		`, appID, v.Key, v.Value); err != nil {
+			INSERT INTO env_vars (app_id, key, value, sensitive) VALUES ($1, $2, $3, $4)
+		`, appID, v.Key, v.Value, v.Sensitive); err != nil {
 			return err
 		}
 	}
@@ -73,9 +77,9 @@ func (s *Store) ReplaceEnvVars(ctx context.Context, appID string, vars []EnvVarI
 func (s *Store) GetEnvVar(ctx context.Context, appID, key string) (EnvVar, error) {
 	var v EnvVar
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, app_id, key, value, created_at, updated_at
+		SELECT id, app_id, key, value, sensitive, created_at, updated_at
 		FROM env_vars WHERE app_id = $1 AND key = $2
-	`, appID, key).Scan(&v.ID, &v.AppID, &v.Key, &v.Value, &v.CreatedAt, &v.UpdatedAt)
+	`, appID, key).Scan(&v.ID, &v.AppID, &v.Key, &v.Value, &v.Sensitive, &v.CreatedAt, &v.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return EnvVar{}, ErrNotFound
 	}

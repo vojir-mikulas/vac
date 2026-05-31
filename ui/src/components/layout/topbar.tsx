@@ -66,7 +66,7 @@ export function Topbar({ onOpenSearch }: { onOpenSearch: () => void }) {
       <button
         type="button"
         onClick={onOpenSearch}
-        className="flex h-8 w-72 items-center gap-2 rounded-md border bg-surface-1 px-3 text-muted-foreground transition-colors hover:border-border-strong"
+        className="flex h-8 w-72 cursor-pointer items-center gap-2 rounded-md border bg-surface-1 px-3 text-muted-foreground transition-colors hover:border-border-strong"
       >
         <Search className="size-3.5" />
         <span className="flex-1 text-left text-xs">Search…</span>
@@ -89,7 +89,7 @@ function UserMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="grid size-8 place-items-center rounded-full border bg-brand/15 font-sans text-xs font-semibold text-brand"
+          className="grid size-8 cursor-pointer place-items-center rounded-full border bg-brand/15 font-sans text-xs font-semibold text-brand"
         >
           {initials}
         </button>
