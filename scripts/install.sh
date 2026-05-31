@@ -11,7 +11,7 @@ set -eu
 # ── Config (overridable via env) ───────────────────────────────────────────
 VAC_VERSION="${VAC_VERSION:-latest}"
 VAC_INSTALL_DIR="${VAC_INSTALL_DIR:-/opt/vac}"
-VAC_REGISTRY="${VAC_REGISTRY:-ghcr.io/vojir}"
+VAC_REGISTRY="${VAC_REGISTRY:-ghcr.io/vojir-mikulas}"
 VAC_ASSET_BASE="${VAC_ASSET_BASE:-https://get.vac.vojir.io}"
 VAC_HOST_PORT="${VAC_HOST_PORT:-3000}"
 VAC_DOMAIN="${VAC_DOMAIN:-}"
