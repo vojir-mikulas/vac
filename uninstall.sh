@@ -132,11 +132,15 @@ if [ -n "$BACKUP_DIR" ]; then
   mkdir -p "$BACKUP_DIR"
   STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
-  # Postgres dump while the DB container is still up.
-  if docker ps --format '{{.Names}}' | grep -qx "${COMPOSE_PROJECT}-vac-db-1"; then
+  # Postgres dump while the DB container is still up. Newer installs use a fixed
+  # container_name (vac-db); older ones used the compose-generated name.
+  DB_CTR="vac-db"
+  docker ps --format '{{.Names}}' | grep -qx "$DB_CTR" \
+    || DB_CTR="${COMPOSE_PROJECT}-vac-db-1"
+  if docker ps --format '{{.Names}}' | grep -qx "$DB_CTR"; then
     DB_OUT="$BACKUP_DIR/vac-db-${STAMP}.sql.gz"
     info "  pg_dump → $DB_OUT"
-    docker exec "${COMPOSE_PROJECT}-vac-db-1" pg_dump -U vac -d vac \
+    docker exec "$DB_CTR" pg_dump -U vac -d vac \
       | gzip > "$DB_OUT" \
       || warn "  pg_dump failed; see $DB_OUT for partial output"
   else
