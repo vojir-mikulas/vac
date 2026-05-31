@@ -1,6 +1,9 @@
 services:
   vac-db:
     image: postgres:16-alpine
+    # Explicit container_name avoids the compose-generated "vac-vac-db-1".
+    # These services are singletons (never scaled), so a fixed name is safe.
+    container_name: vac-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: vac
@@ -25,6 +28,7 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile
+    container_name: vac-api
     restart: unless-stopped
     depends_on:
       vac-db:
@@ -64,6 +68,7 @@ services:
   vac-proxy:
     build:
       context: ./proxy
+    container_name: vac-proxy
     restart: unless-stopped
     ports:
       - "80:80"
