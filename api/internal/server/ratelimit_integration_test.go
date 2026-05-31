@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vojir-mikulas/vac/api/internal/auth"
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/server"
 )
@@ -20,20 +21,21 @@ func TestLoginIsRateLimited(t *testing.T) {
 	cfg := config.Default()
 	cfg.LoginRateLimit = 5
 	cfg.LoginRateWindow = 15 * time.Minute
+	cfg.WorkDir = t.TempDir()
 	srv, err := server.New(t.Context(), cfg, s, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("server.New: %v", err)
+	}
+	if _, err := auth.EnsureSetupToken(cfg.WorkDir); err != nil {
+		t.Fatalf("ensure setup token: %v", err)
 	}
 	h := srv.Handler
 
 	// Create an admin to make the login surface real (otherwise every attempt
 	// hits the dummy-hash path; same code branch, but this keeps the test
 	// honest about the production path).
-	rr, _ := do(t, h, "POST", "/api/setup/admin", map[string]string{
-		"username": "alice",
-		"password": "swordfish-pw",
-	})
-	if rr.Code != http.StatusCreated {
+	rr, _ := bootstrapAdmin(t, h, cfg, "alice", "swordfish-pw")
+	if rr.Code != http.StatusOK {
 		t.Fatalf("setup admin: %d", rr.Code)
 	}
 

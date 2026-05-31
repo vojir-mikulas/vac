@@ -33,14 +33,11 @@ func loginAs(t *testing.T, h http.Handler, username, password, remoteIP string) 
 }
 
 func TestListAndRevokeSessions(t *testing.T) {
-	h := setupServer(t)
+	h, cfg := setupServer(t)
 
 	// 1. Bootstrap admin.
-	rr, _ := do(t, h, "POST", "/api/setup/admin", map[string]string{
-		"username": "alice",
-		"password": "swordfish-pw",
-	})
-	if rr.Code != http.StatusCreated {
+	rr, _ := bootstrapAdmin(t, h, cfg, "alice", "swordfish-pw")
+	if rr.Code != http.StatusOK {
 		t.Fatalf("setup admin: %d", rr.Code)
 	}
 
@@ -123,13 +120,10 @@ func TestListAndRevokeSessions(t *testing.T) {
 }
 
 func TestRevokeOtherSessions(t *testing.T) {
-	h := setupServer(t)
+	h, cfg := setupServer(t)
 
-	rr, _ := do(t, h, "POST", "/api/setup/admin", map[string]string{
-		"username": "bob",
-		"password": "swordfish-pw",
-	})
-	if rr.Code != http.StatusCreated {
+	rr, _ := bootstrapAdmin(t, h, cfg, "bob", "swordfish-pw")
+	if rr.Code != http.StatusOK {
 		t.Fatalf("setup admin: %d", rr.Code)
 	}
 
@@ -170,16 +164,13 @@ func TestRevokeOtherSessions(t *testing.T) {
 }
 
 func TestRevokeSessionFromOtherUserIs404(t *testing.T) {
-	h := setupServer(t)
+	h, cfg := setupServer(t)
 
 	// Single admin slot is taken by alice; we'll create a second user via
 	// the store-only path? No — the API has no signup endpoint yet. For
 	// this test, just confirm that revoking a non-existent id 404s.
-	rr, _ := do(t, h, "POST", "/api/setup/admin", map[string]string{
-		"username": "alice",
-		"password": "swordfish-pw",
-	})
-	if rr.Code != http.StatusCreated {
+	rr, _ := bootstrapAdmin(t, h, cfg, "alice", "swordfish-pw")
+	if rr.Code != http.StatusOK {
 		t.Fatalf("setup admin: %d", rr.Code)
 	}
 	cookies := loginAs(t, h, "alice", "swordfish-pw", "10.2.0.1")

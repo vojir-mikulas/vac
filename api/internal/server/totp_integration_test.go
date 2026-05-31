@@ -32,7 +32,7 @@ func mustJSON(t *testing.T, b []byte, v any) {
 
 // setupServerWithKey is the same as setupServer but also wires a real master
 // key — required for TOTP, which encrypts secrets at rest.
-func setupServerWithKey(t *testing.T) http.Handler {
+func setupServerWithKey(t *testing.T) (http.Handler, config.Config) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -78,6 +78,8 @@ func setupServerWithKey(t *testing.T) http.Handler {
 	// multi-step 2FA flows in this file.
 	cfg.LoginRateLimit = 100
 	cfg.LoginRateWindow = time.Minute
+	// Each test gets its own work dir so the setup token file is isolated.
+	cfg.WorkDir = t.TempDir()
 	// Default exposure is "public" which sets Secure cookies; httptest
 	// requests are not HTTPS, but Go's cookie jar still records them.
 	// The login_integration_test already relies on this.
@@ -86,18 +88,18 @@ func setupServerWithKey(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatalf("server.New: %v", err)
 	}
-	return srv.Handler
+	if _, err := auth.EnsureSetupToken(cfg.WorkDir); err != nil {
+		t.Fatalf("ensure setup token: %v", err)
+	}
+	return srv.Handler, cfg
 }
 
 func TestTOTPSetupAndLoginFlow(t *testing.T) {
-	h := setupServerWithKey(t)
+	h, cfg := setupServerWithKey(t)
 
 	// 1. Create admin + log in.
-	rr, _ := do(t, h, "POST", "/api/setup/admin", map[string]string{
-		"username": "alice",
-		"password": "swordfish-pw",
-	})
-	if rr.Code != http.StatusCreated {
+	rr, _ := bootstrapAdmin(t, h, cfg, "alice", "swordfish-pw")
+	if rr.Code != http.StatusOK {
 		t.Fatalf("setup admin: %d", rr.Code)
 	}
 
@@ -239,14 +241,11 @@ func TestTOTPSetupAndLoginFlow(t *testing.T) {
 }
 
 func TestTOTPRecoveryCode(t *testing.T) {
-	h := setupServerWithKey(t)
+	h, cfg := setupServerWithKey(t)
 
 	// Setup admin, enable TOTP — same as TestTOTPSetupAndLoginFlow steps 1-3.
-	rr, _ := do(t, h, "POST", "/api/setup/admin", map[string]string{
-		"username": "bob",
-		"password": "swordfish-pw",
-	})
-	if rr.Code != http.StatusCreated {
+	rr, _ := bootstrapAdmin(t, h, cfg, "bob", "swordfish-pw")
+	if rr.Code != http.StatusOK {
 		t.Fatalf("setup admin: %d", rr.Code)
 	}
 	rr, _ = do(t, h, "POST", "/api/auth/login", map[string]any{
@@ -313,13 +312,10 @@ func TestTOTPRecoveryCode(t *testing.T) {
 }
 
 func TestTOTPDisableRequiresPassword(t *testing.T) {
-	h := setupServerWithKey(t)
+	h, cfg := setupServerWithKey(t)
 
-	rr, _ := do(t, h, "POST", "/api/setup/admin", map[string]string{
-		"username": "carol",
-		"password": "swordfish-pw",
-	})
-	if rr.Code != http.StatusCreated {
+	rr, _ := bootstrapAdmin(t, h, cfg, "carol", "swordfish-pw")
+	if rr.Code != http.StatusOK {
 		t.Fatalf("setup admin: %d", rr.Code)
 	}
 	rr, _ = do(t, h, "POST", "/api/auth/login", map[string]any{

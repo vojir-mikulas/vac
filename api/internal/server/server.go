@@ -89,7 +89,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		// Public — no session required. Setup-admin and the login endpoints
 		// are the brute-force surface, so they sit behind the rate limiter.
 		r.Route("/setup", func(r chi.Router) {
-			r.Get("/status", handler.SetupStatus(s))
+			r.Get("/status", handler.SetupStatus(s, cfg.WorkDir))
 			r.With(authLimiter.Middleware).Post("/admin", handler.SetupAdmin(s, sm, cfg))
 		})
 		r.With(authLimiter.Middleware).Post("/auth/login", handler.Login(s, sm, cfg))

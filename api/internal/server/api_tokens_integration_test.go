@@ -17,14 +17,11 @@ import (
 )
 
 func TestAPITokenLifecycle(t *testing.T) {
-	h := setupServer(t)
+	h, cfg := setupServer(t)
 
 	// 1. Bootstrap admin + log in.
-	rr, _ := do(t, h, "POST", "/api/setup/admin", map[string]string{
-		"username": "alice",
-		"password": "swordfish-pw",
-	})
-	if rr.Code != http.StatusCreated {
+	rr, _ := bootstrapAdmin(t, h, cfg, "alice", "swordfish-pw")
+	if rr.Code != http.StatusOK {
 		t.Fatalf("setup admin: %d", rr.Code)
 	}
 	cookies := loginAs(t, h, "alice", "swordfish-pw", "10.0.0.1")

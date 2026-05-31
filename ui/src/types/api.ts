@@ -176,6 +176,7 @@ export interface TotpSetup {
 
 export interface SetupStatus {
   needs_setup: boolean
+  token_required: boolean
 }
 
 // ── Notifications ─────────────────────────────────────────────────────────

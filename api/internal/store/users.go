@@ -72,6 +72,21 @@ func (s *Store) GetUserByID(ctx context.Context, id string) (User, error) {
 	return u, err
 }
 
+// UpdateUserPassword rotates the password hash. Caller is expected to revoke
+// existing sessions afterwards so a stolen cookie cannot survive a reset.
+func (s *Store) UpdateUserPassword(ctx context.Context, userID, passwordHash string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2
+	`, passwordHash, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // --- sessions ---
 
 func (s *Store) CreateSession(ctx context.Context, userID string, tokenHash []byte, ip *netip.Addr, ua string, expiresAt time.Time, preAuth bool) (Session, error) {
@@ -129,6 +144,17 @@ func (s *Store) ListSessionsForUser(ctx context.Context, userID string) ([]Sessi
 		out = append(out, sess)
 	}
 	return out, rows.Err()
+}
+
+// RevokeAllSessionsForUser deletes every session (full + pre-auth) for the
+// user. Used after a password reset so a leaked cookie cannot survive the
+// rotation.
+func (s *Store) RevokeAllSessionsForUser(ctx context.Context, userID string) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // RevokeOtherSessionsForUser deletes every full session owned by userID

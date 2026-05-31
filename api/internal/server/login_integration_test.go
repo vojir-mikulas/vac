@@ -40,14 +40,11 @@ func findCookie(name string, cs []*http.Cookie) *http.Cookie {
 }
 
 func TestLoginFlow(t *testing.T) {
-	h := setupServer(t)
+	h, cfg := setupServer(t)
 
 	// 1. Create admin via the setup wizard.
-	rr, _ := do(t, h, "POST", "/api/setup/admin", map[string]string{
-		"username": "alice",
-		"password": "swordfish-pw",
-	})
-	if rr.Code != http.StatusCreated {
+	rr, _ := bootstrapAdmin(t, h, cfg, "alice", "swordfish-pw")
+	if rr.Code != http.StatusOK {
 		t.Fatalf("setup admin status = %d", rr.Code)
 	}
 
@@ -137,7 +134,7 @@ func TestLoginFlow(t *testing.T) {
 }
 
 func TestMeRequiresSession(t *testing.T) {
-	h := setupServer(t)
+	h, _ := setupServer(t)
 	rr, _ := do(t, h, "GET", "/api/auth/me", nil)
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("/me without session = %d, want 401", rr.Code)

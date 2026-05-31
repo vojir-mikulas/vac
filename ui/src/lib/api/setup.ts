@@ -6,10 +6,11 @@ import type { SetupStatus, User } from '@/types/api'
 
 export const setupApi = {
   status: () => api.get<SetupStatus>('setup/status'),
-  createAdmin: (username: string, password: string) =>
+  createAdmin: (username: string, password: string, setupToken: string) =>
     api.post<User>('setup/admin', {
       username,
       password,
+      setup_token: setupToken,
     }),
 }
 

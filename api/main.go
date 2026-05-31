@@ -9,10 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/vojir-mikulas/vac/api/internal/admin"
+	"github.com/vojir-mikulas/vac/api/internal/auth"
 	"github.com/vojir-mikulas/vac/api/internal/caddy"
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/crashloop"
@@ -34,6 +37,17 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "reset-password":
+			if err := admin.ResetPassword(os.Args[2:], os.Stdin, os.Stdout, os.Stderr); err != nil {
+				fmt.Fprintln(os.Stderr, "reset-password:", err)
+				os.Exit(1)
+			}
+			return
+		}
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -64,7 +78,11 @@ func main() {
 	if n, err := st.CountUsers(ctx); err != nil {
 		slog.Warn("could not count users for first-boot detection", "err", err)
 	} else if n == 0 {
-		printFirstBootBanner(cfg)
+		token, err := auth.EnsureSetupToken(cfg.WorkDir)
+		if err != nil {
+			slog.Error("could not create setup token; first-boot will refuse to bootstrap admin", "err", err)
+		}
+		printFirstBootBanner(cfg, token)
 	}
 
 	probeDockerCLI(ctx)
@@ -246,18 +264,30 @@ func probeDockerCLI(parent context.Context) {
 	slog.Info("docker CLI probe ok", "server_version", strings.TrimSpace(string(out)))
 }
 
-func printFirstBootBanner(cfg config.Config) {
-	bar := strings.Repeat("━", 50)
+func printFirstBootBanner(cfg config.Config, setupToken string) {
+	bar := strings.Repeat("━", 64)
 	var b strings.Builder
 	fmt.Fprintln(&b)
 	fmt.Fprintln(&b, bar)
 	fmt.Fprintln(&b, "  VAC — first boot")
 	fmt.Fprintln(&b, bar)
 	fmt.Fprintln(&b)
-	fmt.Fprintf(&b, "  Dashboard:  http://localhost:%d\n", cfg.Server.Port)
-	fmt.Fprintln(&b)
-	fmt.Fprintln(&b, "  Open the dashboard to create your admin account.")
+	if setupToken != "" {
+		fmt.Fprintf(&b, "  Dashboard:  http://localhost:%d/setup?token=%s\n", cfg.Server.Port, setupToken)
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, "  Setup token (required to create the admin account):")
+		fmt.Fprintln(&b, "    "+setupToken)
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, "  The token is also stored at:")
+		fmt.Fprintln(&b, "    "+filepath.Join(cfg.WorkDir, "setup.token"))
+	} else {
+		fmt.Fprintf(&b, "  Dashboard:  http://localhost:%d\n", cfg.Server.Port)
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, "  ⚠  Could not create setup token — see logs.")
+		fmt.Fprintln(&b, "     /api/setup/admin will refuse until this is resolved.")
+	}
 	if len(cfg.MasterKey) == 0 {
+		fmt.Fprintln(&b)
 		fmt.Fprintln(&b, "  ⚠  Set VAC_MASTER_KEY (32 bytes hex) in your")
 		fmt.Fprintln(&b, "     environment before deploying any apps.")
 	}

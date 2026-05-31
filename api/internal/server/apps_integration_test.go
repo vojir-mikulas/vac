@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/vojir-mikulas/vac/api/internal/auth"
+	"github.com/vojir-mikulas/vac/api/internal/config"
 )
 
 // authedClient bundles a logged-in browser's cookies + CSRF token so the
@@ -17,13 +18,10 @@ type authedClient struct {
 	csrf    *http.Cookie
 }
 
-func bootstrapAndLogin(t *testing.T, h http.Handler) authedClient {
+func bootstrapAndLogin(t *testing.T, h http.Handler, cfg config.Config) authedClient {
 	t.Helper()
-	rr, _ := do(t, h, "POST", "/api/setup/admin", map[string]string{
-		"username": "alice",
-		"password": "swordfish-pw",
-	})
-	if rr.Code != http.StatusCreated {
+	rr, _ := bootstrapAdmin(t, h, cfg, "alice", "swordfish-pw")
+	if rr.Code != http.StatusOK {
 		t.Fatalf("setup admin: %d", rr.Code)
 	}
 	cookies := loginAs(t, h, "alice", "swordfish-pw", "10.0.0.1")
@@ -42,8 +40,8 @@ func (c authedClient) do(t *testing.T, h http.Handler, method, path string, body
 }
 
 func TestAppCRUDFlow(t *testing.T) {
-	h := setupServer(t)
-	c := bootstrapAndLogin(t, h)
+	h, cfg := setupServer(t)
+	c := bootstrapAndLogin(t, h, cfg)
 
 	// 1. List empty.
 	rr := c.do(t, h, "GET", "/api/apps", nil)
@@ -142,8 +140,8 @@ func TestAppCRUDFlow(t *testing.T) {
 }
 
 func TestAppCreateValidation(t *testing.T) {
-	h := setupServer(t)
-	c := bootstrapAndLogin(t, h)
+	h, cfg := setupServer(t)
+	c := bootstrapAndLogin(t, h, cfg)
 
 	cases := []struct {
 		name string
@@ -169,8 +167,8 @@ func TestAppCreateValidation(t *testing.T) {
 }
 
 func TestAppSlugCollisionReturns409(t *testing.T) {
-	h := setupServer(t)
-	c := bootstrapAndLogin(t, h)
+	h, cfg := setupServer(t)
+	c := bootstrapAndLogin(t, h, cfg)
 
 	body := map[string]string{
 		"name":    "collide",
@@ -188,7 +186,7 @@ func TestAppSlugCollisionReturns409(t *testing.T) {
 }
 
 func TestAppRequiresAuth(t *testing.T) {
-	h := setupServer(t)
+	h, _ := setupServer(t)
 
 	req := httptest.NewRequest("GET", "/api/apps", nil)
 	rr := httptest.NewRecorder()
@@ -199,8 +197,8 @@ func TestAppRequiresAuth(t *testing.T) {
 }
 
 func TestAppPatchUnknownIs404(t *testing.T) {
-	h := setupServer(t)
-	c := bootstrapAndLogin(t, h)
+	h, cfg := setupServer(t)
+	c := bootstrapAndLogin(t, h, cfg)
 
 	rr := c.do(t, h, "PATCH", "/api/apps/00000000-0000-0000-0000-000000000000", map[string]string{
 		"name": "x",

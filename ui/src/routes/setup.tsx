@@ -11,7 +11,14 @@ import { ApiError } from '@/lib/api/client'
 import { setupApi } from '@/lib/api/setup'
 import { queryKeys } from '@/lib/query/keys'
 
+const MIN_PASSWORD = 12
+
+type SetupSearch = { token?: string }
+
 export const Route = createFileRoute('/setup')({
+  validateSearch: (search: Record<string, unknown>): SetupSearch => ({
+    token: typeof search.token === 'string' ? search.token : undefined,
+  }),
   beforeLoad: async ({ context }) => {
     // Setup is only reachable before an admin exists.
     const setup = await context.queryClient.ensureQueryData({
@@ -26,15 +33,17 @@ export const Route = createFileRoute('/setup')({
 function SetupPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const { token: tokenFromUrl } = Route.useSearch()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [token, setToken] = useState(tokenFromUrl ?? '')
 
   const mismatch = confirm.length > 0 && password !== confirm
-  const tooShort = password.length > 0 && password.length < 8
+  const tooShort = password.length > 0 && password.length < MIN_PASSWORD
 
   const create = useMutation({
-    mutationFn: () => setupApi.createAdmin(username, password),
+    mutationFn: () => setupApi.createAdmin(username, password, token),
     onSuccess: async (user) => {
       qc.setQueryData(queryKeys.auth.me, user)
       await qc.invalidateQueries({ queryKey: queryKeys.setup.status })
@@ -42,7 +51,11 @@ function SetupPage() {
     },
   })
 
-  const canSubmit = username.length > 0 && password.length >= 8 && password === confirm
+  const canSubmit =
+    username.length > 0 &&
+    password.length >= MIN_PASSWORD &&
+    password === confirm &&
+    token.trim().length > 0
 
   return (
     <AuthShell
@@ -78,7 +91,9 @@ function SetupPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
               {tooShort ? (
-                <p className="text-2xs text-muted-foreground">At least 8 characters.</p>
+                <p className="text-2xs text-muted-foreground">
+                  At least {MIN_PASSWORD} characters.
+                </p>
               ) : null}
             </div>
             <div className="grid gap-2">
@@ -93,6 +108,21 @@ function SetupPage() {
               {mismatch ? (
                 <p className="text-2xs text-err-foreground">Passwords don't match.</p>
               ) : null}
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="setup-token">Setup token</Label>
+              <Input
+                id="setup-token"
+                autoComplete="off"
+                spellCheck={false}
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                className="font-mono text-xs"
+              />
+              <p className="text-2xs text-muted-foreground">
+                Printed in the VAC server logs on first boot, and stored at{' '}
+                <code className="font-mono">$VAC_WORK_DIR/setup.token</code>.
+              </p>
             </div>
             {create.error ? (
               <p className="text-sm text-err-foreground">
