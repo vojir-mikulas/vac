@@ -72,6 +72,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Logger)
 	r.Use(chimw.Timeout(60 * time.Second))
+	r.Use(middleware.SecurityHeaders)
 
 	r.Get("/health", handler.Health(s, caddyPin))
 
@@ -80,6 +81,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	r.Get("/internal/caddy/ask", handler.CaddyAsk(s, cfg.CaddyAskToken))
 
 	r.Route("/api", func(r chi.Router) {
+		r.Use(middleware.BodyLimit(middleware.MaxBodyBytes))
 		r.Use(middleware.Auth(sm, tokm))
 		r.Use(middleware.CSRF)
 

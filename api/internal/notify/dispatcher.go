@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +16,11 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
+// ErrPrivateAddress is returned by the dispatcher's dialer when a webhook URL
+// resolves to a loopback, private, or link-local address. Exported so callers
+// can match on it when surfacing the failure to the operator.
+var ErrPrivateAddress = errors.New("notify: webhook host resolves to a private/loopback/link-local address")
+
 // SettingsStore reads the stored notification settings.
 type SettingsStore interface {
 	GetNotificationSettings(ctx context.Context) (store.NotificationSettingsRow, error)
@@ -21,32 +28,88 @@ type SettingsStore interface {
 
 // Dispatcher renders events and POSTs them to the configured channels.
 type Dispatcher struct {
-	store      SettingsStore
-	box        *crypto.Box
-	http       *http.Client
-	envDiscord string
-	envSlack   string
-	baseURL    string // public base for deep links, e.g. "https://vac.example.com"
-	backoff    time.Duration
-	logger     *slog.Logger
+	store        SettingsStore
+	box          *crypto.Box
+	http         *http.Client
+	envDiscord   string
+	envSlack     string
+	baseURL      string // public base for deep links, e.g. "https://vac.example.com"
+	backoff      time.Duration
+	logger       *slog.Logger
+	blockPrivate bool // SSRF guard: refuse to dial private/loopback/link-local addresses
 }
 
 // New wires a dispatcher. envDiscord/envSlack are the VAC_NOTIFY_* overrides
 // (empty when unset); box decrypts stored URLs (nil disables stored URLs).
+// The returned dispatcher refuses to dial private/loopback/link-local
+// addresses (SSRF guard); tests that point at httptest servers must clear
+// `blockPrivate`.
 func New(s SettingsStore, box *crypto.Box, envDiscord, envSlack, baseURL string, logger *slog.Logger) *Dispatcher {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Dispatcher{
-		store:      s,
-		box:        box,
-		http:       &http.Client{Timeout: 5 * time.Second},
-		envDiscord: strings.TrimSpace(envDiscord),
-		envSlack:   strings.TrimSpace(envSlack),
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		backoff:    time.Second,
-		logger:     logger,
+	d := &Dispatcher{
+		store:        s,
+		box:          box,
+		envDiscord:   strings.TrimSpace(envDiscord),
+		envSlack:     strings.TrimSpace(envSlack),
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		backoff:      time.Second,
+		logger:       logger,
+		blockPrivate: true,
 	}
+	d.http = &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: d.transport(),
+	}
+	return d
+}
+
+// transport returns an http.Transport whose DialContext rejects connections to
+// private/loopback/link-local addresses when blockPrivate is set. The check
+// runs after DNS resolution so a public hostname pointing at 127.0.0.1 (or
+// 169.254.169.254) is still blocked — closing the obvious SSRF window.
+func (d *Dispatcher) transport() *http.Transport {
+	base := http.DefaultTransport.(*http.Transport).Clone()
+	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+	base.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if d.blockPrivate {
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+			if err != nil {
+				return nil, err
+			}
+			for _, ip := range ips {
+				if isPrivateAddr(ip) {
+					return nil, fmt.Errorf("%w: %s", ErrPrivateAddress, ip.String())
+				}
+			}
+		}
+		return dialer.DialContext(ctx, network, addr)
+	}
+	return base
+}
+
+// isPrivateAddr reports whether ip is loopback, private, link-local, multicast,
+// or one of the special-purpose ranges (e.g. IPv4-mapped IPv6).
+func isPrivateAddr(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() ||
+		ip.IsInterfaceLocalMulticast() {
+		return true
+	}
+	// 100.64.0.0/10 — RFC 6598 carrier-grade NAT (also used by cloud metadata
+	// front-ends like Tailscale). Treat as private.
+	if v4 := ip.To4(); v4 != nil && v4[0] == 100 && v4[1]&0xC0 == 64 {
+		return true
+	}
+	return false
 }
 
 // resolved is the effective config at dispatch time.
@@ -138,6 +201,11 @@ func (d *Dispatcher) post(ctx context.Context, url string, payload any) {
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := d.http.Do(req)
 		if err != nil {
+			// SSRF rejection is a permanent error — don't waste retries on it.
+			if errors.Is(err, ErrPrivateAddress) {
+				d.logger.Warn("notify: refused webhook to private address", "err", err)
+				return
+			}
 			d.logger.Warn("notify: post failed", "attempt", i+1, "err", err)
 			continue
 		}

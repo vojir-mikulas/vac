@@ -29,6 +29,13 @@ var gitURLRe = regexp.MustCompile(`^(?:https?://\S+|git@[^\s:]+:\S+|ssh://git@\S
 // segments separated by hyphens. Same shape as Kubernetes / Docker names.
 var slugRe = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
+// gitRefRe is the subset of git ref names we accept. Conservative on purpose:
+// git's own ref-name grammar allows characters that have ambiguous shell /
+// option-flag interpretations (e.g. leading `-`). Reject anything outside
+// `[A-Za-z0-9._/-]` and any ref that starts with `-` (would be parsed as a
+// flag by git).
+var gitRefRe = regexp.MustCompile(`^[A-Za-z0-9._/][A-Za-z0-9._/-]*$`)
+
 type createAppRequest struct {
 	Name        string `json:"name"                    validate:"required,min=1,max=100"`
 	Slug        string `json:"slug,omitempty"          validate:"omitempty,max=63"`
@@ -106,6 +113,10 @@ func CreateApp(s *store.Store) http.HandlerFunc {
 		branch := req.GitBranch
 		if branch == "" {
 			branch = defaultBranch
+		}
+		if !gitRefRe.MatchString(branch) {
+			WriteError(w, http.StatusBadRequest, "git_branch must match "+gitRefRe.String())
+			return
 		}
 		composeFile := req.ComposeFile
 		if composeFile == "" {
@@ -187,6 +198,10 @@ func UpdateApp(s *store.Store) http.HandlerFunc {
 			trimmed := strings.TrimSpace(*req.GitBranch)
 			if trimmed == "" {
 				WriteError(w, http.StatusBadRequest, "git_branch cannot be empty")
+				return
+			}
+			if !gitRefRe.MatchString(trimmed) {
+				WriteError(w, http.StatusBadRequest, "git_branch must match "+gitRefRe.String())
 				return
 			}
 			req.GitBranch = &trimmed

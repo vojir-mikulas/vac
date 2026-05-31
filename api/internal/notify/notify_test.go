@@ -56,6 +56,7 @@ func TestSendTestPostsToConfiguredChannel(t *testing.T) {
 	defer srv.Close()
 
 	d := New(fakeSettings{}, nil, srv.URL, "", "", nil)
+	d.blockPrivate = false
 	n, err := d.SendTest(context.Background())
 	if err != nil {
 		t.Fatalf("SendTest: %v", err)
@@ -94,6 +95,29 @@ func TestDispatchHonoursToggleOff(t *testing.T) {
 	}
 }
 
+func TestPostRefusesPrivateAddress(t *testing.T) {
+	var hits atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	// With the default blockPrivate=true, a loopback webhook must be refused
+	// before any HTTP request is sent.
+	d := New(fakeSettings{}, nil, srv.URL, "", "", nil)
+	d.backoff = time.Millisecond
+	if _, err := d.SendTest(context.Background()); err != nil {
+		// SendTest currently reports "configured channels" — it does not
+		// surface per-post errors. The important check is that nothing
+		// reached the loopback server.
+		t.Logf("SendTest returned: %v", err)
+	}
+	if hits.Load() != 0 {
+		t.Errorf("SSRF guard failed: loopback hit %d times", hits.Load())
+	}
+}
+
 func TestPostRetriesThenSucceeds(t *testing.T) {
 	var hits atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -106,6 +130,7 @@ func TestPostRetriesThenSucceeds(t *testing.T) {
 	defer srv.Close()
 
 	d := New(fakeSettings{}, nil, srv.URL, "", "", nil)
+	d.blockPrivate = false
 	d.backoff = time.Millisecond // keep the test fast
 	if _, err := d.SendTest(context.Background()); err != nil {
 		t.Fatalf("SendTest: %v", err)

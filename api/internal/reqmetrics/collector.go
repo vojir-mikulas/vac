@@ -86,7 +86,11 @@ func (c *Collector) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			c.flush(context.Background()) // best-effort final flush
+			// Best-effort final flush — bounded so a stuck Postgres can't
+			// block SIGTERM indefinitely.
+			flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			c.flush(flushCtx)
+			cancel()
 			return
 		case <-ticker.C:
 			c.refreshHosts(ctx)

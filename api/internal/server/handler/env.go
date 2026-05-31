@@ -69,6 +69,10 @@ func ReplaceAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 				WriteError(w, http.StatusBadRequest, "invalid env key: "+k)
 				return
 			}
+			if !validEnvValue(v) {
+				WriteError(w, http.StatusBadRequest, "env value for "+k+" contains forbidden characters (newline or NUL)")
+				return
+			}
 			sealed, err := box.Seal([]byte(v))
 			if err != nil {
 				WriteError(w, http.StatusInternalServerError, "could not encrypt env var")
@@ -101,4 +105,13 @@ func validEnvKey(k string) bool {
 		}
 	}
 	return true
+}
+
+// validEnvValue rejects characters that would corrupt the rendered .env file
+// or carry security-relevant payloads: newline / carriage-return (would let an
+// attacker inject a second VAR=value pair) and NUL (process-exec boundary).
+// envfile.go does escape these, but defence-in-depth: refuse them at the API
+// boundary so they can never reach the disk in the first place.
+func validEnvValue(v string) bool {
+	return !strings.ContainsAny(v, "\n\r\x00")
 }

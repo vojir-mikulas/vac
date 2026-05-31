@@ -113,9 +113,11 @@ func buildEnv(sshKeyPath string) []string {
 	if sshKeyPath != "" {
 		// accept-new instead of yes/no/no — first contact records the host
 		// key, subsequent contacts verify it. UserKnownHostsFile=/dev/null
-		// keeps the recording from leaking between apps.
+		// keeps the recording from leaking between apps. %q shell-quotes
+		// the key path — os.CreateTemp avoids spaces in practice, but
+		// belt-and-braces against any future change to the temp path.
 		env = append(env,
-			fmt.Sprintf("GIT_SSH_COMMAND=ssh -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o LogLevel=ERROR", sshKeyPath),
+			fmt.Sprintf("GIT_SSH_COMMAND=ssh -i %q -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o LogLevel=ERROR", sshKeyPath),
 		)
 	}
 	return env
