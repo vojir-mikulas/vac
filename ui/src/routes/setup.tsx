@@ -35,9 +35,10 @@ function SetupPage() {
 
   const create = useMutation({
     mutationFn: () => setupApi.createAdmin(username, password),
-    onSuccess: async () => {
+    onSuccess: async (user) => {
+      qc.setQueryData(queryKeys.auth.me, user)
       await qc.invalidateQueries({ queryKey: queryKeys.setup.status })
-      navigate({ to: '/login' })
+      navigate({ to: '/apps' })
     },
   })
 

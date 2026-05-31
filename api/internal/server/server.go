@@ -90,7 +90,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		// are the brute-force surface, so they sit behind the rate limiter.
 		r.Route("/setup", func(r chi.Router) {
 			r.Get("/status", handler.SetupStatus(s))
-			r.With(authLimiter.Middleware).Post("/admin", handler.SetupAdmin(s))
+			r.With(authLimiter.Middleware).Post("/admin", handler.SetupAdmin(s, sm, cfg))
 		})
 		r.With(authLimiter.Middleware).Post("/auth/login", handler.Login(s, sm, cfg))
 		// TOTP login step is reached via the pre-auth cookie, not a full

@@ -7,7 +7,7 @@ import type { SetupStatus, User } from '@/types/api'
 export const setupApi = {
   status: () => api.get<SetupStatus>('setup/status'),
   createAdmin: (username: string, password: string) =>
-    api.post<Pick<User, 'id' | 'username'>>('setup/admin', {
+    api.post<User>('setup/admin', {
       username,
       password,
     }),

@@ -108,12 +108,12 @@ func TestSetupFlow(t *testing.T) {
 		t.Errorf("needs_setup = %v, want true", body["needs_setup"])
 	}
 
-	// 2. POST admin → 201
+	// 2. POST admin → 200 with session cookies (auto sign-in)
 	rr, body = do(t, h, "POST", "/api/setup/admin", map[string]string{
 		"username": "admin",
 		"password": "swordfish-pw",
 	})
-	if rr.Code != http.StatusCreated {
+	if rr.Code != http.StatusOK {
 		t.Fatalf("create admin status = %d, body=%v", rr.Code, body)
 	}
 	if u, _ := body["username"].(string); u != "admin" {
@@ -121,6 +121,18 @@ func TestSetupFlow(t *testing.T) {
 	}
 	if id, _ := body["id"].(string); id == "" {
 		t.Error("missing id in response")
+	}
+	var sawSession, sawCSRF bool
+	for _, c := range rr.Result().Cookies() {
+		switch c.Name {
+		case "vac_session":
+			sawSession = true
+		case "vac_csrf":
+			sawCSRF = true
+		}
+	}
+	if !sawSession || !sawCSRF {
+		t.Errorf("expected vac_session + vac_csrf cookies, got %v", rr.Result().Cookies())
 	}
 
 	// 3. Status now → needs_setup: false

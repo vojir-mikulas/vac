@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/vojir-mikulas/vac/api/internal/auth"
+	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
@@ -15,11 +16,6 @@ type setupStatusResponse struct {
 type setupAdminRequest struct {
 	Username string `json:"username" validate:"required,min=1,max=64"`
 	Password string `json:"password" validate:"required,min=8,max=256"`
-}
-
-type setupAdminResponse struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
 }
 
 // SetupStatus reports whether the dashboard needs to show the setup wizard
@@ -35,9 +31,11 @@ func SetupStatus(s *store.Store) http.HandlerFunc {
 	}
 }
 
-// SetupAdmin creates the first user. Refuses with 409 if any user exists —
-// the wizard is single-use and cannot bootstrap a second admin.
-func SetupAdmin(s *store.Store) http.HandlerFunc {
+// SetupAdmin creates the first user, issues a session, and returns the new
+// user — the wizard lands the operator directly on the dashboard rather than
+// kicking them back through the login form. Refuses with 409 if any user
+// exists; the wizard is single-use and cannot bootstrap a second admin.
+func SetupAdmin(s *store.Store, sm *auth.SessionManager, cfg config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req setupAdminRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -71,6 +69,6 @@ func SetupAdmin(s *store.Store) http.HandlerFunc {
 			return
 		}
 
-		WriteJSON(w, http.StatusCreated, setupAdminResponse{ID: u.ID, Username: u.Username})
+		issueFullSession(w, r, sm, cfg, u, true)
 	}
 }

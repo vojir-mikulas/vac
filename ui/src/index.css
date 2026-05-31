@@ -118,7 +118,7 @@
   --accent-foreground: var(--foreground);
 
   /* Brand — orange (solid button fill) */
-  --brand: #f97316;
+  --brand: #0057b8;
   --brand-foreground: oklch(1 0 0);
 
   /* Semantic */
@@ -176,7 +176,7 @@
   --accent: var(--surface-2);
   --accent-foreground: var(--foreground);
 
-  --brand: #f97316;
+  --brand: #0057b8;
   --brand-foreground: oklch(1 0 0);
 
   --ok: oklch(0.72 0.16 150);
