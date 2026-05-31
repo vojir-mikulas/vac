@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -36,6 +37,15 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/ws"
 )
 
+// Build-time metadata injected via -ldflags "-X main.version=..." (see Makefile
+// and api/Dockerfile). Defaults make a `go run .` invocation self-describing
+// without requiring the caller to set them.
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildDate = "unknown"
+)
+
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -44,6 +54,12 @@ func main() {
 				fmt.Fprintln(os.Stderr, "reset-password:", err)
 				os.Exit(1)
 			}
+			return
+		case "version", "--version", "-v":
+			fmt.Printf("vac-api %s\n", version)
+			fmt.Printf("  commit: %s\n", commit)
+			fmt.Printf("  built:  %s\n", buildDate)
+			fmt.Printf("  go:     %s %s/%s\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
 			return
 		}
 	}

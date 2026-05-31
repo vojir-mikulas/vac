@@ -1,5 +1,13 @@
 .PHONY: help install dev dev-api dev-ui build build-ui build-api build-api-noembed lint lint-go lint-ui test test-go test-ui test-integration typecheck format clean compose-up compose-down compose-logs
 
+# Version metadata baked into vac-api via -ldflags. Override on the command line
+# (e.g. `make build-api VERSION=v1.2.3`) or via env. The release Dockerfile sets
+# these from CI build-args; this is the fallback for local builds.
+VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT     ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS    := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildDate=$(BUILD_DATE)
+
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
@@ -24,10 +32,10 @@ build-ui: ## Build UI into api/internal/ui/dist
 	pnpm --filter ui build
 
 build-api: ## Build Go binary with the embedded UI (requires build-ui first)
-	cd api && go build -tags embedui -ldflags="-s -w" -o bin/vac-api .
+	cd api && go build -tags embedui -ldflags="$(LDFLAGS)" -o bin/vac-api .
 
 build-api-noembed: ## Build Go binary without UI (UI not bundled, dev/test)
-	cd api && go build -ldflags="-s -w" -o bin/vac-api .
+	cd api && go build -ldflags="$(LDFLAGS)" -o bin/vac-api .
 
 lint: lint-go lint-ui ## Run all linters
 

@@ -14,12 +14,17 @@ RUN pnpm --filter ui build
 
 # Build Go binary with the embedded UI
 FROM golang:1.25-alpine AS api
+ARG VAC_VERSION=dev
+ARG VAC_COMMIT=unknown
 WORKDIR /src/api
 COPY api/go.mod api/go.sum ./
 RUN go mod download
 COPY api/ ./
 COPY --from=ui /src/api/internal/ui/dist ./internal/ui/dist
-RUN CGO_ENABLED=0 go build -tags embedui -ldflags="-s -w" -o /out/vac-api .
+RUN BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" && \
+    CGO_ENABLED=0 go build -tags embedui \
+      -ldflags="-s -w -X main.version=${VAC_VERSION} -X main.commit=${VAC_COMMIT} -X main.buildDate=${BUILD_DATE}" \
+      -o /out/vac-api .
 
 # Runtime — debian-slim because Phase 2 needs git + docker CLI on PATH.
 # Distroless cannot host these (no apt, no libc shims, no shell).

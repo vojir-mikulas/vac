@@ -85,6 +85,19 @@ case "$cmd" in
     echo "Base domain set to $1. Point A *.$1 and A $1 at this host." ;;
   unset-domain) set_env VAC_BASE_DOMAIN ""; dc up -d vac-api; echo "Automatic subdomains disabled." ;;
   config)    cat "$ENVF" ;;
+  version|--version|-v)
+    pinned="$(grep '^VAC_VERSION=' "$ENVF" 2>/dev/null | cut -d= -f2-)"
+    printf 'pinned: %s\n' "${pinned:-unset}"
+    if dc ps --status=running --services 2>/dev/null | grep -q '^vac-api$'; then
+      dc exec -T vac-api vac-api version 2>/dev/null || echo 'running: vac-api unreachable'
+    else
+      echo 'running: vac-api not up'
+    fi ;;
+  reset-password)
+    [ $# -ge 1 ] || { echo "usage: vac reset-password <username>" >&2; exit 1; }
+    dc ps --status=running --services 2>/dev/null | grep -q '^vac-api$' \
+      || { echo "vac-api is not running; start it with 'vac up' first." >&2; exit 1; }
+    dc exec vac-api vac-api reset-password "$@" ;;
   uninstall)
     # Prefer an on-disk copy so air-gapped hosts work; fall back to fetching
     # the published asset. uninstall.sh exits 0 if the user declines.
@@ -104,10 +117,12 @@ case "$cmd" in
 vac — manage this VAC install ($DIR)
 
   vac status                       show running services
+  vac version                      show the running and pinned versions
   vac logs [service]               tail logs
   vac upgrade [version]            pull + recreate (optionally pin a version)
   vac set-domain <domain>          enable automatic HTTPS subdomains
   vac unset-domain                 disable automatic subdomains
+  vac reset-password <username>    set a new password and revoke sessions
   vac up | down | restart [service]
   vac config                       print the .env
   vac uninstall [--purge] [--apps] [--backup DIR] [--yes]
