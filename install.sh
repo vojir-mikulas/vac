@@ -55,12 +55,14 @@ rand_hex() {
 }
 
 write_vac_cli() {
-  # Embedded management CLI → /usr/local/bin/vac. __VAC_DIR__ is substituted
-  # with the resolved install dir after the (unexpanded) heredoc is written.
+  # Embedded management CLI → /usr/local/bin/vac. __VAC_DIR__ and
+  # __VAC_ASSET_BASE__ are substituted after the (unexpanded) heredoc is
+  # written, so the script body itself stays free of shell expansion.
   cat > /usr/local/bin/vac <<'VACEOF'
 #!/bin/sh
 set -eu
 DIR="__VAC_DIR__"
+ASSET_BASE="__VAC_ASSET_BASE__"
 COMPOSE="$DIR/compose.prod.yaml"
 ENVF="$DIR/.env"
 dc() { docker compose -f "$COMPOSE" --env-file "$ENVF" "$@"; }
@@ -80,25 +82,62 @@ case "$cmd" in
   set-domain)
     [ $# -ge 1 ] || { echo "usage: vac set-domain <domain>" >&2; exit 1; }
     set_env VAC_BASE_DOMAIN "$1"; dc up -d vac-api
-    echo "Base domain set to $1. Point A *.$1 and A $1 at this host." ;;
+    printf 'Base domain set to %s.\n' "$1"
+    printf 'Dashboard will be reachable at:  https://vac.%s\n' "$1"
+    printf 'DNS records to create:\n'
+    printf '  A   vac.%s   → this host\n' "$1"
+    printf '  A   *.%s     → this host   (for deployed apps)\n' "$1"
+    printf 'TLS certificates are issued automatically by Let'"'"'s Encrypt once DNS points here.\n' ;;
   unset-domain) set_env VAC_BASE_DOMAIN ""; dc up -d vac-api; echo "Automatic subdomains disabled." ;;
   config)    cat "$ENVF" ;;
+  version|--version|-v)
+    pinned="$(grep '^VAC_VERSION=' "$ENVF" 2>/dev/null | cut -d= -f2-)"
+    printf 'pinned: %s\n' "${pinned:-unset}"
+    if dc ps --status=running --services 2>/dev/null | grep -q '^vac-api$'; then
+      dc exec -T vac-api vac-api version 2>/dev/null || echo 'running: vac-api unreachable'
+    else
+      echo 'running: vac-api not up'
+    fi ;;
+  reset-password)
+    [ $# -ge 1 ] || { echo "usage: vac reset-password <username>" >&2; exit 1; }
+    dc ps --status=running --services 2>/dev/null | grep -q '^vac-api$' \
+      || { echo "vac-api is not running; start it with 'vac up' first." >&2; exit 1; }
+    dc exec vac-api vac-api reset-password "$@" ;;
+  uninstall)
+    # Prefer an on-disk copy so air-gapped hosts work; fall back to fetching
+    # the published asset. uninstall.sh exits 0 if the user declines.
+    [ "$(id -u)" -eq 0 ] || { echo "vac uninstall must run as root" >&2; exit 1; }
+    if [ -x "$DIR/uninstall.sh" ]; then
+      exec "$DIR/uninstall.sh" "$@"
+    elif command -v curl >/dev/null 2>&1; then
+      curl -fsSL "$ASSET_BASE/uninstall.sh" | sh -s -- "$@"
+    elif command -v wget >/dev/null 2>&1; then
+      wget -qO- "$ASSET_BASE/uninstall.sh" | sh -s -- "$@"
+    else
+      echo "neither curl nor wget available, and no $DIR/uninstall.sh on disk" >&2
+      exit 1
+    fi ;;
   *)
     cat <<USAGE
 vac — manage this VAC install ($DIR)
 
-  vac status               show running services
-  vac logs [service]       tail logs
-  vac upgrade [version]    pull + recreate (optionally pin a version)
-  vac set-domain <domain>  enable automatic HTTPS subdomains
-  vac unset-domain         disable automatic subdomains
+  vac status                       show running services
+  vac version                      show the running and pinned versions
+  vac logs [service]               tail logs
+  vac upgrade [version]            pull + recreate (optionally pin a version)
+  vac set-domain <domain>          serve dashboard on HTTPS + enable app subdomains
+  vac unset-domain                 disable HTTPS dashboard and app subdomains
+  vac reset-password <username>    set a new password and revoke sessions
   vac up | down | restart [service]
-  vac config               print the .env
+  vac config                       print the .env
+  vac uninstall [--purge] [--apps] [--backup DIR] [--yes]
+                                   remove VAC; see --help for full options
 USAGE
     ;;
 esac
 VACEOF
   sed -i "s#__VAC_DIR__#$VAC_INSTALL_DIR#g" /usr/local/bin/vac
+  sed -i "s#__VAC_ASSET_BASE__#$VAC_ASSET_BASE#g" /usr/local/bin/vac
   chmod +x /usr/local/bin/vac
 }
 
@@ -125,6 +164,16 @@ mkdir -p "$VAC_INSTALL_DIR"
 
 info "Fetching compose.prod.yaml…"
 fetch "$VAC_ASSET_BASE/compose.prod.yaml" "$COMPOSE_FILE"
+
+# Stash the uninstall script next to the compose file so `vac uninstall` works
+# offline and shows up where an operator would look for it. Non-fatal — the
+# `vac uninstall` wrapper also fetches it on demand.
+info "Fetching uninstall.sh…"
+if fetch "$VAC_ASSET_BASE/uninstall.sh" "$VAC_INSTALL_DIR/uninstall.sh"; then
+  chmod +x "$VAC_INSTALL_DIR/uninstall.sh"
+else
+  warn "Could not fetch uninstall.sh; 'vac uninstall' will fall back to the network."
+fi
 
 # ── Generate .env (only on first install — secrets are preserved on re-run) ──
 if [ -f "$ENV_FILE" ]; then
@@ -176,13 +225,14 @@ IP="$(curl -fsS https://api.ipify.org 2>/dev/null || true)"
 
 printf '\n%s VAC is up.%s\n\n' "$B$G" "$N"
 if [ -n "$VAC_DOMAIN" ]; then
-  printf '  Dashboard:  %shttps://%s%s   (once DNS + TLS settle)\n' "$B" "$VAC_DOMAIN" "$N"
-  printf '  Direct:     http://%s:%s\n' "$IP" "$VAC_HOST_PORT"
-  printf '\n  DNS: point %sA *.%s%s and %sA %s%s at this host (%s).\n' "$B" "$VAC_DOMAIN" "$N" "$B" "$VAC_DOMAIN" "$N" "$IP"
+  printf '  Dashboard:  %shttps://vac.%s%s   (once DNS + TLS settle)\n' "$B" "$VAC_DOMAIN" "$N"
+  printf '  Direct:     http://%s:%s   (recovery / pre-DNS fallback)\n' "$IP" "$VAC_HOST_PORT"
+  printf '\n  DNS: point %sA vac.%s%s and %sA *.%s%s at this host (%s).\n' "$B" "$VAC_DOMAIN" "$N" "$B" "$VAC_DOMAIN" "$N" "$IP"
 else
   printf '  Dashboard:  %shttp://%s:%s%s\n' "$B" "$IP" "$VAC_HOST_PORT" "$N"
-  printf '\n  Add a domain later for automatic HTTPS subdomains:\n'
-  printf '    %svac set-domain vac.example.com%s\n' "$B" "$N"
+  printf '\n  Add a domain later to put the dashboard on HTTPS and enable\n'
+  printf '  automatic app subdomains:\n'
+  printf '    %svac set-domain example.com%s\n' "$B" "$N"
 fi
 printf '\n  Open the dashboard to create your admin account.\n'
 printf '  Manage:  %svac status | vac logs | vac upgrade | vac down%s\n\n' "$B" "$N"
