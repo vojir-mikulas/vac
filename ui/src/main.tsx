@@ -34,18 +34,29 @@ declare module '@tanstack/react-router' {
   }
 }
 
-const rootEl = document.getElementById('root')
-if (!rootEl) throw new Error('#root element not found')
+async function bootstrap() {
+  // Mock backend: when VITE_MOCK is set, intercept fetch/WebSocket so the whole
+  // UI runs with no real API (used for the deployable static preview).
+  if (import.meta.env.VITE_MOCK) {
+    const { startMocks } = await import('./mocks/start')
+    startMocks()
+  }
 
-createRoot(rootEl).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <TooltipProvider delayDuration={200}>
-          <RouterProvider router={router} />
-          <Toaster />
-        </TooltipProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
-  </StrictMode>,
-)
+  const rootEl = document.getElementById('root')
+  if (!rootEl) throw new Error('#root element not found')
+
+  createRoot(rootEl).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <TooltipProvider delayDuration={200}>
+            <RouterProvider router={router} />
+            <Toaster />
+          </TooltipProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </StrictMode>,
+  )
+}
+
+void bootstrap()

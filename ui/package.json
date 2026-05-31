@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "vite --mode mock",
     "build": "tsc -b && vite build",
+    "build:mock": "tsc -b && vite build --mode mock",
+    "preview:mock": "vite preview --mode mock",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

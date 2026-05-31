@@ -8,7 +8,7 @@ expect.extend(axeMatchers)
 
 // jsdom ships no matchMedia; the theme provider and reduced-motion checks call
 // it at mount. Default to "no preference" (light, motion allowed) for tests.
-if (!window.matchMedia) {
+if (typeof window !== 'undefined' && !window.matchMedia) {
   window.matchMedia = (query: string): MediaQueryList =>
     ({
       matches: false,

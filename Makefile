@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-api dev-ui build build-ui build-api build-api-noembed lint lint-go lint-ui test test-go test-ui test-integration typecheck format clean compose-up compose-down compose-logs bench-ram
+.PHONY: help install dev dev-api dev-ui build build-ui preview-build build-api build-api-noembed lint lint-go lint-ui test test-go test-ui test-integration typecheck format clean compose-up compose-down compose-logs bench-ram
 
 # Version metadata baked into vac-api via -ldflags. Override on the command line
 # (e.g. `make build-api VERSION=v1.2.3`) or via env. The release Dockerfile sets
@@ -30,6 +30,9 @@ build: build-ui build-api ## Build everything (UI then Go binary with embedded U
 
 build-ui: ## Build UI into api/internal/ui/dist
 	pnpm --filter ui build
+
+preview-build: ## Build standalone UI preview (mock backend, no API) into ui/dist
+	pnpm --filter ui build:mock
 
 build-api: ## Build Go binary with the embedded UI (requires build-ui first)
 	cd api && go build -tags embedui -ldflags="$(LDFLAGS)" -o bin/vac-api .

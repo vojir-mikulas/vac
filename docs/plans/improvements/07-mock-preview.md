@@ -1,5 +1,9 @@
 # 07 — Mock backend + deployable UI preview
 
+> **Status: implemented** (see "Implementation" at the bottom). The approach
+> below was revised from MSW to a direct fetch/WebSocket override — rationale in
+> that section.
+
 **Goal:** Run the entire UI with **no backend** — a self-contained build that fakes
 the API/WebSocket layer with believable, stateful demo data. Deploy it as a static
 site (per-PR preview URLs) so the app can be shown and click-tested without a VPS,
@@ -123,5 +127,54 @@ Estimated **2–4 days** total, front-loaded toward making fake data feel real.
 - Whether to persist the in-memory store to `localStorage` (nice for demos that
   survive refresh) or reset on every load (cleaner for screenshots/QA). Default:
   reset on load, with a `?persist` opt-in.
+
+## Implementation
+
+Built without MSW. Because the UI funnels **all** HTTP through a single
+`fetch()` (`lib/api/client.ts`) and **all** WebSocket traffic through a single
+`new WebSocket()` (`lib/ws/use-websocket.ts`), a direct override of those two
+globals intercepts the exact same seam MSW would — with no dependency, no service
+worker, and none of the SW scope/caching pitfalls that bite static hosts. The
+override path is identical in spirit to the plan; only the interception mechanism
+changed. The persistence open-note was resolved as **reset-on-load** (no
+`localStorage`).
+
+Files (all under `ui/src/mocks/`, loaded only when `VITE_MOCK` is set):
+
+- `util.ts` — id/time/random helpers.
+- `types.ts` — internal record shapes (extend the public API types with
+  server-side fields: raw secret values, per-deploy log buffers).
+- `seed.ts` — initial demo data: 4 apps (running multi-service, static, degraded,
+  stopped) + deploy history including a failed deploy.
+- `db.ts` — in-memory store, a tiny pub/sub, and the **deploy scheduler** that
+  walks `queued → … → running` on timers while streaming build-log frames.
+- `handlers.ts` — the route table mirroring every `lib/api/*` endpoint.
+- `fetch-mock.ts` — overrides `fetch`; serves `/api/**` from the store, passes
+  everything else through.
+- `ws-mock.ts` — replaces the global `WebSocket`; streams deploy logs, runtime
+  logs, and per-service stats by URL path.
+- `start.ts` — installs both shims; imported dynamically from `main.tsx`.
+- `mocks.test.ts` — exercises the handlers + the deploy lifecycle (fake timers).
+
+Wiring: `main.tsx` dynamically imports `./mocks/start` behind
+`import.meta.env.VITE_MOCK` (so a normal build dead-code-eliminates it — verified:
+zero mock code in the prod bundle). `vite.config.ts` emits the mock build to
+`ui/dist` (not the Go-embed path) under `--mode mock`; `.env.mock` sets the flag.
+SPA fallback via `ui/public/_redirects` (Netlify/Cloudflare) + `ui/vercel.json`.
+The real auth guard in `routes/_app.tsx` is restored — the mock satisfies
+`setup/status` + `auth/me`, so it lands logged-in.
+
+Run / deploy:
+
+```
+pnpm --filter ui dev:mock        # local dev with the mock backend
+make preview-build               # static build → ui/dist (pnpm build:mock)
+pnpm --filter ui preview:mock    # serve the built preview locally
+```
+
+Acceptance status: typecheck/lint/mock-tests pass; the prod bundle contains zero
+mock code; the preview build serves and is host-deployable. End-to-end browser
+click-through (deploy animation, live logs/stats) was not auto-verified here — no
+headless browser in the build env — so do a quick manual pass via `dev:mock`.
 - Host choice (Cloudflare Pages vs Netlify vs Vercel) — driven by where preview URLs
   are most convenient for the team.
