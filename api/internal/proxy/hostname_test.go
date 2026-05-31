@@ -6,6 +6,7 @@ import (
 )
 
 func TestAutoSubdomain(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		slug, svc string
@@ -27,6 +28,7 @@ func TestAutoSubdomain(t *testing.T) {
 }
 
 func TestNormalizeHostname_OK(t *testing.T) {
+	t.Parallel()
 	tests := []struct{ in, want string }{
 		{"Example.COM", "example.com"},
 		{"www.acme.com.", "www.acme.com"},
@@ -46,6 +48,7 @@ func TestNormalizeHostname_OK(t *testing.T) {
 }
 
 func TestNormalizeHostname_Rejects(t *testing.T) {
+	t.Parallel()
 	bad := []string{
 		"",
 		"localhost",          // single label

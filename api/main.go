@@ -157,7 +157,11 @@ func main() {
 	}, slog.Default())
 	go pruner.Run(ctx)
 
-	srv := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier)
+	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier)
+	if err != nil {
+		slog.Error("server init failed", "err", err)
+		os.Exit(1)
+	}
 
 	go func() {
 		slog.Info("vac-api listening", "addr", srv.Addr)

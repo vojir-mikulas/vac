@@ -20,6 +20,7 @@ func newBox(t *testing.T) *Box {
 }
 
 func TestRoundTrip(t *testing.T) {
+	t.Parallel()
 	b := newBox(t)
 	plaintext := []byte("super-secret-token")
 
@@ -41,6 +42,7 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestEmptyPlaintext(t *testing.T) {
+	t.Parallel()
 	b := newBox(t)
 	sealed, err := b.Seal(nil)
 	if err != nil {
@@ -56,6 +58,7 @@ func TestEmptyPlaintext(t *testing.T) {
 }
 
 func TestLargePlaintext(t *testing.T) {
+	t.Parallel()
 	b := newBox(t)
 	plaintext := make([]byte, 1<<20) // 1 MiB
 	if _, err := rand.Read(plaintext); err != nil {
@@ -75,6 +78,7 @@ func TestLargePlaintext(t *testing.T) {
 }
 
 func TestTamperedCiphertext(t *testing.T) {
+	t.Parallel()
 	b := newBox(t)
 	sealed, err := b.Seal([]byte("payload"))
 	if err != nil {
@@ -88,6 +92,7 @@ func TestTamperedCiphertext(t *testing.T) {
 }
 
 func TestTamperedNonce(t *testing.T) {
+	t.Parallel()
 	b := newBox(t)
 	sealed, err := b.Seal([]byte("payload"))
 	if err != nil {
@@ -100,6 +105,7 @@ func TestTamperedNonce(t *testing.T) {
 }
 
 func TestWrongKeyRejected(t *testing.T) {
+	t.Parallel()
 	a := newBox(t)
 	b := newBox(t)
 	sealed, err := a.Seal([]byte("hello"))
@@ -112,6 +118,7 @@ func TestWrongKeyRejected(t *testing.T) {
 }
 
 func TestNoncesAreUnique(t *testing.T) {
+	t.Parallel()
 	b := newBox(t)
 	pt := []byte("same plaintext")
 	a, _ := b.Seal(pt)
@@ -122,6 +129,7 @@ func TestNoncesAreUnique(t *testing.T) {
 }
 
 func TestBadKeySize(t *testing.T) {
+	t.Parallel()
 	for _, n := range []int{0, 16, 31, 33, 64} {
 		key := make([]byte, n)
 		if _, err := New(key); err == nil {
@@ -131,6 +139,7 @@ func TestBadKeySize(t *testing.T) {
 }
 
 func TestShortCiphertextRejected(t *testing.T) {
+	t.Parallel()
 	b := newBox(t)
 	if _, err := b.Open([]byte{1, 2, 3}); err == nil {
 		t.Fatal("expected error on too-short ciphertext, got nil")

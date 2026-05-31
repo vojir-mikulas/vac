@@ -12,6 +12,7 @@ import (
 )
 
 func TestGenerate_Roundtrip(t *testing.T) {
+	t.Parallel()
 	kp, err := sshkey.Generate("my-app")
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
@@ -60,6 +61,7 @@ func TestGenerate_Roundtrip(t *testing.T) {
 }
 
 func TestGenerate_FreshKeysAreUnique(t *testing.T) {
+	t.Parallel()
 	a, err := sshkey.Generate("same-comment")
 	if err != nil {
 		t.Fatal(err)
@@ -77,6 +79,7 @@ func TestGenerate_FreshKeysAreUnique(t *testing.T) {
 }
 
 func TestGenerate_EmptyCommentFallsBack(t *testing.T) {
+	t.Parallel()
 	kp, err := sshkey.Generate("")
 	if err != nil {
 		t.Fatal(err)

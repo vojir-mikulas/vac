@@ -24,6 +24,7 @@ func authed(h http.HandlerFunc) http.HandlerFunc {
 }
 
 func TestAcceptDeliversFrames(t *testing.T) {
+	t.Parallel()
 	h := NewHub()
 	srv := httptest.NewServer(authed(func(w http.ResponseWriter, r *http.Request) {
 		c, err := Accept(w, r, AcceptOptions{InsecureSkipVerify: true})
@@ -62,6 +63,7 @@ func TestAcceptDeliversFrames(t *testing.T) {
 }
 
 func TestAcceptRejectsUnauthenticated(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// No authed wrapper — user is absent.
 		if _, err := Accept(w, r, AcceptOptions{InsecureSkipVerify: true}); err != nil {
@@ -85,6 +87,7 @@ func TestAcceptRejectsUnauthenticated(t *testing.T) {
 }
 
 func TestAcceptRejectsForeignOrigin(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(authed(func(w http.ResponseWriter, r *http.Request) {
 		// Strict: only the request's own host is allowed (no skip-verify).
 		if _, err := Accept(w, r, AcceptOptions{}); err != nil {

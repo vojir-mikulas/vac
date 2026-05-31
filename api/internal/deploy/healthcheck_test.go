@@ -13,6 +13,7 @@ import (
 )
 
 func TestCheckWithRetry_PassesOnFirstTry(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -23,6 +24,7 @@ func TestCheckWithRetry_PassesOnFirstTry(t *testing.T) {
 }
 
 func TestCheckWithRetry_RetriesUntilSuccess(t *testing.T) {
+	t.Parallel()
 	var attempts atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		n := attempts.Add(1)
@@ -42,6 +44,7 @@ func TestCheckWithRetry_RetriesUntilSuccess(t *testing.T) {
 }
 
 func TestCheckWithRetry_FailsAfterExhaust(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "down", http.StatusInternalServerError)
 	}))
@@ -64,6 +67,7 @@ func (f *fakeChecker) Check(_ context.Context, _ string) (int, error) {
 }
 
 func TestCheckWithRetry_FakeChecker(t *testing.T) {
+	t.Parallel()
 	c := &fakeChecker{statuses: []int{503, 503, 200}}
 	if err := deploy.CheckWithRetry(context.Background(), c, "http://x.invalid/", 5, 10*time.Second); err != nil {
 		t.Errorf("want pass on third attempt, got %v", err)

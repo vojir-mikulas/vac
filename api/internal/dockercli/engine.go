@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
 )
@@ -47,7 +48,13 @@ func (c *Compose) Events(ctx context.Context) (<-chan Event, error) {
 				return
 			}
 		}
-		_ = cmd.Wait()
+		// docker events exit is usually ctx cancellation (clean shutdown)
+		// or the daemon going away (worth knowing about). Log at debug so
+		// it's visible when chasing event-stream issues without spamming
+		// the normal log path.
+		if err := cmd.Wait(); err != nil && ctx.Err() == nil {
+			slog.Debug("dockercli: events stream exited", "err", err)
+		}
 	}()
 	return out, nil
 }

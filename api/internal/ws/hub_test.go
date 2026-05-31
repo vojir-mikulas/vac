@@ -6,6 +6,7 @@ import (
 )
 
 func TestHubFanOut(t *testing.T) {
+	t.Parallel()
 	h := NewHub()
 	a, cancelA := h.Subscribe("t")
 	defer cancelA()
@@ -27,6 +28,7 @@ func TestHubFanOut(t *testing.T) {
 }
 
 func TestHubDropsSlowConsumer(t *testing.T) {
+	t.Parallel()
 	h := NewHub()
 	ch, cancel := h.Subscribe("t")
 	defer cancel()
@@ -64,6 +66,7 @@ func TestHubDropsSlowConsumer(t *testing.T) {
 }
 
 func TestHubSubscribeCallbacks(t *testing.T) {
+	t.Parallel()
 	h := NewHub()
 	var subs, unsubs []string
 	h.SetCallbacks(
@@ -87,6 +90,7 @@ func TestHubSubscribeCallbacks(t *testing.T) {
 }
 
 func TestHubCancelIdempotent(t *testing.T) {
+	t.Parallel()
 	h := NewHub()
 	_, cancel := h.Subscribe("t")
 	cancel()
@@ -97,6 +101,7 @@ func TestHubCancelIdempotent(t *testing.T) {
 }
 
 func TestHubCloseDropsSubscribers(t *testing.T) {
+	t.Parallel()
 	h := NewHub()
 	ch, _ := h.Subscribe("t")
 	h.Close()

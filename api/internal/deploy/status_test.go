@@ -7,6 +7,7 @@ import (
 )
 
 func TestDeriveAppStatus(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		in   []string
@@ -30,6 +31,7 @@ func TestDeriveAppStatus(t *testing.T) {
 }
 
 func TestMapPsStateToServiceStatus(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		in   string
 		want string
@@ -50,6 +52,7 @@ func TestMapPsStateToServiceStatus(t *testing.T) {
 }
 
 func TestIsTerminalDeploymentStatus(t *testing.T) {
+	t.Parallel()
 	terminals := []string{deploy.DeploymentStatusRunning, deploy.DeploymentStatusError, deploy.DeploymentStatusInterrupted}
 	for _, s := range terminals {
 		if !deploy.IsTerminalDeploymentStatus(s) {

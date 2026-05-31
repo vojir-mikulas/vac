@@ -11,6 +11,7 @@ import (
 )
 
 func TestGenerateRecoveryCodesUnique(t *testing.T) {
+	t.Parallel()
 	plain, hashes, err := generateRecoveryCodes(10)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -43,6 +44,7 @@ func TestGenerateRecoveryCodesUnique(t *testing.T) {
 }
 
 func TestNormalizeRecoveryCode(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		in, want string
 	}{
@@ -68,6 +70,7 @@ func TestNormalizeRecoveryCode(t *testing.T) {
 // the otp library on Period/Skew/Digits/Algorithm. If this breaks, the login
 // path will be silently rejecting valid codes.
 func TestTOTPGenerateValidatesItsOwnCode(t *testing.T) {
+	t.Parallel()
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "VAC",
 		AccountName: "alice",

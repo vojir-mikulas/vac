@@ -8,6 +8,7 @@ import (
 )
 
 func TestHashAndVerify(t *testing.T) {
+	t.Parallel()
 	h, err := HashPassword("correct horse battery staple")
 	if err != nil {
 		t.Fatal(err)
@@ -24,6 +25,7 @@ func TestHashAndVerify(t *testing.T) {
 }
 
 func TestHashesDiffer(t *testing.T) {
+	t.Parallel()
 	a, _ := HashPassword("same")
 	b, _ := HashPassword("same")
 	if a == b {

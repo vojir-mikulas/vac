@@ -40,11 +40,11 @@ lint-ui: ## ESLint + Prettier check
 
 test: test-go test-ui ## Run all unit tests (excludes integration; use test-integration for those)
 
-test-go: ## go test (unit only)
-	cd api && go test ./...
+test-go: ## go test (unit only, race detector on)
+	cd api && go test -race ./...
 
-test-integration: ## go test with integration tag (requires Docker)
-	cd api && go test -tags integration ./...
+test-integration: ## go test with integration tag (requires Docker, race detector on)
+	cd api && go test -race -tags integration ./...
 
 test-ui: ## vitest
 	pnpm --filter ui test

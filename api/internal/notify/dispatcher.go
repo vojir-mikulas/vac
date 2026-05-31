@@ -141,7 +141,12 @@ func (d *Dispatcher) resolve(ctx context.Context) resolved {
 		out.slackURL = d.open(row.SlackURLEnc)
 	}
 	if len(row.Events) > 0 {
-		_ = json.Unmarshal(row.Events, &out.events)
+		if err := json.Unmarshal(row.Events, &out.events); err != nil {
+			// Falling through means every event is treated as enabled — log so
+			// the operator knows the toggle row is corrupt and is being
+			// ignored. (Recoverable; just degrades to defaults.)
+			d.logger.Warn("notify: events toggle map is malformed; defaulting to all events on", "err", err)
+		}
 	}
 	return out
 }

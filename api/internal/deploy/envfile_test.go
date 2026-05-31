@@ -3,6 +3,7 @@ package deploy
 import "testing"
 
 func TestEscapeEnvValue(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		in   string
 		want string

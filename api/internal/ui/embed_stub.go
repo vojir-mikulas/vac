@@ -12,4 +12,4 @@ import "embed"
 //go:embed placeholder
 var rawFS embed.FS
 
-var files = mustSub(rawFS, "placeholder")
+const subDir = "placeholder"

@@ -82,7 +82,11 @@ func setupServerWithKey(t *testing.T) http.Handler {
 	// requests are not HTTPS, but Go's cookie jar still records them.
 	// The login_integration_test already relies on this.
 
-	return server.New(t.Context(), cfg, store.New(pool), nil, nil, nil, nil, nil, nil).Handler
+	srv, err := server.New(t.Context(), cfg, store.New(pool), nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("server.New: %v", err)
+	}
+	return srv.Handler
 }
 
 func TestTOTPSetupAndLoginFlow(t *testing.T) {

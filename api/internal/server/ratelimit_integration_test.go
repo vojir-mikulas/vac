@@ -20,7 +20,11 @@ func TestLoginIsRateLimited(t *testing.T) {
 	cfg := config.Default()
 	cfg.LoginRateLimit = 5
 	cfg.LoginRateWindow = 15 * time.Minute
-	h := server.New(t.Context(), cfg, s, nil, nil, nil, nil, nil, nil).Handler
+	srv, err := server.New(t.Context(), cfg, s, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("server.New: %v", err)
+	}
+	h := srv.Handler
 
 	// Create an admin to make the login surface real (otherwise every attempt
 	// hits the dummy-hash path; same code branch, but this keeps the test

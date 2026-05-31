@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -28,7 +29,7 @@ import (
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, hostStats handler.HostStatsProvider, notifier handler.TestSender) *http.Server {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, hostStats handler.HostStatsProvider, notifier handler.TestSender) (*http.Server, error) {
 	// Convert the concrete (possibly-nil) manager into nil-able interface
 	// values so handlers' `== nil` guards behave (a typed-nil pointer in an
 	// interface is not nil).
@@ -185,13 +186,17 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		})
 	})
 
-	r.Handle("/*", ui.Handler())
+	uiHandler, err := ui.Handler()
+	if err != nil {
+		return nil, fmt.Errorf("server: ui handler: %w", err)
+	}
+	r.Handle("/*", uiHandler)
 
 	return &http.Server{
 		Addr:              cfg.Addr(),
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
-	}
+	}, nil
 }
 
 // wsAcceptOptions derives the WebSocket Origin policy from config. The SPA is

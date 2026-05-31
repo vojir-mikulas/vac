@@ -12,6 +12,7 @@ import (
 )
 
 func TestDetect_PrefersComposeYaml(t *testing.T) {
+	t.Parallel()
 	d := t.TempDir()
 	mustWrite(t, filepath.Join(d, "compose.yaml"), "services: {}\n")
 	mustWrite(t, filepath.Join(d, "docker-compose.yml"), "services: {}\n")
@@ -25,6 +26,7 @@ func TestDetect_PrefersComposeYaml(t *testing.T) {
 }
 
 func TestDetect_FallsBackToDockerCompose(t *testing.T) {
+	t.Parallel()
 	d := t.TempDir()
 	mustWrite(t, filepath.Join(d, "docker-compose.yml"), "services: {}\n")
 	res, err := compose.Detect(d)
@@ -37,6 +39,7 @@ func TestDetect_FallsBackToDockerCompose(t *testing.T) {
 }
 
 func TestDetect_DockerfileOnlyReturnsGenerated(t *testing.T) {
+	t.Parallel()
 	d := t.TempDir()
 	mustWrite(t, filepath.Join(d, "Dockerfile"), "FROM alpine\n")
 	res, err := compose.Detect(d)
@@ -49,6 +52,7 @@ func TestDetect_DockerfileOnlyReturnsGenerated(t *testing.T) {
 }
 
 func TestDetect_EmptyRepoReturnsErrNoComposeOrDockerfile(t *testing.T) {
+	t.Parallel()
 	_, err := compose.Detect(t.TempDir())
 	if !errors.Is(err, compose.ErrNoComposeOrDockerfile) {
 		t.Errorf("err = %v, want ErrNoComposeOrDockerfile", err)
@@ -56,6 +60,7 @@ func TestDetect_EmptyRepoReturnsErrNoComposeOrDockerfile(t *testing.T) {
 }
 
 func TestWrap_WritesGeneratedFile(t *testing.T) {
+	t.Parallel()
 	dest := filepath.Join(t.TempDir(), "vac-gen", "compose.yaml")
 	path, err := compose.Wrap(dest)
 	if err != nil {
@@ -79,6 +84,7 @@ func TestWrap_WritesGeneratedFile(t *testing.T) {
 }
 
 func TestParse_MultiServiceComposeFile(t *testing.T) {
+	t.Parallel()
 	d := t.TempDir()
 	path := filepath.Join(d, "compose.yaml")
 	mustWrite(t, path, `
@@ -131,6 +137,7 @@ services:
 }
 
 func TestParse_MissingServicesSection(t *testing.T) {
+	t.Parallel()
 	d := t.TempDir()
 	path := filepath.Join(d, "compose.yaml")
 	mustWrite(t, path, "version: '3'\n")
@@ -140,6 +147,7 @@ func TestParse_MissingServicesSection(t *testing.T) {
 }
 
 func TestWarnIfMissingDockerignore(t *testing.T) {
+	t.Parallel()
 	d := t.TempDir()
 	if compose.WarnIfMissingDockerignore(d) == "" {
 		t.Error("expected warning for repo with no .dockerignore")
