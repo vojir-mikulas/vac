@@ -2,7 +2,7 @@
 # of building from source. Used by the `curl get.vac.vojir.io | sh` installer.
 #
 # Image refs are overridable:
-#   VAC_REGISTRY  (default ghcr.io/vojir)
+#   VAC_REGISTRY  (default ghcr.io/vojir-mikulas)
 #   VAC_VERSION   (default latest — the installer pins a real version)
 #
 # Everything else mirrors ./compose.yaml. Keep the two in sync.
@@ -31,7 +31,7 @@ services:
       retries: 10
 
   vac-api:
-    image: ${VAC_REGISTRY:-ghcr.io/vojir}/vac-api:${VAC_VERSION:-latest}
+    image: ${VAC_REGISTRY:-ghcr.io/vojir-mikulas}/vac-api:${VAC_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       vac-db:
@@ -59,7 +59,7 @@ services:
       - "${DOCKER_GID:-999}"
 
   vac-proxy:
-    image: ${VAC_REGISTRY:-ghcr.io/vojir}/vac-proxy:${VAC_VERSION:-latest}
+    image: ${VAC_REGISTRY:-ghcr.io/vojir-mikulas}/vac-proxy:${VAC_VERSION:-latest}
     restart: unless-stopped
     ports:
       - "80:80"
