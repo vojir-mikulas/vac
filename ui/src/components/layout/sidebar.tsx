@@ -14,7 +14,7 @@ const NAV = [
 
 export function Sidebar() {
   return (
-    <aside className="sticky top-0 hidden h-svh w-sidebar shrink-0 flex-col border-r bg-surface-1 md:flex">
+    <aside className="sticky top-3 m-3 hidden h-[calc(100svh-1.5rem)] w-sidebar shrink-0 flex-col rounded-xl border bg-surface-1 shadow-sm md:flex">
       <div className="border-b px-4.5 pb-3 pt-4.5">
         <Link to="/apps" className="flex w-full items-center gap-2.5">
           <img src="/vac-logo.svg" alt="" aria-hidden="true" className="size-7 rounded-md" />
