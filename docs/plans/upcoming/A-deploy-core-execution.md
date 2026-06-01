@@ -158,43 +158,23 @@ logged. Tag-only apps deploy on `v1.2.3` but not on a branch push.
 **Goal:** No 502s through a successful redeploy of a **stateless HTTP service**. Bring up
 new alongside old → Caddy sees new healthy → swap upstream → drain → remove old.
 
-### Design sketch (within the compose invariant)
-- Keep "everything is a compose file." Achieve blue/green via a **generation-suffixed DNS
-  alias**, not a second compose project: after `compose up` of the new generation, attach
-  its containers to `vac-edge` as `{slug}--{service}--<gen>` (gen = short deployment id),
-  **in addition to** the stable `{slug}--{service}` alias, *without* yet moving the stable
-  alias.
-- Point Caddy at the new generation alias, `WaitHealthy`, then repoint the route to the new
-  upstream. Old containers keep serving until cutover.
-- **Drain + remove old:** after the route points at new, wait the drain window, then
-  `compose rm`/stop the old generation's containers. Compose's default
-  `up -d --remove-orphans` recreates in place and would kill old first — so A3 needs
-  per-service container orchestration (`up --no-recreate` for new + explicit old teardown),
-  or a `--scale`/blue-green naming scheme. **This is the hard part; spike it first.**
+**Full design + sequenced steps:** [`A3-zero-downtime-detail.md`](A3-zero-downtime-detail.md).
+Summary:
 
-### Constraints / guards
-- **Stateless HTTP services only.** Services with a volume / no internal port (DBs, workers)
-  are recreated in place as today — never rolled. Detect via "has internal port + no named
-  volume" (refine during the spike).
-- Connection draining window + timeout: config knob (default ~10s), surfaced in deploy log.
-- Rollback (A1) is the safety net: if cutover health fails, leave old serving, mark
-  `error`/`degraded` — never 502 the user.
-
-### Steps (provisional — finalize after spike)
-1. Spike: prove "new + old of one stateless service coexist on vac-edge, Caddy swaps cleanly"
-   on a throwaway compose stack. Decide the orchestration mechanism.
-2. `proxy.Manager`: support routing to a named generation alias + atomic upstream swap +
-   old-alias detach.
-3. `deploy.Pipeline`: branch for rollable services — up-new / health / swap / drain / remove.
-   Non-rollable services keep the current path.
-4. Per-deployment image tagging (so the old generation's image survives the new build) +
-   pruner "pin active + last-good". This is where retention pinning finally matters.
-5. UI: surface "rolling…/cutover/draining" sub-states; config for drain window.
-
-### Tests
-- Integration: redeploy a stateless HTTP service, assert continuous 200s across cutover.
-- Stateful service is recreated in place, not rolled.
-- Health-fail at cutover leaves old serving; deploy → error, no downtime.
+- **Core tension:** `compose up -d` recreates a service in place (stops old → starts new under
+  the same vac-edge alias), so the alias points at nothing during the gap → 502. A3 removes
+  that gap. Routing-by-alias + Caddy-owned health already make the cutover a Caddy admin-API
+  op; the only missing piece is running two generations of one service at once.
+- **Invariant:** only **stateless HTTP services** are rollable (`internal_port != nil`, no
+  `volumes:`, single replica). Stateful services (single-writer DBs) can't be rolled and are
+  recreated in place as today.
+- **Spike-gated:** the mechanism for "new + old of one stateless service simultaneously" is the
+  one real unknown. **Spike first** (M1 compose `--scale`+image-ID side-by-side vs. M2
+  VAC-managed `docker run` generation containers), success = **0 non-200s across cutover** +
+  clean renormalization. The detail doc has the exact spike definition and the
+  mechanism-independent pieces (generation-alias routing + atomic upstream swap, drain window,
+  pipeline branch, never-502 failure handling that composes with A1, schema `00022`, config,
+  UI, tests).
 
 ### Acceptance
 A redeploy of a stateless HTTP service serves continuously (no 502s) through the cutover.
@@ -203,13 +183,12 @@ A redeploy of a stateless HTTP service serves continuously (no 502s) through the
 
 ## Cross-cutting
 
-- **Migrations:** Track A owns `00021+`. A2 adds `apps.webhook_secret`. Coordinate numbers
-  if other tracks merge first (rebase numbers at merge).
+- **Migrations:** Track A owns `00021+`. A2 added `00021` (`apps.webhook_secret_enc`); A3
+  reserves `00022` (`services.route_alias`). Coordinate numbers if other tracks merge first
+  (rebase numbers at merge).
 - **KB:** A2/A3 change the deploy pipeline → regenerate `docs/kb/deployment-flow.md`
   (run `/refresh-kb`) and log image-tag-reuse deferral in `docs/deviations.md`.
 - **Each item:** `make test` + `make lint` + `make typecheck` green; run `/code-review` and
   `/simplify` before marking done; propose a Conventional Commit at each item boundary.
 - **Checkpoints:** review at the end of A1 before starting A2; spike A3 before committing to
   its step list.
-</content>
-</invoke>
