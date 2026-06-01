@@ -10,6 +10,10 @@ Guiding lens (from the strategy): the moat is **simplicity + UX + reliability +
 trust**, not feature count. Order by "does this make the deploy loop feel more
 trustworthy and effortless," not by what's technically interesting.
 
+> **Executing in parallel?** See [`00-parallel-tracks.md`](00-parallel-tracks.md) — it groups
+> these 13 stubs into concurrent tracks by subsystem ownership (Deploy Core / Observability /
+> Trust / Managed Services), with the sequencing and collision points worked out.
+
 ## Plans
 
 | # | File | Tier | Scope | Effort |
