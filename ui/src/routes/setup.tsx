@@ -48,9 +48,14 @@ function SetupPage() {
 
   const create = useMutation({
     mutationFn: () => setupApi.createAdmin(username, password, token),
-    onSuccess: async (user) => {
+    onSuccess: (user) => {
+      // The /setup POST issues the session and consumes the token, so the admin
+      // now exists and is logged in. Seed both gate queries directly: the /_app
+      // beforeLoad reads them via ensureQueryData, which returns cached data
+      // without refetching — invalidating wouldn't refetch here (no active
+      // observer), so a stale needs_setup:true would bounce us back to /setup.
       qc.setQueryData(queryKeys.auth.me, user)
-      await qc.invalidateQueries({ queryKey: queryKeys.setup.status })
+      qc.setQueryData(queryKeys.setup.status, { needs_setup: false, token_required: false })
       navigate({ to: '/apps' })
     },
   })

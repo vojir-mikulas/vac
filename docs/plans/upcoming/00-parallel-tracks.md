@@ -11,20 +11,25 @@ rewrite it — so they must be *one* track done in order, not parallel work, or 
 hell. Everything else is arranged to stay out of that path.
 
 ```
-        ┌─ Track A: DEPLOY CORE ──────────── 02 → 01 → 05        (critical path)
+        ┌─ Track A: DEPLOY CORE ──────────── ✅02 → ✅01 → ⏸05    (critical path; 05 deferred)
         │
- land   ├─ Track B: OBSERVABILITY & LIMITS ─ 07 → 13 → 06
+ land   ├─ Track B: OBSERVABILITY & LIMITS ─ ✅07 → ✅13 → ✅06   (done)
  first  │
- (S0) ──┼─ Track C: TRUST & LIFECYCLE ─────── 11 → 03 → 04
+ (S0) ──┼─ Track C: TRUST & LIFECYCLE ─────── ✅11 → ✅03 → ✅04  (done)
         │
         ├─ Track D: MANAGED SERVICES ───────── 08 → 09 → 12       (greenfield)
         │
         └─ Track E: MANAGED VAC (separate repo) ─ 10              (future, out of tree)
 ```
 
+> **Status (2026-06-01):** Stage 0 landed. **Track A** shipped A1+A2 (rollback +
+> push-to-deploy); **A3 zero-downtime is deferred/paused** (design in
+> [`A3-zero-downtime-detail.md`](A3-zero-downtime-detail.md)). **Track B** and **Track C** are
+> complete. Remaining: A3 (deferred), Track D (greenfield), Track E (separate repo).
+
 ---
 
-## Stage 0 — land first (shared seams, ~1–2 days)
+## Stage 0 — land first (shared seams, ~1–2 days) ✅ *done*
 
 Two small foundations that, if built up front, let the tracks proceed without colliding:
 
@@ -40,40 +45,40 @@ After Stage 0, the tracks below run concurrently.
 
 ---
 
-## Track A — Deploy Core *(critical path, sequential)*
+## Track A — Deploy Core *(critical path, sequential)* — 🟡 A1+A2 done, A3 deferred
 
 **Owns:** `api/internal/deploy`, `caddy`, `proxy`, deployments store, the Deploys tab UI.
 **Why sequential:** all three rewrite the same pipeline; parallelizing them is a merge tar pit.
 
-| Order | Item | Effort | Note |
-|---|---|---|---|
-| A1 | `02` Rollback | S–M | start here — cheapest, highest trust, unblocks safe iteration |
-| A2 | `01` Push-to-deploy | L | the flagship; build on A1 so auto-deploys have an undo |
-| A3 | `05` Zero-downtime | L | hardest; only after A1+A2 are solid |
+| Order | Item | Effort | Status | Note |
+|---|---|---|---|---|
+| A1 | `02` Rollback | S–M | ✅ done | start here — cheapest, highest trust, unblocks safe iteration |
+| A2 | `01` Push-to-deploy | L | ✅ done | the flagship; build on A1 so auto-deploys have an undo |
+| A3 | `05` Zero-downtime | L | ⏸ deferred | hardest; only after A1+A2 are solid — design in [`A3-zero-downtime-detail.md`](A3-zero-downtime-detail.md) |
 
 This is the **needle-mover track** — staff it with your strongest deploy-pipeline person.
 
-## Track B — Observability & Limits *(parallel)*
+## Track B — Observability & Limits *(parallel)* — ✅ done
 
 **Owns:** `stats`, `reqmetrics`, host stats, `config`/build (`GOMEMLIMIT`, Makefile, CI),
 dashboard meters UI. **Near-zero overlap with Track A.**
 
-| Order | Item | Effort | Note |
-|---|---|---|---|
-| B1 | `07` RAM benchmark harness | S–M | do first — guards the headline claim before weight piles on |
-| B2 | `13` Prometheus exposition | S–M | reuses stats/reqmetrics; standalone-useful; unblocks 12 |
-| B3 | `06` Resource guardrails | M | per-app limits + box budget + OOM detection |
+| Order | Item | Effort | Status | Note |
+|---|---|---|---|---|
+| B1 | `07` RAM benchmark harness | S–M | ✅ done | do first — guards the headline claim before weight piles on |
+| B2 | `13` Prometheus exposition | S–M | ✅ done | reuses stats/reqmetrics; standalone-useful; unblocks 12 |
+| B3 | `06` Resource guardrails | M | ✅ done | per-app limits + box budget + OOM detection |
 
-## Track C — Trust & Lifecycle *(parallel)*
+## Track C — Trust & Lifecycle *(parallel)* — ✅ done
 
 **Owns:** auth/middleware (after Stage 0), `notify`, `caddy` PKI read, `routes/setup` UI,
 activity-feed UI. **Mostly additive; low collision.**
 
-| Order | Item | Effort | Note |
-|---|---|---|---|
-| C1 | `11` Revert (Part 2) | M | layers onto the Stage-0 audit log; snapshot-based undo for config |
-| C2 | `03` Cert-expiry notification | S | needs Caddy per-host `not_after`; wire into existing dispatcher |
-| C3 | `04` Onboarding wizard | M | UI-heavy; do once Track A's core loop is demoable |
+| Order | Item | Effort | Status | Note |
+|---|---|---|---|---|
+| C1 | `11` Revert (Part 2) | M | ✅ done | layers onto the Stage-0 audit log; snapshot-based undo for config |
+| C2 | `03` Cert-expiry notification | S | ✅ done | needs Caddy per-host `not_after`; wire into existing dispatcher |
+| C3 | `04` Onboarding wizard | M | ✅ done | UI-heavy; do once Track A's core loop is demoable |
 
 > Note: C1's revert of *deploys* leans on A1 (rollback). If Track A hasn't shipped A1 yet,
 > C1 can still do config/env/domain revert and defer deploy-revert to "see A1."
