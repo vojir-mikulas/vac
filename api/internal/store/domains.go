@@ -124,3 +124,55 @@ func (s *Store) SetCertStatus(ctx context.Context, id, status string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE domains SET cert_status = $2, updated_at = NOW() WHERE id = $1`, id, status)
 	return err
 }
+
+// DomainCert is the slim per-host cert state the expiry checker (plan 03) works
+// with — deliberately separate from the full Domain row so the hot scan path
+// stays untouched. NotAfter / NotifiedAt are nil until first observed.
+type DomainCert struct {
+	ID         string
+	Hostname   string
+	NotAfter   *time.Time
+	NotifiedAt *time.Time
+}
+
+// ListDomainCerts returns every domain's cert-expiry state for the background
+// checker to refresh.
+func (s *Store) ListDomainCerts(ctx context.Context) ([]DomainCert, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, hostname, cert_not_after, cert_expiry_notified_at
+		FROM domains ORDER BY hostname
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DomainCert
+	for rows.Next() {
+		var c DomainCert
+		if err := rows.Scan(&c.ID, &c.Hostname, &c.NotAfter, &c.NotifiedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// SetCertNotAfter records the leaf certificate's observed expiry for a host.
+func (s *Store) SetCertNotAfter(ctx context.Context, id string, notAfter time.Time) error {
+	_, err := s.pool.Exec(ctx, `UPDATE domains SET cert_not_after = $2, updated_at = NOW() WHERE id = $1`, id, notAfter)
+	return err
+}
+
+// MarkCertExpiryNotified stamps the expiry-alert de-dupe timestamp so the same
+// near-expiry cert isn't re-alerted every check.
+func (s *Store) MarkCertExpiryNotified(ctx context.Context, id string, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `UPDATE domains SET cert_expiry_notified_at = $2, updated_at = NOW() WHERE id = $1`, id, at)
+	return err
+}
+
+// ClearCertExpiryNotified resets the de-dupe stamp once a cert is healthy again
+// (renewed), so a future expiry alerts afresh.
+func (s *Store) ClearCertExpiryNotified(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE domains SET cert_expiry_notified_at = NULL, updated_at = NOW() WHERE id = $1 AND cert_expiry_notified_at IS NOT NULL`, id)
+	return err
+}

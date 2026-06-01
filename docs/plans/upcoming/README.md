@@ -19,6 +19,11 @@ trustworthy and effortless," not by what's technically interesting.
 > **Shipped** (moved to [`../done/`](../done/)): **01 push-to-deploy** and **02 rollback** are
 > implemented (Track A1/A2). **05 zero-downtime** is **deferred** — detailed design captured in
 > [`A3-zero-downtime-detail.md`](A3-zero-downtime-detail.md), to be evaluated later.
+>
+> **Track C shipped** (Trust & Lifecycle): **11 audit + revert**, **03 cert-expiry**, and
+> **04 onboarding** are implemented. Audit log is exposed as an Activity feed with curated revert
+> (`internal/revert`); cert-expiry runs via `internal/certcheck` (resolves deviation D7); onboarding
+> is a dismissible first-run checklist on the apps dashboard.
 
 | # | File | Tier | Scope | Effort |
 |---|------|------|-------|--------|

@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/vojir-mikulas/vac/api/internal/adapter"
+	"github.com/vojir-mikulas/vac/api/internal/audit"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
@@ -307,6 +308,14 @@ func UpdateApp(s *store.Store) http.HandlerFunc {
 			return
 		}
 
+		// Curated-revert snapshot: capture the full prior config so this patch can
+		// be undone. Best-effort — a read failure must not block the update.
+		if prior, err := s.GetApp(r.Context(), id); err == nil {
+			audit.SetTarget(r.Context(), "app", id)
+			audit.Describe(r.Context(), "updated configuration for "+prior.Slug)
+			audit.Snapshot(r.Context(), map[string]any{"app": appConfigSnapshot(prior)})
+		}
+
 		a, err := s.UpdateApp(r.Context(), id, req.Name, req.GitURL, req.GitBranch, req.ComposeFile, req.BuildKind, buildConfig, req.MemLimitMB)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
@@ -317,6 +326,25 @@ func UpdateApp(s *store.Store) http.HandlerFunc {
 			return
 		}
 		WriteJSON(w, http.StatusOK, toAppDTO(a))
+	}
+}
+
+// appConfigSnapshot is the before-state stored for a revertable app-config
+// update. Every field is the prior value (pointers so the reverter feeds them
+// straight back into UpdateApp's partial-patch shape). Mirrors revert.appSnap.
+func appConfigSnapshot(a store.App) map[string]any {
+	bc := a.BuildConfig
+	if len(bc) == 0 {
+		bc = json.RawMessage("{}")
+	}
+	return map[string]any{
+		"name":         a.Name,
+		"git_url":      a.GitURL,
+		"git_branch":   a.GitBranch,
+		"compose_file": a.ComposeFile,
+		"build_kind":   a.BuildKind,
+		"build_config": bc,
+		"mem_limit_mb": a.MemLimitMB,
 	}
 }
 

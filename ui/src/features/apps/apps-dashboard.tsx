@@ -24,6 +24,7 @@ import { useApps } from '@/lib/api/apps'
 import { useBoxBudget, useHostStats } from '@/lib/api/metrics'
 import { formatBytes, formatPercent, relativeTime } from '@/lib/format'
 import { countByFilter, matchesFilter, type AppFilter } from '@/features/apps/status-filter'
+import { OnboardingChecklist } from '@/features/onboarding/onboarding-checklist'
 import type { App } from '@/types/api'
 
 export function AppsDashboard() {
@@ -60,6 +61,8 @@ export function AppsDashboard() {
           </Button>
         }
       />
+
+      <OnboardingChecklist />
 
       <div className="mb-6">
         <StatStrip>

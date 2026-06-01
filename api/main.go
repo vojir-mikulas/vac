@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -19,6 +21,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/admin"
 	"github.com/vojir-mikulas/vac/api/internal/auth"
 	"github.com/vojir-mikulas/vac/api/internal/caddy"
+	"github.com/vojir-mikulas/vac/api/internal/certcheck"
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/crashloop"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
@@ -218,6 +221,14 @@ func main() {
 	}, slog.Default())
 	go pruner.Run(ctx)
 
+	// Cert-expiry notification (plan 03). Reads each managed host's real TLS
+	// expiry by handshaking the proxy with the host's SNI, and alerts once when a
+	// cert is within the window and hasn't auto-renewed.
+	certChecker := certcheck.New(st, notifier, certProbeAddr(cfg), 10*time.Second, certcheck.Config{
+		Threshold: time.Duration(cfg.CertExpiryDays) * 24 * time.Hour,
+	}, slog.Default())
+	go certChecker.Run(ctx)
+
 	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier)
 	if err != nil {
 		slog.Error("server init failed", "err", err)
@@ -321,6 +332,21 @@ func loadCaddyBaseConfig(parent context.Context, cfg config.Config, client *cadd
 	if err := mgr.Reconcile(parent); err != nil {
 		slog.Warn("caddy route reconcile reported errors", "err", err)
 	}
+}
+
+// certProbeAddr is the host:port the cert-expiry checker TLS-dials with each
+// managed host's SNI. It defaults to "<caddy-admin-host>:443" — the proxy serves
+// :443 on the same internal network the admin URL points at — unless overridden
+// by VAC_CERT_PROBE_ADDR.
+func certProbeAddr(cfg config.Config) string {
+	if cfg.CertProbeAddr != "" {
+		return cfg.CertProbeAddr
+	}
+	host := "vac-proxy"
+	if u, err := url.Parse(cfg.CaddyAdminURL); err == nil && u.Hostname() != "" {
+		host = u.Hostname()
+	}
+	return net.JoinHostPort(host, "443")
 }
 
 // probeDockerCLI runs `docker version` once at boot. Failure is logged but

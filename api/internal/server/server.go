@@ -17,6 +17,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
+	"github.com/vojir-mikulas/vac/api/internal/revert"
 	"github.com/vojir-mikulas/vac/api/internal/server/handler"
 	"github.com/vojir-mikulas/vac/api/internal/server/middleware"
 	"github.com/vojir-mikulas/vac/api/internal/sshkey"
@@ -146,6 +147,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			r.Post("/auth/api-tokens", handler.CreateAPIToken(tokm))
 			r.Delete("/auth/api-tokens/{id}", handler.RevokeAPIToken(tokm))
 
+			// Activity feed (plan 11, Part 1) + curated revert (Part 2). The feed
+			// is the durable successor to the deployment-derived activity view;
+			// revert reapplies the before-snapshot of the safely-invertible set.
+			r.Get("/audit", handler.ListAudit(s))
+			r.Post("/audit/{id}/revert", handler.RevertAudit(revert.New(s, baseDom)))
+
 			// Notification settings (Phase 4).
 			r.Get("/settings/notifications", handler.GetNotificationSettings(s, box))
 			r.Put("/settings/notifications", handler.PutNotificationSettings(s, box))
@@ -160,6 +167,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/base-domain", handler.GetBaseDomain(s, cfg))
 				r.Put("/base-domain", handler.PutBaseDomain(s, cfg, baseDom))
 				r.Get("/dns-check", handler.DNSCheck(hostIP))
+				// First-run onboarding checklist (plan 04).
+				r.Get("/onboarding", handler.GetOnboarding(s))
+				r.Post("/onboarding/dismiss", handler.DismissOnboarding(s))
 				if docker != nil {
 					r.Post("/restart-control-plane", handler.RestartControlPlane(docker))
 					r.Post("/stop-all-apps", handler.StopAllApps(s, docker, proxyMgr))

@@ -11,11 +11,21 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/vojir-mikulas/vac/api/internal/audit"
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
+
+// effectiveLabel renders a base-domain value for an audit summary, naming the
+// empty (cleared) case rather than logging a blank.
+func effectiveLabel(host string) string {
+	if host == "" {
+		return "(cleared)"
+	}
+	return host
+}
 
 // ControlPlaneRestarter bounces raw infrastructure containers by name.
 // *dockercli.Compose satisfies it.
@@ -108,6 +118,12 @@ func PutBaseDomain(s *store.Store, cfg config.Config, pm BaseDomainSetter) http.
 			}
 			host = normalized
 		}
+		// Curated-revert snapshot: capture the prior override so the change can be
+		// undone. Best-effort — a read failure must not block the save.
+		if prior, err := s.GetInstanceSettings(r.Context()); err == nil {
+			audit.Snapshot(r.Context(), map[string]any{"base_domain": prior.BaseDomain})
+		}
+		audit.Describe(r.Context(), "set base domain to "+effectiveLabel(host))
 		if err := s.SetBaseDomain(r.Context(), host); err != nil {
 			WriteError(w, http.StatusInternalServerError, "could not save base domain")
 			return
@@ -123,6 +139,42 @@ func PutBaseDomain(s *store.Store, cfg config.Config, pm BaseDomainSetter) http.
 			"base_domain": host,
 			"effective":   effective,
 		})
+	}
+}
+
+// onboardingDTO is the first-run checklist state (plan 04). `dismissed` is the
+// only persisted bit; the per-step completion is derived client-side from the
+// apps list and base-domain it already loads.
+type onboardingDTO struct {
+	Dismissed bool `json:"dismissed"`
+}
+
+// GetOnboarding reports whether the operator has dismissed the first-run
+// checklist.
+//
+// GET /api/instance/onboarding
+func GetOnboarding(s *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		settings, err := s.GetInstanceSettings(r.Context())
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not load onboarding state")
+			return
+		}
+		WriteJSON(w, http.StatusOK, onboardingDTO{Dismissed: settings.OnboardingDismissed})
+	}
+}
+
+// DismissOnboarding permanently dismisses the first-run checklist.
+//
+// POST /api/instance/onboarding/dismiss
+func DismissOnboarding(s *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := s.SetOnboardingDismissed(r.Context(), true); err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not dismiss onboarding")
+			return
+		}
+		audit.Skip(r.Context()) // routine UI state toggle — not worth an audit row
+		WriteJSON(w, http.StatusOK, onboardingDTO{Dismissed: true})
 	}
 }
 

@@ -23,6 +23,10 @@ export interface DnsCheckResult {
   error?: string
 }
 
+export interface OnboardingState {
+  dismissed: boolean
+}
+
 export const instanceApi = {
   info: () => api.get<InstanceInfo>('instance/info'),
   getBaseDomain: () => api.get<BaseDomainInfo>('instance/base-domain'),
@@ -34,6 +38,8 @@ export const instanceApi = {
   stopAllApps: () => api.post<{ stopped: number; failed: number }>('instance/stop-all-apps'),
   reset: (confirm: string) =>
     api.post<{ removed: number; failed: number }>('instance/reset', { confirm }),
+  onboarding: () => api.get<OnboardingState>('instance/onboarding'),
+  dismissOnboarding: () => api.post<OnboardingState>('instance/onboarding/dismiss'),
 }
 
 export function useInstanceInfo() {
@@ -56,5 +62,21 @@ export function useSetBaseDomain() {
   return useMutation({
     mutationFn: (baseDomain: string) => instanceApi.setBaseDomain(baseDomain),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.instance.baseDomain }),
+  })
+}
+
+export function useOnboarding() {
+  return useQuery({
+    queryKey: queryKeys.instance.onboarding,
+    queryFn: () => instanceApi.onboarding(),
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useDismissOnboarding() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => instanceApi.dismissOnboarding(),
+    onSuccess: (state) => qc.setQueryData(queryKeys.instance.onboarding, state),
   })
 }

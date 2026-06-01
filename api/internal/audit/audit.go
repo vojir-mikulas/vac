@@ -30,10 +30,17 @@ type Record struct {
 	// Metadata is an optional structured payload (e.g. a before-snapshot for
 	// the curated-revert work in plan 11). Marshaled to JSONB by the store.
 	Metadata map[string]any
+	// Revertable marks this action as one of the curated, safely-invertible set
+	// (plan 11, Part 2). Set via Snapshot, which also stows the before-state.
+	Revertable bool
 	// Skip, when set, tells the middleware not to persist this entry — for the
 	// rare mutating route that is pure noise (health pokes, idempotent probes).
 	Skip bool
 }
+
+// BeforeKey is the reserved Metadata key under which Snapshot stores the
+// pre-mutation state. The revert engine reads it back to compute the inverse.
+const BeforeKey = "before"
 
 // NewRecord returns an empty record for the middleware to seed the context with.
 func NewRecord() *Record { return &Record{} }
@@ -77,4 +84,21 @@ func Skip(ctx context.Context) {
 	if rec := FromContext(ctx); rec != nil {
 		rec.Skip = true
 	}
+}
+
+// Snapshot marks the action revertable and stores the pre-mutation state under
+// the reserved BeforeKey so the revert engine can reapply it. Call it BEFORE
+// mutating, with the prior state. Secrets must already be in their sealed form
+// here — the snapshot lands in the audit_log JSONB, which is not encrypted.
+// No-op if no record (e.g. invoked outside the audited /api group).
+func Snapshot(ctx context.Context, before map[string]any) {
+	rec := FromContext(ctx)
+	if rec == nil {
+		return
+	}
+	if rec.Metadata == nil {
+		rec.Metadata = map[string]any{}
+	}
+	rec.Metadata[BeforeKey] = before
+	rec.Revertable = true
 }

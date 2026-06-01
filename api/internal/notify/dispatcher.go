@@ -292,6 +292,26 @@ func (d *Dispatcher) OOMKilled(appName, appID, service string, limitMB int) {
 	})
 }
 
+// CertExpiring fires the TLS-certificate-expiring event (plan 03). daysLeft is
+// the whole days until notAfter; a non-positive value means already expired.
+func (d *Dispatcher) CertExpiring(host string, daysLeft int, notAfter time.Time) {
+	var msg string
+	when := notAfter.Format("2006-01-02")
+	switch {
+	case daysLeft <= 0:
+		msg = fmt.Sprintf("The TLS certificate for %s has expired (%s). Auto-renewal has not recovered it.", host, when)
+	case daysLeft == 1:
+		msg = fmt.Sprintf("The TLS certificate for %s expires tomorrow (%s) and has not auto-renewed.", host, when)
+	default:
+		msg = fmt.Sprintf("The TLS certificate for %s expires in %d days (%s) and has not auto-renewed.", host, daysLeft, when)
+	}
+	d.dispatch(Event{
+		Type: EventCertExpiring, OK: false,
+		Title:   "Certificate expiring: " + host,
+		Message: msg,
+	})
+}
+
 // VACRestarted fires the control-plane-restarted event.
 func (d *Dispatcher) VACRestarted() {
 	d.dispatch(Event{

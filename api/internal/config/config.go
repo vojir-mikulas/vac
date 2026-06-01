@@ -61,6 +61,14 @@ type Config struct {
 	RequestMetricsRetention time.Duration `yaml:"request_metrics_retention"`
 	ACMECA                  string        `yaml:"acme_ca"` // override for ACME staging in tests
 
+	// Cert-expiry notification (plan 03). CertExpiryDays is the alert window —
+	// a managed host whose TLS cert is within this many days of expiry (and
+	// hasn't auto-renewed) fires one notification. CertProbeAddr is the
+	// host:port the checker TLS-dials with each host's SNI to read the real
+	// expiry; empty derives "<caddy-admin-host>:443" from CaddyAdminURL.
+	CertExpiryDays int    `yaml:"cert_expiry_days"`
+	CertProbeAddr  string `yaml:"cert_probe_addr"`
+
 	// Track B (observability): bearer token gating /metrics and /debug/* — both
 	// leak instance topology / runtime internals, so they are default-closed.
 	// Env-only secret (VAC_METRICS_TOKEN); unset → those endpoints return 404.
@@ -120,6 +128,7 @@ func Default() Config {
 		CaddyMetricsInterval:    10 * time.Second,
 		StatsPollInterval:       2 * time.Second,
 		RequestMetricsRetention: 24 * time.Hour,
+		CertExpiryDays:          14,
 	}
 }
 
@@ -247,6 +256,14 @@ func applyEnv(cfg *Config) {
 
 	if v := os.Getenv("VAC_CADDY_ADMIN_URL"); v != "" {
 		cfg.CaddyAdminURL = v
+	}
+	if v := os.Getenv("VAC_CERT_EXPIRY_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.CertExpiryDays = n
+		}
+	}
+	if v := os.Getenv("VAC_CERT_PROBE_ADDR"); v != "" {
+		cfg.CertProbeAddr = v
 	}
 	if v := os.Getenv("VAC_BASE_DOMAIN"); v != "" {
 		cfg.BaseDomain = v

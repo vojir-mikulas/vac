@@ -108,17 +108,21 @@ what we do instead, why, and the trade-off (what we give up / when we'd revisit)
 - **Trade-off:** a stats subscriber gets no backlog (none exists) and waits one poll interval for
   the first sample. Acceptable for a live gauge.
 
-### D7 — "TLS certificate expiring" notification is deferred
+### D7 — "TLS certificate expiring" notification ~~is deferred~~ (RESOLVED, plan 03)
 
 - **mvp.md says** (§ Notifications): notify when a certificate expires within 14 days.
-- **We do instead:** ship deploy-succeeded / deploy-failed / crash-loop / VAC-restarted in Phase 4
-  and **defer** the cert-expiry event.
-- **Why:** Phase 3 tracks `domains.cert_status` as advisory only (no reliable `not_after` per
-  host); a correct 14-day warning needs real expiry data from a Caddy PKI read-back that Phase 3
-  did not build. Shipping it now would mean a flaky notification.
-- **Trade-off:** no proactive cert-expiry alert in MVP — mitigated because Caddy auto-renews. To
-  revisit when cert read-back exposes per-host `not_after`; then add the event to the existing
-  dispatcher (cheap once the data exists).
+- **Originally deferred because** Phase 3 tracked `domains.cert_status` as advisory only, with no
+  reliable per-host `not_after`; a correct warning needed real expiry data.
+- **Now shipped (Track C / plan 03):** the `certcheck` package reads each managed host's real expiry
+  the way a browser does — a daily TLS handshake to the proxy with the host's SNI, reading the served
+  leaf certificate's `NotAfter` (`internal/certcheck`). The control plane is off `vac-edge` and
+  Caddy's admin API exposes no per-host `not_after`, so the SNI-probe is the topology-friendly read.
+  A new `cert_expiring` event fires through the existing dispatcher once per threshold crossing
+  (`domains.cert_expiry_notified_at` de-dupes; the stamp clears on renewal). Window is
+  `VAC_CERT_EXPIRY_DAYS` (default 14); the probe target is `VAC_CERT_PROBE_ADDR` (default
+  `<caddy-admin-host>:443`).
+- **Remaining trade-off:** because Caddy renews well before the 14-day mark, this alert in practice
+  only fires when **auto-renewal has failed** — which is exactly when an operator wants to know.
 
 ### D8 — Notification webhook URLs are encrypted at rest
 
