@@ -32,8 +32,9 @@ func TestBaseConfig(t *testing.T) {
 	if cfg.Apps.TLS == nil || cfg.Apps.TLS.Automation.OnDemand == nil {
 		t.Fatal("on-demand TLS not configured")
 	}
-	if cfg.Apps.TLS.Automation.OnDemand.Ask != "http://vac-api:3000/internal/caddy/ask" {
-		t.Errorf("ask = %q", cfg.Apps.TLS.Automation.OnDemand.Ask)
+	perm := cfg.Apps.TLS.Automation.OnDemand.Permission
+	if perm == nil || perm.Module != "http" || perm.Endpoint != "http://vac-api:3000/internal/caddy/ask" {
+		t.Errorf("permission = %+v", perm)
 	}
 	// ACME CA should be applied to a policy's issuer.
 	if len(cfg.Apps.TLS.Automation.Policies) == 0 || len(cfg.Apps.TLS.Automation.Policies[0].Issuers) == 0 {

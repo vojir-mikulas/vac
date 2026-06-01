@@ -67,7 +67,15 @@ type AutomationPolicy struct {
 }
 
 type OnDemand struct {
-	Ask string `json:"ask,omitempty"`
+	// Permission gates on-demand issuance. Caddy 2.8+ requires a permission
+	// module (the old top-level `ask` field was removed); the "http" module
+	// calls Endpoint with ?domain=<host> and treats a 2xx as "allow".
+	Permission *Permission `json:"permission,omitempty"`
+}
+
+type Permission struct {
+	Module   string `json:"module"`             // always "http"
+	Endpoint string `json:"endpoint,omitempty"` // the ask URL
 }
 
 // Route is one routing rule. Created/replaced/deleted by @id so VAC can
@@ -175,7 +183,7 @@ func BaseConfig(opts BaseOptions) *Config {
 	// dynamically. A custom ACME CA (staging) is applied to both if set.
 	auto := &Automation{}
 	if opts.AskURL != "" {
-		auto.OnDemand = &OnDemand{Ask: opts.AskURL}
+		auto.OnDemand = &OnDemand{Permission: &Permission{Module: "http", Endpoint: opts.AskURL}}
 		auto.Policies = append(auto.Policies, AutomationPolicy{OnDemand: true})
 	}
 	if opts.ACMECA != "" {
