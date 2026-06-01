@@ -18,7 +18,15 @@ import { Route as AppLogsRouteImport } from './routes/_app/logs'
 import { Route as AppDeploymentsRouteImport } from './routes/_app/deployments'
 import { Route as AppDatabaseRouteImport } from './routes/_app/database'
 import { Route as AppActivityRouteImport } from './routes/_app/activity'
+import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppAppsIndexRouteImport } from './routes/_app/apps/index'
+import { Route as AppSettingsNotificationsRouteImport } from './routes/_app/settings/notifications'
+import { Route as AppSettingsInstanceRouteImport } from './routes/_app/settings/instance'
+import { Route as AppSettingsDomainsRouteImport } from './routes/_app/settings/domains'
+import { Route as AppSettingsDangerRouteImport } from './routes/_app/settings/danger'
+import { Route as AppSettingsAppearanceRouteImport } from './routes/_app/settings/appearance'
+import { Route as AppSettingsApiTokensRouteImport } from './routes/_app/settings/api-tokens'
+import { Route as AppSettingsAccountRouteImport } from './routes/_app/settings/account'
 import { Route as AppAppsNewRouteImport } from './routes/_app/apps/new'
 import { Route as AppAppsAppIdRouteImport } from './routes/_app/apps/$appId'
 import { Route as AppAppsAppIdIndexRouteImport } from './routes/_app/apps/$appId/index'
@@ -73,10 +81,51 @@ const AppActivityRoute = AppActivityRouteImport.update({
   path: '/activity',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppAppsIndexRoute = AppAppsIndexRouteImport.update({
   id: '/apps/',
   path: '/apps/',
   getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsNotificationsRoute =
+  AppSettingsNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AppSettingsRoute,
+  } as any)
+const AppSettingsInstanceRoute = AppSettingsInstanceRouteImport.update({
+  id: '/instance',
+  path: '/instance',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsDomainsRoute = AppSettingsDomainsRouteImport.update({
+  id: '/domains',
+  path: '/domains',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsDangerRoute = AppSettingsDangerRouteImport.update({
+  id: '/danger',
+  path: '/danger',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsAppearanceRoute = AppSettingsAppearanceRouteImport.update({
+  id: '/appearance',
+  path: '/appearance',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsApiTokensRoute = AppSettingsApiTokensRouteImport.update({
+  id: '/api-tokens',
+  path: '/api-tokens',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsAccountRoute = AppSettingsAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => AppSettingsRoute,
 } as any)
 const AppAppsNewRoute = AppAppsNewRouteImport.update({
   id: '/apps/new',
@@ -132,10 +181,18 @@ export interface FileRoutesByFullPath {
   '/database': typeof AppDatabaseRoute
   '/deployments': typeof AppDeploymentsRoute
   '/logs': typeof AppLogsRoute
-  '/settings': typeof AppSettingsRoute
+  '/settings': typeof AppSettingsRouteWithChildren
   '/apps/$appId': typeof AppAppsAppIdRouteWithChildren
   '/apps/new': typeof AppAppsNewRoute
+  '/settings/account': typeof AppSettingsAccountRoute
+  '/settings/api-tokens': typeof AppSettingsApiTokensRoute
+  '/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/settings/danger': typeof AppSettingsDangerRoute
+  '/settings/domains': typeof AppSettingsDomainsRoute
+  '/settings/instance': typeof AppSettingsInstanceRoute
+  '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/apps/': typeof AppAppsIndexRoute
+  '/settings/': typeof AppSettingsIndexRoute
   '/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
   '/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
   '/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
@@ -152,9 +209,16 @@ export interface FileRoutesByTo {
   '/database': typeof AppDatabaseRoute
   '/deployments': typeof AppDeploymentsRoute
   '/logs': typeof AppLogsRoute
-  '/settings': typeof AppSettingsRoute
   '/apps/new': typeof AppAppsNewRoute
+  '/settings/account': typeof AppSettingsAccountRoute
+  '/settings/api-tokens': typeof AppSettingsApiTokensRoute
+  '/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/settings/danger': typeof AppSettingsDangerRoute
+  '/settings/domains': typeof AppSettingsDomainsRoute
+  '/settings/instance': typeof AppSettingsInstanceRoute
+  '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/apps': typeof AppAppsIndexRoute
+  '/settings': typeof AppSettingsIndexRoute
   '/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
   '/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
   '/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
@@ -173,10 +237,18 @@ export interface FileRoutesById {
   '/_app/database': typeof AppDatabaseRoute
   '/_app/deployments': typeof AppDeploymentsRoute
   '/_app/logs': typeof AppLogsRoute
-  '/_app/settings': typeof AppSettingsRoute
+  '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/apps/$appId': typeof AppAppsAppIdRouteWithChildren
   '/_app/apps/new': typeof AppAppsNewRoute
+  '/_app/settings/account': typeof AppSettingsAccountRoute
+  '/_app/settings/api-tokens': typeof AppSettingsApiTokensRoute
+  '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/_app/settings/danger': typeof AppSettingsDangerRoute
+  '/_app/settings/domains': typeof AppSettingsDomainsRoute
+  '/_app/settings/instance': typeof AppSettingsInstanceRoute
+  '/_app/settings/notifications': typeof AppSettingsNotificationsRoute
   '/_app/apps/': typeof AppAppsIndexRoute
+  '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
   '/_app/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
   '/_app/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
@@ -198,7 +270,15 @@ export interface FileRouteTypes {
     | '/settings'
     | '/apps/$appId'
     | '/apps/new'
+    | '/settings/account'
+    | '/settings/api-tokens'
+    | '/settings/appearance'
+    | '/settings/danger'
+    | '/settings/domains'
+    | '/settings/instance'
+    | '/settings/notifications'
     | '/apps/'
+    | '/settings/'
     | '/apps/$appId/deploys'
     | '/apps/$appId/environment'
     | '/apps/$appId/logs'
@@ -215,9 +295,16 @@ export interface FileRouteTypes {
     | '/database'
     | '/deployments'
     | '/logs'
-    | '/settings'
     | '/apps/new'
+    | '/settings/account'
+    | '/settings/api-tokens'
+    | '/settings/appearance'
+    | '/settings/danger'
+    | '/settings/domains'
+    | '/settings/instance'
+    | '/settings/notifications'
     | '/apps'
+    | '/settings'
     | '/apps/$appId/deploys'
     | '/apps/$appId/environment'
     | '/apps/$appId/logs'
@@ -238,7 +325,15 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/apps/$appId'
     | '/_app/apps/new'
+    | '/_app/settings/account'
+    | '/_app/settings/api-tokens'
+    | '/_app/settings/appearance'
+    | '/_app/settings/danger'
+    | '/_app/settings/domains'
+    | '/_app/settings/instance'
+    | '/_app/settings/notifications'
     | '/_app/apps/'
+    | '/_app/settings/'
     | '/_app/apps/$appId/deploys'
     | '/_app/apps/$appId/environment'
     | '/_app/apps/$appId/logs'
@@ -320,12 +415,68 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppActivityRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/settings/': {
+      id: '/_app/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AppSettingsIndexRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/apps/': {
       id: '/_app/apps/'
       path: '/apps'
       fullPath: '/apps/'
       preLoaderRoute: typeof AppAppsIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/_app/settings/notifications': {
+      id: '/_app/settings/notifications'
+      path: '/notifications'
+      fullPath: '/settings/notifications'
+      preLoaderRoute: typeof AppSettingsNotificationsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/instance': {
+      id: '/_app/settings/instance'
+      path: '/instance'
+      fullPath: '/settings/instance'
+      preLoaderRoute: typeof AppSettingsInstanceRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/domains': {
+      id: '/_app/settings/domains'
+      path: '/domains'
+      fullPath: '/settings/domains'
+      preLoaderRoute: typeof AppSettingsDomainsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/danger': {
+      id: '/_app/settings/danger'
+      path: '/danger'
+      fullPath: '/settings/danger'
+      preLoaderRoute: typeof AppSettingsDangerRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/appearance': {
+      id: '/_app/settings/appearance'
+      path: '/appearance'
+      fullPath: '/settings/appearance'
+      preLoaderRoute: typeof AppSettingsAppearanceRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/api-tokens': {
+      id: '/_app/settings/api-tokens'
+      path: '/api-tokens'
+      fullPath: '/settings/api-tokens'
+      preLoaderRoute: typeof AppSettingsApiTokensRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/account': {
+      id: '/_app/settings/account'
+      path: '/account'
+      fullPath: '/settings/account'
+      preLoaderRoute: typeof AppSettingsAccountRouteImport
+      parentRoute: typeof AppSettingsRoute
     }
     '/_app/apps/new': {
       id: '/_app/apps/new'
@@ -393,6 +544,32 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppSettingsRouteChildren {
+  AppSettingsAccountRoute: typeof AppSettingsAccountRoute
+  AppSettingsApiTokensRoute: typeof AppSettingsApiTokensRoute
+  AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
+  AppSettingsDangerRoute: typeof AppSettingsDangerRoute
+  AppSettingsDomainsRoute: typeof AppSettingsDomainsRoute
+  AppSettingsInstanceRoute: typeof AppSettingsInstanceRoute
+  AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
+  AppSettingsIndexRoute: typeof AppSettingsIndexRoute
+}
+
+const AppSettingsRouteChildren: AppSettingsRouteChildren = {
+  AppSettingsAccountRoute: AppSettingsAccountRoute,
+  AppSettingsApiTokensRoute: AppSettingsApiTokensRoute,
+  AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
+  AppSettingsDangerRoute: AppSettingsDangerRoute,
+  AppSettingsDomainsRoute: AppSettingsDomainsRoute,
+  AppSettingsInstanceRoute: AppSettingsInstanceRoute,
+  AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,
+  AppSettingsIndexRoute: AppSettingsIndexRoute,
+}
+
+const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
+  AppSettingsRouteChildren,
+)
+
 interface AppAppsAppIdRouteChildren {
   AppAppsAppIdDeploysRoute: typeof AppAppsAppIdDeploysRoute
   AppAppsAppIdEnvironmentRoute: typeof AppAppsAppIdEnvironmentRoute
@@ -422,7 +599,7 @@ interface AppRouteChildren {
   AppDatabaseRoute: typeof AppDatabaseRoute
   AppDeploymentsRoute: typeof AppDeploymentsRoute
   AppLogsRoute: typeof AppLogsRoute
-  AppSettingsRoute: typeof AppSettingsRoute
+  AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppAppsAppIdRoute: typeof AppAppsAppIdRouteWithChildren
   AppAppsNewRoute: typeof AppAppsNewRoute
   AppAppsIndexRoute: typeof AppAppsIndexRoute
@@ -433,7 +610,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDatabaseRoute: AppDatabaseRoute,
   AppDeploymentsRoute: AppDeploymentsRoute,
   AppLogsRoute: AppLogsRoute,
-  AppSettingsRoute: AppSettingsRoute,
+  AppSettingsRoute: AppSettingsRouteWithChildren,
   AppAppsAppIdRoute: AppAppsAppIdRouteWithChildren,
   AppAppsNewRoute: AppAppsNewRoute,
   AppAppsIndexRoute: AppAppsIndexRoute,

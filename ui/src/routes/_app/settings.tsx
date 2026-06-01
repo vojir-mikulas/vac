@@ -1,94 +1,48 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { Link, Outlet, createFileRoute } from '@tanstack/react-router'
 import { Bell, Globe, KeyRound, Server, Settings2, ShieldAlert, UserCog } from 'lucide-react'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
-import { SectionHeader } from '@/components/common/section-header'
-import { Card } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ThemeToggle } from '@/components/theme/theme-toggle'
-import { SessionsSection } from '@/features/settings/sessions-section'
-import { TotpSection } from '@/features/settings/totp-section'
-import { ApiTokensSection } from '@/features/settings/api-tokens-section'
-import { NotificationsSection } from '@/features/settings/notifications-section'
-import { DomainsSection } from '@/features/settings/domains-section'
-import { InstanceSection } from '@/features/settings/instance-section'
-import { DangerZoneSection } from '@/features/settings/danger-zone-section'
 
 export const Route = createFileRoute('/_app/settings')({
-  component: SettingsPage,
+  component: SettingsLayout,
 })
 
 const TABS = [
-  { value: 'appearance', label: 'Appearance', icon: Settings2 },
-  { value: 'account', label: 'Account & security', icon: UserCog },
-  { value: 'notifications', label: 'Notifications', icon: Bell },
-  { value: 'tokens', label: 'API tokens', icon: KeyRound },
-  { value: 'domains', label: 'Domains', icon: Globe },
-  { value: 'instance', label: 'Instance', icon: Server },
-  { value: 'danger', label: 'Danger zone', icon: ShieldAlert },
+  { to: 'appearance', label: 'Appearance', icon: Settings2 },
+  { to: 'account', label: 'Account & security', icon: UserCog },
+  { to: 'notifications', label: 'Notifications', icon: Bell },
+  { to: 'api-tokens', label: 'API tokens', icon: KeyRound },
+  { to: 'domains', label: 'Domains', icon: Globe },
+  { to: 'instance', label: 'Instance', icon: Server },
+  { to: 'danger', label: 'Danger zone', icon: ShieldAlert },
 ] as const
 
-function SettingsPage() {
+function SettingsLayout() {
   return (
     <PageContainer>
       <PageHeader title="Settings" description="Account, security, instance, and domains." />
-      <Tabs defaultValue="appearance" orientation="vertical" className="gap-6 md:flex-row">
-        <TabsList
-          variant="line"
-          className="h-fit w-full shrink-0 gap-0.5 md:sticky md:top-3 md:w-56"
+      <div className="flex flex-col gap-6 md:flex-row">
+        <nav
+          aria-label="Settings sections"
+          className="flex h-fit w-full shrink-0 flex-col gap-0.5 md:sticky md:top-3 md:w-56"
         >
-          {TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value} className="justify-start gap-2">
-              <t.icon className="size-4" />
-              {t.label}
-            </TabsTrigger>
+          {TABS.map((tab) => (
+            <Link
+              key={tab.to}
+              to={`/settings/${tab.to}`}
+              className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground data-[status=active]:bg-muted data-[status=active]:text-foreground"
+              activeProps={{ 'data-status': 'active', 'aria-current': 'page' }}
+            >
+              <tab.icon className="size-4" />
+              {tab.label}
+            </Link>
           ))}
-        </TabsList>
+        </nav>
 
         <div className="min-w-0 max-w-3xl flex-1">
-          <TabsContent value="appearance">
-            <AppearanceSection />
-          </TabsContent>
-          <TabsContent value="account" className="flex flex-col gap-8">
-            <TotpSection />
-            <SessionsSection />
-          </TabsContent>
-          <TabsContent value="notifications">
-            <NotificationsSection />
-          </TabsContent>
-          <TabsContent value="tokens">
-            <ApiTokensSection />
-          </TabsContent>
-          <TabsContent value="domains">
-            <DomainsSection />
-          </TabsContent>
-          <TabsContent value="instance">
-            <InstanceSection />
-          </TabsContent>
-          <TabsContent value="danger">
-            <DangerZoneSection />
-          </TabsContent>
+          <Outlet />
         </div>
-      </Tabs>
+      </div>
     </PageContainer>
-  )
-}
-
-function AppearanceSection() {
-  return (
-    <section>
-      <SectionHeader>Appearance</SectionHeader>
-      <Card className="p-5">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="text-sm font-medium">Theme</div>
-            <p className="text-xs text-muted-foreground">
-              Choose light, dark, or follow your system preference.
-            </p>
-          </div>
-          <ThemeToggle />
-        </div>
-      </Card>
-    </section>
   )
 }
