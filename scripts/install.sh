@@ -17,8 +17,9 @@ VAC_HOST_PORT="${VAC_HOST_PORT:-3000}"
 VAC_DOMAIN="${VAC_DOMAIN:-}"
 # When installed via sudo, also let the invoking user run `vac` without sudo:
 # add them to the `docker` group and give them the install dir (which holds the
-# root-only .env). Set VAC_GRANT_ACCESS=0 to skip. Note: docker-group
-# membership is root-equivalent on this host — opt out if that isn't acceptable.
+# root-only .env). Opt out with the --no-grant flag or VAC_GRANT_ACCESS=0.
+# Note: docker-group membership is root-equivalent on this host — opt out if
+# that isn't acceptable.
 VAC_GRANT_ACCESS="${VAC_GRANT_ACCESS:-1}"
 RELOGIN=0
 
@@ -30,6 +31,29 @@ if [ -t 1 ]; then B="$(printf '\033[1m')"; G="$(printf '\033[32m')"; Y="$(printf
 info()  { printf '%s==>%s %s\n' "$G" "$N" "$1"; }
 warn()  { printf '%s!  %s%s\n' "$Y" "$1" "$N"; }
 die()   { printf '%serror:%s %s\n' "$R" "$N" "$1" >&2; exit 1; }
+usage() {
+  cat <<USAGE
+VAC installer
+
+  curl -sSL get.vac.vojir.io | sudo sh
+  curl -sSL get.vac.vojir.io/install.sh | sudo sh -s -- [flags]
+
+Flags:
+  --no-grant   Don't add the invoking user to the docker group or chown the
+               install dir — leave VAC root-only.
+  --grant      Force the grant on (this is the default).
+  -h, --help   Show this help and exit.
+
+Env overrides: VAC_VERSION, VAC_DOMAIN, VAC_INSTALL_DIR, VAC_HOST_PORT,
+VAC_REGISTRY, VAC_GRANT_ACCESS (1/0).
+USAGE
+}
+
+# Answer --help before any preflight/elevation so it never needs Linux or root.
+# Peek without consuming "$@" so the args still forward through self-elevation.
+for _a in "$@"; do
+  case "$_a" in -h|--help) usage; exit 0 ;; esac
+done
 
 # ── Pre-flight ────────────────────────────────────────────────────────────--
 [ "$(uname -s)" = "Linux" ] || die "VAC installs on Linux hosts only (found $(uname -s))."
@@ -42,10 +66,26 @@ esac
 if [ "$(id -u)" -ne 0 ]; then
   if command -v sudo >/dev/null 2>&1; then
     info "Re-running with sudo…"
-    exec sudo -E sh -c "$(cat "$0" 2>/dev/null || true)" 2>/dev/null || die "Please run as root: curl -sSL get.vac.vojir.io | sudo sh"
+    # Forward "$@" so flags (e.g. --no-grant) survive the elevation: with
+    # `sh -c BODY name arg…`, name becomes $0 and the rest become $1….
+    exec sudo -E sh -c "$(cat "$0" 2>/dev/null || true)" sh "$@" 2>/dev/null || die "Please run as root: curl -sSL get.vac.vojir.io | sudo sh"
   fi
   die "Please run as root (or install sudo)."
 fi
+
+# ── Args ──────────────────────────────────────────────────────────────────--
+# Parsed after self-elevation (which forwards "$@") so flags reliably cross the
+# sudo boundary rather than depending on an env var surviving it. Flags win
+# over the env defaults set above.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-grant) VAC_GRANT_ACCESS=0 ;;
+    --grant)    VAC_GRANT_ACCESS=1 ;;
+    -h|--help)  usage; exit 0 ;;
+    *) die "unknown option: $1 (try --help)" ;;
+  esac
+  shift
+done
 
 fetch() {
   # fetch <url> <dest>
