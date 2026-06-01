@@ -64,6 +64,7 @@ func prepareReact(repoDir string, cfg BuildConfig) (string, error) {
 
 	dfPath := filepath.Join(repoDir, frameworkDockerfileName)
 	dockerfile := fmt.Sprintf(reactDockerfileTemplate, build, outDir)
+	// 0644: a generated build manifest, not a secret — the docker build reads it.
 	if err := os.WriteFile(dfPath, []byte(dockerfile), 0o644); err != nil {
 		return "", fmt.Errorf("adapter: write Dockerfile: %w", err)
 	}
@@ -79,7 +80,7 @@ func prepareReact(repoDir string, cfg BuildConfig) (string, error) {
 // detectFramework inspects package.json for a known framework dependency.
 // Returns the framework key (e.g. "react") or "" when none is recognized.
 func detectFramework(repoDir string) string {
-	raw, err := os.ReadFile(filepath.Join(repoDir, "package.json"))
+	raw, err := os.ReadFile(filepath.Join(repoDir, "package.json")) //nolint:gosec // G304: repoDir is the operator's cloned build input by design
 	if err != nil {
 		return ""
 	}

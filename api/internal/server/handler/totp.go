@@ -193,6 +193,6 @@ func TOTPLogin(s *store.Store, sm *auth.SessionManager, tm *auth.TOTPManager, cf
 			MaxAge:   -1,
 		})
 
-		issueFullSession(w, r, sm, cfg, user, remember)
+		issueFullSession(w, r, sm, user, remember)
 	}
 }

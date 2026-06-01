@@ -32,12 +32,14 @@ func (f *fakeStore) GetDomainByHostname(_ context.Context, host string) (store.D
 	}
 	return store.Domain{}, store.ErrNotFound
 }
+
 func (f *fakeStore) CreateDomain(_ context.Context, appID, svc, host, typ string) (store.Domain, error) {
 	d := store.Domain{ID: "new-" + host, AppID: appID, ServiceName: svc, Hostname: host, Type: typ}
 	f.created = append(f.created, d)
 	f.domains = append(f.domains, d)
 	return d, nil
 }
+
 func (f *fakeStore) GetService(_ context.Context, _, name string) (store.Service, error) {
 	for _, s := range f.services {
 		if s.ServiceName == name {
@@ -46,9 +48,11 @@ func (f *fakeStore) GetService(_ context.Context, _, name string) (store.Service
 	}
 	return store.Service{}, store.ErrNotFound
 }
+
 func (f *fakeStore) ListServicesForApp(_ context.Context, _ string) ([]store.Service, error) {
 	return f.services, nil
 }
+
 func (f *fakeStore) SetCertStatus(_ context.Context, id, status string) error {
 	if f.certStatus == nil {
 		f.certStatus = map[string]string{}
@@ -71,10 +75,12 @@ func (c *fakeCaddy) PutRoute(_ context.Context, id string, r caddy.Route) error 
 	c.put[id] = r
 	return nil
 }
+
 func (c *fakeCaddy) DeleteRoute(_ context.Context, id string) error {
 	c.deleted = append(c.deleted, id)
 	return nil
 }
+
 func (c *fakeCaddy) GetRoutes(_ context.Context) ([]caddy.Route, error) {
 	out := append([]caddy.Route{}, c.existing...)
 	for _, r := range c.put {
@@ -82,6 +88,7 @@ func (c *fakeCaddy) GetRoutes(_ context.Context) ([]caddy.Route, error) {
 	}
 	return out, nil
 }
+
 func (c *fakeCaddy) Upstreams(_ context.Context) ([]caddy.UpstreamStatus, error) {
 	return c.upstreams, nil
 }
@@ -100,10 +107,12 @@ func (n *fakeNet) NetworkCreate(_ context.Context, name string) error {
 	n.created = append(n.created, name)
 	return nil
 }
+
 func (n *fakeNet) NetworkConnect(_ context.Context, _, container, alias string) error {
 	n.connected[container] = alias
 	return nil
 }
+
 func (n *fakeNet) NetworkDisconnect(_ context.Context, _, container string) error {
 	n.disconnected = append(n.disconnected, container)
 	return nil

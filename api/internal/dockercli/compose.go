@@ -178,7 +178,7 @@ func ParsePsOutput(b []byte) ([]PsService, error) {
 // command builds an *exec.Cmd with a minimal explicit env. We never inherit
 // os.Environ — that would leak VAC_MASTER_KEY into the child.
 func (c *Compose) command(ctx context.Context, wd string, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: deliberate single docker exec entry point; args are built internally, not from user input
 	if wd != "" {
 		cmd.Dir = wd
 	}

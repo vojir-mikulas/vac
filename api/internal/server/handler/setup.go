@@ -100,6 +100,6 @@ func SetupAdmin(s *store.Store, sm *auth.SessionManager, cfg config.Config) http
 			return
 		}
 
-		issueFullSession(w, r, sm, cfg, u, true)
+		issueFullSession(w, r, sm, u, true)
 	}
 }

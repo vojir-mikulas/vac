@@ -75,6 +75,7 @@ func (realGit) Pull(ctx context.Context, d, b, k string) error { return gitcli.P
 func (realGit) FetchCommit(ctx context.Context, d, sha, k string) error {
 	return gitcli.FetchCommit(ctx, d, sha, k)
 }
+
 func (realGit) HeadCommit(ctx context.Context, d string) (string, string, error) {
 	return gitcli.HeadCommit(ctx, d)
 }
@@ -381,7 +382,7 @@ func (p *Pipeline) cloneOrPull(ctx context.Context, app store.App, dest, sshKeyP
 	if dirExists(dest) {
 		return p.Git.Pull(ctx, dest, app.GitBranch, sshKeyPath)
 	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil { //nolint:gosec // G301: app working dir, traversed by the vac-api owner and the docker daemon
 		return fmt.Errorf("pipeline: mkdir workdir: %w", err)
 	}
 	return p.Git.Clone(ctx, app.GitURL, dest, app.GitBranch, sshKeyPath)

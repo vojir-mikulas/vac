@@ -33,7 +33,7 @@ func LsRemote(ctx context.Context, gitURL, branch, sshKeyPath string) error {
 	if branch != "" {
 		args = append(args, branch)
 	}
-	out, err := run(ctx, "", buildEnv(sshKeyPath), args...)
+	out, err := run(ctx, buildEnv(sshKeyPath), args...)
 	if err == nil {
 		return nil
 	}
@@ -47,7 +47,7 @@ func Clone(ctx context.Context, gitURL, dest, branch, sshKeyPath string) error {
 		args = append(args, "--branch", branch)
 	}
 	args = append(args, gitURL, dest)
-	out, err := run(ctx, "", buildEnv(sshKeyPath), args...)
+	out, err := run(ctx, buildEnv(sshKeyPath), args...)
 	if err == nil {
 		return nil
 	}
@@ -59,10 +59,10 @@ func Clone(ctx context.Context, gitURL, dest, branch, sshKeyPath string) error {
 // edits in the working tree are not preserved across deploys.
 func Pull(ctx context.Context, dest, branch, sshKeyPath string) error {
 	env := buildEnv(sshKeyPath)
-	if out, err := run(ctx, "", env, "-C", dest, "fetch", "origin", branch); err != nil {
+	if out, err := run(ctx, env, "-C", dest, "fetch", "origin", branch); err != nil {
 		return classify(err, out, true)
 	}
-	if out, err := run(ctx, "", env, "-C", dest, "reset", "--hard", "origin/"+branch); err != nil {
+	if out, err := run(ctx, env, "-C", dest, "reset", "--hard", "origin/"+branch); err != nil {
 		return classify(err, out, true)
 	}
 	return nil
@@ -80,12 +80,12 @@ func Pull(ctx context.Context, dest, branch, sshKeyPath string) error {
 // deepen is a harmless no-op on an already-complete repo.
 func FetchCommit(ctx context.Context, dest, sha, sshKeyPath string) error {
 	env := buildEnv(sshKeyPath)
-	if _, err := run(ctx, "", env, "-C", dest, "fetch", "--depth=1", "origin", sha); err != nil {
-		if out, err := run(ctx, "", env, "-C", dest, "fetch", "--depth=2147483647", "origin"); err != nil {
+	if _, err := run(ctx, env, "-C", dest, "fetch", "--depth=1", "origin", sha); err != nil {
+		if out, err := run(ctx, env, "-C", dest, "fetch", "--depth=2147483647", "origin"); err != nil {
 			return classify(err, out, false)
 		}
 	}
-	if out, err := run(ctx, "", env, "-C", dest, "checkout", "--detach", sha); err != nil {
+	if out, err := run(ctx, env, "-C", dest, "checkout", "--detach", sha); err != nil {
 		return classify(err, out, false)
 	}
 	return nil
@@ -94,7 +94,7 @@ func FetchCommit(ctx context.Context, dest, sha, sshKeyPath string) error {
 // HeadCommit returns the short SHA + first line of the commit message of
 // HEAD inside `dest`. Used by the pipeline to populate deployments.commit_*.
 func HeadCommit(ctx context.Context, dest string) (sha, message string, err error) {
-	out, runErr := run(ctx, "", nil, "-C", dest, "log", "-1", "--pretty=format:%H%n%s")
+	out, runErr := run(ctx, nil, "-C", dest, "log", "-1", "--pretty=format:%H%n%s")
 	if runErr != nil {
 		return "", "", runErr
 	}
@@ -112,11 +112,8 @@ func HeadCommit(ctx context.Context, dest string) (sha, message string, err erro
 // run is the single os/exec entry point so the env handling is consistent.
 // Returns combined stdout+stderr — git interleaves its progress output and
 // we want both for classification.
-func run(ctx context.Context, wd string, env []string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
-	if wd != "" {
-		cmd.Dir = wd
-	}
+func run(ctx context.Context, env []string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // G204: deliberate single git exec entry point; args are built internally, not from user input
 	if env != nil {
 		cmd.Env = env
 	}

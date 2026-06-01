@@ -95,7 +95,7 @@ func writeWrap(destPath, body string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("compose: abs: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil { //nolint:gosec // G301: app working dir, traversed by the vac-api owner and the docker daemon
 		return "", fmt.Errorf("compose: mkdir: %w", err)
 	}
 	if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {

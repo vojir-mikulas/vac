@@ -95,7 +95,7 @@ func TestSetSessionCookie_RequestSchemeDrivesSecure(t *testing.T) {
 			setSessionCookie(w, r, "tok", time.Hour)
 
 			resp := w.Result()
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			cookies := resp.Cookies()
 			if len(cookies) != 1 {
 				t.Fatalf("expected 1 cookie, got %d", len(cookies))

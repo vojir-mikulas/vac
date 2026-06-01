@@ -25,7 +25,9 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          # Pin the linter — `latest` lets a new upstream release add rules that
+          # turn CI red with zero code change. Bump deliberately.
+          version: v2.12.2
           working-directory: api
       - name: UI lint + format check
         run: make lint-ui

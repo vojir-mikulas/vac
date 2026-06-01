@@ -63,7 +63,7 @@ func Audit(rec AuditRecorder) func(http.Handler) http.Handler {
 			entry := buildEntry(r, record, status)
 			// Persist on a detached context: the request context is cancelled
 			// the moment ServeHTTP returns, but the response is already sent.
-			go persist(rec, entry)
+			go persist(rec, entry) //nolint:gosec // G118: detached context is intentional — the audit write must outlive the request ctx (cancelled when ServeHTTP returns)
 		})
 	}
 }

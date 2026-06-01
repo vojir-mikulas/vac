@@ -88,7 +88,7 @@ func TestGracefulShutdownDrainsInflight(t *testing.T) {
 			t.Errorf("GET: %v", err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		code = resp.StatusCode
 		body, _ = io.ReadAll(resp.Body)
 	}()

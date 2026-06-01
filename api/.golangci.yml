@@ -19,6 +19,60 @@ linters:
     - bodyclose
     - copyloopvar
     - gocritic
+  settings:
+    errcheck:
+      # CLI output writers: errors writing to stdout/stderr are not actionable.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    gocritic:
+      disabled-checks:
+        # os.Exit on a fatal startup error is intentional; the only pending
+        # defer (context cancel) is moot at process exit.
+        - exitAfterDefer
+    gosec:
+      excludes:
+        # G124: every cookie sets Secure via secureForRequest(r) (per-request,
+        # by design — see cookies.go). gosec only accepts a literal `Secure:
+        # true`, so it false-positives on a non-deterministic subset of the
+        # cookie sites every run. The rule yields no signal on this codebase.
+        - G124
+        # G306: the only files written with group/world-read bits are generated
+        # build manifests (Dockerfile/compose/nginx.conf) — non-secret build
+        # input. Real secrets are encrypted via crypto.Box and never hit disk as
+        # plain files, so the 0600 threshold adds noise without protection here.
+        - G306
+    revive:
+      rules:
+        # internal/ is not a public API surface, so a doc comment on every
+        # exported symbol is noise rather than documentation.
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+        # Handler/DI factory signatures are kept uniform even when a particular
+        # constructor doesn't use an injected dependency.
+        - name: unused-parameter
+          disabled: true
+  exclusions:
+    rules:
+      # Test code: subprocess/file/permission/url patterns are fixtures under
+      # the test's control, not production attack surface.
+      - path: _test\.go
+        linters:
+          - gosec
+          - unparam
+      # Stable error-code token, not a hardcoded credential.
+      - path: internal/server/handler/json.go
+        text: G101
+        linters:
+          - gosec
+      # MemTotalBytes comfortably fits int64; no real overflow path.
+      - path: internal/server/handler/host_budget.go
+        text: G115
+        linters:
+          - gosec
 
 formatters:
   enable:

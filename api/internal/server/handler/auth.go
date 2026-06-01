@@ -107,13 +107,13 @@ func Login(s *store.Store, sm *auth.SessionManager, cfg config.Config) http.Hand
 			return
 		}
 
-		issueFullSession(w, r, sm, cfg, user, req.Remember)
+		issueFullSession(w, r, sm, user, req.Remember)
 	}
 }
 
 // issueFullSession is the tail of login (and TOTP step) shared between the
 // password-only path and the password+TOTP path.
-func issueFullSession(w http.ResponseWriter, r *http.Request, sm *auth.SessionManager, cfg config.Config, user store.User, remember bool) {
+func issueFullSession(w http.ResponseWriter, r *http.Request, sm *auth.SessionManager, user store.User, remember bool) {
 	ip := clientIP(r)
 	token, _, err := sm.Create(r.Context(), user.ID, ip, r.UserAgent(), remember)
 	if err != nil {

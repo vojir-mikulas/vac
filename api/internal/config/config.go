@@ -154,7 +154,7 @@ func loadYAML(path string, cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	dec := yaml.NewDecoder(f)
 	dec.KnownFields(true)
 	if err := dec.Decode(cfg); err != nil {
@@ -373,7 +373,7 @@ func detectOutboundIP() string {
 	if err != nil {
 		return ""
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if a, ok := conn.LocalAddr().(*net.UDPAddr); ok {
 		return a.IP.String()
 	}
@@ -420,7 +420,7 @@ func echoLookup(client *http.Client, url string) string {
 	if err != nil {
 		return ""
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return ""
 	}

@@ -45,7 +45,7 @@ func (s *Store) UpsertRequestBuckets(ctx context.Context, buckets []RequestBucke
 		`, b.AppID, b.ServiceName, b.BucketTS, b.Requests, b.Errors, b.BytesOut)
 	}
 	br := s.pool.SendBatch(ctx, batch)
-	defer br.Close()
+	defer func() { _ = br.Close() }()
 	for range buckets {
 		if _, err := br.Exec(); err != nil {
 			return err

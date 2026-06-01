@@ -43,7 +43,7 @@ func drain(path string, offset int64, handle func([]byte)) int64 {
 	if err != nil {
 		return offset
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	st, err := f.Stat()
 	if err != nil {
