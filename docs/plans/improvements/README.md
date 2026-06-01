@@ -19,6 +19,7 @@ React mock). These plans translate that mock into the real stack
 | 05 | [05-settings-tabs.md](05-settings-tabs.md) | Tabbed settings shell; new Instance + Danger-zone tabs; fold existing notifications / API tokens / sessions in | M, backend + UI |
 | 06 | [06-domains-dns.md](06-domains-dns.md) | Instance domains management + per-app DNS-setup guidance ("is this pointed at the VPS yet?") with copy-paste records | M, backend + UI |
 | 07 | [07-mock-preview.md](07-mock-preview.md) | Run the whole UI with no backend (MSW + in-memory store + WS simulators) behind a `VITE_MOCK` flag; deploy as a static preview with per-PR URLs | M, UI-only |
+| 08 | [08-accessibility.md](08-accessibility.md) | Keyboard + screen-reader pass (skip link, `aria-current`, live logs, labelled forms/meters), `prefers-reduced-motion`, jsx-a11y lint + axe smoke test; plus reusable a11y authoring guidelines for `docs/kb/conventions.md` | M, UI-only |
 
 ## Suggested order
 
@@ -30,6 +31,10 @@ React mock). These plans translate that mock into the real stack
 
 **07-mock-preview** is UI-only and independent of the above — it can run at any
 point (best once the main flows it demos are stable). Front-loads no backend work.
+
+**08-accessibility** is UI-only and largely independent. Land its guardrails
+(jsx-a11y lint + axe smoke, item 8.1) early so the other plans' new UI is checked
+as it's written; the remaining items can follow at any point.
 
 ## Explicitly deferred (operator confirmed "later")
 

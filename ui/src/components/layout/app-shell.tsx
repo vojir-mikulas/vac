@@ -39,7 +39,7 @@ function InsecureHTTPBanner() {
   return (
     <div
       role="alert"
-      className="flex items-start gap-3 border-b border-warn-border bg-warn-bg px-6 py-2 text-sm text-warn-foreground"
+      className="flex items-start gap-3 border-b border-warn-border bg-warn-bg px-4 py-2 text-sm text-warn-foreground md:px-6"
     >
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
       <div className="flex-1">
@@ -69,7 +69,7 @@ function InsecureHTTPBanner() {
 
 // Standard page container — centers content at the prototype's max width.
 export function PageContainer({ children }: { children: React.ReactNode }) {
-  return <div className="mx-auto max-w-content px-8 pb-20 pt-7">{children}</div>
+  return <div className="mx-auto max-w-content px-4 pb-20 pt-7 sm:px-6 md:px-8">{children}</div>
 }
 
 export function PageHeader({

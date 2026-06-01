@@ -1,6 +1,6 @@
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { LogOut, Search } from 'lucide-react'
+import { LogOut, Menu, Search } from 'lucide-react'
 
 import {
   DropdownMenu,
@@ -10,6 +10,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { SidebarContent } from '@/components/layout/sidebar'
 import { ThemeToggle } from '@/components/theme/theme-toggle'
 import { useApps } from '@/lib/api/apps'
 import { useLogout, useMe } from '@/lib/api/auth'
@@ -35,10 +37,33 @@ interface Crumb {
 
 export function Topbar({ onOpenSearch }: { onOpenSearch: () => void }) {
   const crumbs = useBreadcrumbs()
+  const [navOpen, setNavOpen] = useState(false)
+  const current = crumbs[crumbs.length - 1]
 
   return (
-    <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-4 border-b bg-background/85 px-6 backdrop-blur">
-      <nav className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+    <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur md:gap-4 md:px-6">
+      <Sheet open={navOpen} onOpenChange={setNavOpen}>
+        <SheetTrigger asChild>
+          <button
+            type="button"
+            aria-label="Open menu"
+            className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-md border bg-surface-1 text-muted-foreground transition-colors hover:text-foreground md:hidden"
+          >
+            <Menu className="size-4" />
+          </button>
+        </SheetTrigger>
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className="w-sidebar gap-0 bg-surface-1 p-0"
+        >
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <SidebarContent onNavigate={() => setNavOpen(false)} />
+        </SheetContent>
+      </Sheet>
+
+      {/* Desktop: full breadcrumb trail. */}
+      <nav className="hidden min-w-0 flex-1 items-center gap-2 text-sm md:flex">
         {crumbs.map((c, i) => {
           const last = i === crumbs.length - 1
           return (
@@ -63,14 +88,24 @@ export function Topbar({ onOpenSearch }: { onOpenSearch: () => void }) {
         })}
       </nav>
 
+      {/* Mobile: just the current page, no breadcrumb trail. */}
+      <span
+        className={`min-w-0 flex-1 truncate text-sm font-medium md:hidden ${current?.mono ? 'font-mono' : ''}`}
+      >
+        {current?.label}
+      </span>
+
       <button
         type="button"
         onClick={onOpenSearch}
-        className="flex h-8 w-72 cursor-pointer items-center gap-2 rounded-md border bg-surface-1 px-3 text-muted-foreground transition-colors hover:border-border-strong"
+        aria-label="Search"
+        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border bg-surface-1 text-muted-foreground transition-colors hover:border-border-strong md:w-72 md:justify-start md:gap-2 md:px-3"
       >
         <Search className="size-3.5" />
-        <span className="flex-1 text-left text-xs">Search…</span>
-        <kbd className="rounded border bg-background px-1.5 font-mono text-2xs">⌘K</kbd>
+        <span className="hidden flex-1 text-left text-xs md:inline">Search…</span>
+        <kbd className="hidden rounded border bg-background px-1.5 font-mono text-2xs md:inline">
+          ⌘K
+        </kbd>
       </button>
 
       <ThemeToggle />

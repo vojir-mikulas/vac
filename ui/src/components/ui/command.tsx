@@ -46,7 +46,13 @@ function CommandDialog({
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <DialogContent
-        className={cn('overflow-hidden p-0', className)}
+        className={cn(
+          // Top-anchor on mobile so the soft keyboard doesn't cover the results;
+          // re-center on >=sm screens. Cap height so the list always has a
+          // visible, scrollable region above the keyboard.
+          'top-[8%] max-h-[85dvh] translate-y-0 overflow-hidden p-0 sm:top-1/2 sm:max-h-none sm:-translate-y-1/2',
+          className,
+        )}
         showCloseButton={showCloseButton}
       >
         <Command className="**:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
@@ -80,7 +86,13 @@ function CommandList({ className, ...props }: React.ComponentProps<typeof Comman
   return (
     <CommandPrimitive.List
       data-slot="command-list"
-      className={cn('max-h-[300px] scroll-py-1 overflow-x-hidden overflow-y-auto', className)}
+      className={cn(
+        // Cap to the smaller of 300px / 55dvh so the list stays inside the
+        // viewport on short screens; overscroll-contain keeps touch scrolling
+        // inside the list instead of leaking to the locked body.
+        'max-h-[min(300px,55dvh)] scroll-py-1 overflow-x-hidden overflow-y-auto overscroll-contain',
+        className,
+      )}
       {...props}
     />
   )

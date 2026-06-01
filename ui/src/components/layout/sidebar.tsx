@@ -15,8 +15,18 @@ const NAV = [
 export function Sidebar() {
   return (
     <aside className="sticky top-3 m-3 hidden h-[calc(100svh-1.5rem)] w-sidebar shrink-0 flex-col rounded-xl border bg-surface-1 md:flex">
+      <SidebarContent />
+    </aside>
+  )
+}
+
+// Inner sidebar layout, shared by the fixed desktop rail and the mobile drawer.
+// `onNavigate` lets the mobile drawer close itself when a link is tapped.
+export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <>
       <div className="border-b px-4.5 pb-3 pt-4.5">
-        <Link to="/apps" className="flex w-full items-center gap-2.5">
+        <Link to="/apps" onClick={onNavigate} className="flex w-full items-center gap-2.5">
           <img src="/vac-logo.svg" alt="" aria-hidden="true" className="size-7 rounded-md" />
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold tracking-tight">VAC</span>
@@ -32,6 +42,7 @@ export function Sidebar() {
           <Link
             key={item.to}
             to={item.to}
+            onClick={onNavigate}
             className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-normal text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground data-[status=active]:bg-surface-2 data-[status=active]:font-medium data-[status=active]:text-foreground"
             activeProps={{ 'data-status': 'active' }}
           >
@@ -42,7 +53,7 @@ export function Sidebar() {
       </nav>
 
       <HostVitals />
-    </aside>
+    </>
   )
 }
 
