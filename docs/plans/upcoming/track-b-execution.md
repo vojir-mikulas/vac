@@ -245,12 +245,13 @@ All three phases implemented and tested in this worktree (`pale-pike`), to be me
 The new `ci.yml` runs lint/test/typecheck, which the repo never had before — so it surfaces
 two latent issues already present on this branch (confirmed by stashing all Track-B changes):
 
-1. **`ui/src/routes/_app.tsx` has a committed debugging hack.** Lines 11–13 are an early
-   `return` marked *"TEMP (local UI preview, do not commit): skip auth/setup guard so the
-   dashboard renders without a backend."* It disables the entire auth/setup guard and makes the
-   rest of the function unreachable (the source of the `'err' is of type 'unknown'` typecheck
-   error). **Left untouched — it's unrelated to Track B and security-relevant; the branch owner
-   should remove it before merge.**
+1. **`ui/src/routes/_app.tsx` had a committed debugging hack — now removed.** Lines 11–13 were
+   an early `return` marked *"TEMP (local UI preview, do not commit): skip auth/setup guard so
+   the dashboard renders without a backend."* It disabled the entire auth/setup guard and made
+   the rest of the function unreachable (the source of the `'err' is of type 'unknown'`
+   typecheck error). It was introduced in `26d21b1` and slipped into a large UI-polish commit.
+   **Removed before the merge to `main`** — `beforeLoad` now runs the real setup/session guard
+   again.
 2. (Fixed) `status-filter.test.ts` App fixture was missing required fields — updated for the new
    `mem_limit_mb` field while there.
 
