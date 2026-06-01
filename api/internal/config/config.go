@@ -7,10 +7,15 @@ package config
 import (
 	"encoding/hex"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"net/http"
+	"net/netip"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -63,7 +68,9 @@ type Config struct {
 
 	// PublicIP is the VPS's public address, surfaced in the dashboard (sidebar
 	// host row) and used by the per-app DNS-setup guidance so operators see the
-	// exact A-record value. Empty triggers best-effort outbound-IP detection.
+	// exact A-record value. Empty triggers auto-detection: the local outbound IP
+	// is used when it is public, otherwise an external IP-echo service is queried
+	// over HTTPS to learn the true public IP (covers NAT'd hosts).
 	PublicIP string `yaml:"public_ip"`
 
 	// Phase 4: notifications. Webhook URLs are semi-secret — env-only, never in
@@ -305,17 +312,45 @@ func (c Config) Addr() string {
 	return fmt.Sprintf("%s:%d", c.Server.Host, c.Server.Port)
 }
 
-// PublicIPAddr returns the configured public IP, or a best-effort detection of
-// the primary outbound interface address when unset. Detection opens no
-// connection (UDP "dial" only selects a route) so it's cheap and offline-safe;
-// it returns "" if no route can be determined.
+// PublicIPAddr returns the configured public IP verbatim when set (no network
+// call). When unset it auto-detects the host's public address: the local
+// outbound-interface IP is used if it is already public (fast path, no egress);
+// if that IP is private/loopback/link-local/CGNAT it reaches out to an external
+// IP-echo service over HTTPS to learn the true public IP, falling back to the
+// local IP so the dashboard still shows something. The auto-detected result is
+// cached for the process lifetime; it returns "" only if every step fails.
 func (c Config) PublicIPAddr() string {
 	if c.PublicIP != "" {
 		return c.PublicIP
 	}
-	return detectOutboundIP()
+	return autoDetectPublicIP()
 }
 
+// autoDetectPublicIP runs the local-then-external-echo detection at most once
+// per process and caches the result (PublicIPAddr is called from both main and
+// the server wiring).
+var autoDetectPublicIP = sync.OnceValue(func() string {
+	local := detectOutboundIP()
+	if isPublicIP(local) {
+		return local
+	}
+	if ip := publicIPFrom(&http.Client{Timeout: 4 * time.Second}, defaultEchoURLs); ip != "" {
+		return ip
+	}
+	return local
+})
+
+// defaultEchoURLs are plaintext IP-echo endpoints queried in order to learn the
+// host's true public IP when the local interface address is not public.
+var defaultEchoURLs = []string{
+	"https://api.ipify.org",
+	"https://ifconfig.me/ip",
+	"https://icanhazip.com",
+}
+
+// detectOutboundIP finds the local IP used for outbound traffic. The UDP "dial"
+// only selects a route (no packets are sent) so it's cheap and offline-safe; it
+// returns "" if no route can be determined.
 func detectOutboundIP() string {
 	conn, err := net.Dial("udp", "1.1.1.1:80")
 	if err != nil {
@@ -324,6 +359,61 @@ func detectOutboundIP() string {
 	defer conn.Close()
 	if a, ok := conn.LocalAddr().(*net.UDPAddr); ok {
 		return a.IP.String()
+	}
+	return ""
+}
+
+// cgnatNet is the RFC 6598 carrier-grade NAT range (100.64.0.0/10).
+var cgnatNet = netip.MustParsePrefix("100.64.0.0/10")
+
+// isPublicIP reports whether s parses to a routable public IP. It returns false
+// for invalid input, the unspecified address, loopback, link-local
+// (unicast/multicast), RFC1918 private ranges, IPv6 unique-local (fc00::/7), and
+// CGNAT (100.64.0.0/10).
+func isPublicIP(s string) bool {
+	addr, err := netip.ParseAddr(strings.TrimSpace(s))
+	if err != nil {
+		return false
+	}
+	if addr.IsUnspecified() ||
+		addr.IsLoopback() ||
+		addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() ||
+		addr.IsPrivate() || // RFC1918 (v4) and fc00::/7 (v6)
+		cgnatNet.Contains(addr) {
+		return false
+	}
+	return true
+}
+
+// publicIPFrom GETs each URL in order with the client's timeout, returning the
+// first response body that trims to a valid public IP. Network failures,
+// non-200 responses, and non-public bodies are skipped; it never panics and
+// returns "" if none succeed.
+func publicIPFrom(client *http.Client, urls []string) string {
+	for _, url := range urls {
+		if ip := echoLookup(client, url); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func echoLookup(client *http.Client, url string) string {
+	resp, err := client.Get(url)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64))
+	if err != nil {
+		return ""
+	}
+	candidate := strings.TrimSpace(string(body))
+	if isPublicIP(candidate) {
+		return candidate
 	}
 	return ""
 }

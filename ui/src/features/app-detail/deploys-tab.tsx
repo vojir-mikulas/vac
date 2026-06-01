@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, RotateCcw, RotateCw } from 'lucide-react'
+import { ChevronDown, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -22,7 +22,7 @@ import { SectionHeader } from '@/components/common/section-header'
 import { StatusPill } from '@/components/common/status-pill'
 import { LogViewer } from '@/components/common/log-viewer'
 import { DeploySteps } from '@/features/app-detail/deploy-steps'
-import { useDeployments, useRollbackDeploy, useTriggerDeploy } from '@/lib/api/deployments'
+import { useDeployments, useRollbackDeploy } from '@/lib/api/deployments'
 import { useDeploymentLogs } from '@/lib/ws/use-log-stream'
 import { isDeploySucceeded } from '@/lib/deploy-status'
 import { queryKeys } from '@/lib/query/keys'
@@ -32,7 +32,6 @@ import type { Deployment } from '@/types/api'
 
 export function DeploysTab({ appId }: { appId: string }) {
   const { data: deployments, isLoading } = useDeployments(appId)
-  const deploy = useTriggerDeploy(appId)
 
   // The newest successful deployment is the version currently live — rolling
   // back to it is a no-op, so the Roll back action is hidden on that row.
@@ -40,23 +39,7 @@ export function DeploysTab({ appId }: { appId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <SectionHeader className="mb-0">History</SectionHeader>
-        <Button
-          variant="brand"
-          size="sm"
-          disabled={deploy.isPending}
-          onClick={() =>
-            deploy.mutate(undefined, {
-              onSuccess: () => toast.success('Deploy triggered'),
-              onError: (e) => toast.error(e.message),
-            })
-          }
-        >
-          <RotateCw className="size-3.5" />
-          Deploy from HEAD
-        </Button>
-      </div>
+      <SectionHeader className="mb-0">History</SectionHeader>
 
       {isLoading ? (
         <Skeleton className="h-40 w-full rounded-xl" />

@@ -15,8 +15,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* tabIndex={-1} lets the skip link move focus here programmatically
           without adding <main> to the normal tab order. */}
       <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
-        <InsecureHTTPBanner />
-        <Topbar onOpenSearch={() => setCmdOpen(true)} />
+        {/* Sticky frosted region — mirrors the sidebar's floating-card inset
+            (12px top/right, flush-left against the sidebar's own margin). */}
+        <div className="sticky top-0 z-20 flex flex-col gap-2.5 bg-background/70 pb-2.5 pr-3 pt-3 backdrop-blur-md">
+          <InsecureHTTPBanner />
+          <Topbar onOpenSearch={() => setCmdOpen(true)} />
+        </div>
         <div className="flex-1">{children}</div>
       </main>
       <CommandMenu open={cmdOpen} onOpenChange={setCmdOpen} />
@@ -55,10 +59,12 @@ function InsecureHTTPBanner() {
   return (
     <div
       role="alert"
-      className="flex items-start gap-3 border-b border-warn-border bg-warn-bg px-4 py-2 text-sm text-warn-foreground md:px-6"
+      className="flex items-center gap-3 rounded-xl border border-warn-border bg-warn-bg px-4 py-2.5 text-sm text-warn-foreground"
     >
-      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-      <div className="flex-1">
+      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-warn-foreground/10">
+        <AlertTriangle className="size-4" />
+      </span>
+      <div className="flex-1 leading-snug">
         <span className="font-medium">You're on plain HTTP — sessions are insecure.</span>{' '}
         <span className="text-warn-foreground/80">
           Configure a domain with{' '}
@@ -75,7 +81,7 @@ function InsecureHTTPBanner() {
           window.sessionStorage.setItem(BANNER_DISMISS_KEY, '1')
           setShow(false)
         }}
-        className="shrink-0 cursor-pointer rounded p-1 hover:bg-warn-foreground/10"
+        className="-mr-1 shrink-0 cursor-pointer rounded-md p-1.5 text-warn-foreground/70 transition-colors hover:bg-warn-foreground/10 hover:text-warn-foreground"
       >
         <X className="size-3.5" />
       </button>

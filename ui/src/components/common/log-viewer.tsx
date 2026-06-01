@@ -119,6 +119,8 @@ export function LogViewer({
             return (
               <div
                 key={line.key}
+                data-index={item.index}
+                ref={virtualizer.measureElement}
                 className="absolute left-0 flex w-full gap-2 px-1 whitespace-pre-wrap"
                 style={{ top: 0, transform: `translateY(${item.start}px)` }}
               >

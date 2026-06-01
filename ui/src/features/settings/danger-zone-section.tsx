@@ -24,7 +24,7 @@ export function DangerZoneSection() {
   return (
     <section>
       <SectionHeader>Danger zone</SectionHeader>
-      <div className="flex flex-col gap-0 overflow-hidden rounded-xl border border-err-border bg-err-bg/40">
+      <div className="flex flex-col gap-0 overflow-hidden rounded-xl border">
         <RestartControlPlaneRow />
         <StopAllAppsRow />
         <ResetInstanceRow />
@@ -38,18 +38,22 @@ function DangerRow({
   description,
   children,
   border,
+  danger,
 }: {
   title: string
   description: string
   children: React.ReactNode
   border?: boolean
+  danger?: boolean
 }) {
   return (
     <div
-      className={`flex items-center justify-between gap-4 px-5 py-4 ${border ? 'border-t border-err-border' : ''}`}
+      className={`flex items-center justify-between gap-4 px-5 py-4 ${
+        border ? 'border-t' : ''
+      } ${danger ? 'bg-err-bg/40' : ''}`}
     >
       <div className="min-w-0">
-        <div className="text-sm font-medium">{title}</div>
+        <div className={`text-sm font-medium ${danger ? 'text-err-foreground' : ''}`}>{title}</div>
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
       <div className="shrink-0">{children}</div>
@@ -130,6 +134,7 @@ function ResetInstanceRow() {
       title="Reset instance"
       description="Wipes apps, deployments, and databases. Requires typed confirmation."
       border
+      danger
     >
       <AlertDialog
         open={open}
@@ -201,7 +206,7 @@ function ConfirmButton({
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="danger" size="sm" disabled={disabled}>
+        <Button variant="outline" size="sm" disabled={disabled}>
           {label}
         </Button>
       </AlertDialogTrigger>

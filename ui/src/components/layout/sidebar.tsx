@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Boxes, Database, Rocket, Settings } from 'lucide-react'
+import { Boxes, Database, Rocket, Server, Settings } from 'lucide-react'
 
 import { Meter } from '@/components/common/meter'
 import { useHostStats } from '@/lib/api/metrics'
@@ -62,11 +62,18 @@ function HostIdentity() {
   const ip = data?.host_ip
   return (
     <div className="px-3 pb-1.5 pt-3">
-      <div className="flex w-full items-center gap-2.5 rounded-md border bg-background px-2.5 py-2 text-left">
-        <span className="size-2 shrink-0 rounded-full bg-ok shadow-[0_0_0_3px_color-mix(in_oklch,var(--ok),transparent_80%)]" />
+      <div className="flex w-full items-center gap-2.5 rounded-lg border bg-background px-2.5 py-2 text-left">
+        {/* Server chip with a corner "online" badge — the ring matches the
+            card background so the dot reads as a notch cut into the icon. */}
+        <span className="relative grid size-8 shrink-0 place-items-center rounded-md bg-ok-bg text-ok-foreground">
+          <Server className="size-4" />
+          <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-ok shadow-[0_0_0_3px_color-mix(in_oklch,var(--ok),transparent_82%)]" />
+        </span>
         <div className="flex min-w-0 flex-1 flex-col leading-tight">
+          <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+            This host
+          </span>
           <span className="truncate font-mono text-xs font-medium">{ip || 'localhost'}</span>
-          <span className="text-2xs text-muted-foreground">this host</span>
         </div>
       </div>
     </div>

@@ -201,14 +201,22 @@ what we do instead, why, and the trade-off (what we give up / when we'd revisit)
 ### D — VPS public IP is surfaced via host stats and the DNS-check endpoint
 
 - **Context:** the sidebar host row and the per-domain DNS guidance need the VPS's public IP.
-- **We do instead:** `config.PublicIPAddr()` returns `VAC_PUBLIC_IP` when set, else best-effort
-  outbound-interface detection (a UDP "dial" that opens no socket). It feeds `host_ip` in the
+- **We do instead:** `config.PublicIPAddr()` returns `VAC_PUBLIC_IP` verbatim when set (no network
+  call). When unset it auto-detects with a local-then-external precedence: first the local
+  outbound-interface IP (a UDP "dial" that opens no socket) — used directly when it is already a
+  public address (the VPS fast path, no egress); when it is private/loopback/link-local/CGNAT it
+  queries an external IP-echo service over HTTPS (`api.ipify.org`, then `ifconfig.me/ip`, then
+  `icanhazip.com`) to learn the true public IP, falling back to the local IP if every echo fails.
+  The auto-detected result is cached per process (`sync.OnceValue`). It feeds `host_ip` in the
   host-stats payload and the `GET /api/instance/dns-check` comparison (resolve a hostname
   server-side, compare to the VPS IP → `points_here`).
 - **Why:** copy-pasteable A-record values and a live "is it pointed here yet?" check need the real
-  address, not a placeholder.
-- **Trade-off:** auto-detection returns the primary route's source IP, which on a NAT'd host may
-  differ from the true public IP — operators set `VAC_PUBLIC_IP` to override.
+  address, not a placeholder — and behind NAT the local route IP is the private LAN address, so the
+  external echo is what makes the DNS check correct for home/local-network operators.
+- **Trade-off:** behind NAT, auto-detection makes one HTTPS GET to a third-party echo service at
+  startup. Setting `VAC_PUBLIC_IP` skips it entirely; if the box is offline or every echo is
+  unreachable, detection falls back to the private LAN IP and the DNS check is misleading until
+  `VAC_PUBLIC_IP` is set.
 
 ### D — Build adapters resolve to a compose file; `compose_file` kept for back-compat
 

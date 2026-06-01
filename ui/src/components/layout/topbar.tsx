@@ -51,7 +51,7 @@ export function Topbar({ onOpenSearch }: { onOpenSearch: () => void }) {
   )
 
   return (
-    <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur md:gap-4 md:px-6">
+    <header className="flex h-14 shrink-0 items-center gap-3 rounded-xl border bg-surface-1/85 px-3 backdrop-blur md:gap-4">
       <Sheet open={navOpen} onOpenChange={setNavOpen}>
         <SheetTrigger asChild>
           <button
@@ -75,7 +75,7 @@ export function Topbar({ onOpenSearch }: { onOpenSearch: () => void }) {
       {/* Desktop: full breadcrumb trail. */}
       <nav
         aria-label="Breadcrumb"
-        className="hidden min-w-0 flex-1 items-center gap-2 text-sm md:flex"
+        className="hidden min-w-0 flex-1 items-center gap-2 px-1 text-sm md:flex"
       >
         {crumbs.map((c, i) => {
           const last = i === crumbs.length - 1
@@ -113,14 +113,16 @@ export function Topbar({ onOpenSearch }: { onOpenSearch: () => void }) {
         type="button"
         onClick={onOpenSearch}
         aria-label="Search — ⌘K"
-        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border bg-surface-1 text-muted-foreground transition-colors hover:border-border-strong md:w-72 md:justify-start md:gap-2 md:px-3"
+        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border bg-background text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground md:w-72 md:justify-start md:gap-2 md:px-3"
       >
         <Search className="size-3.5" />
         <span className="hidden flex-1 text-left text-xs md:inline">Search…</span>
-        <kbd className="hidden rounded border bg-background px-1.5 font-mono text-2xs md:inline">
+        <kbd className="hidden rounded border bg-surface-2 px-1.5 font-mono text-2xs md:inline">
           ⌘K
         </kbd>
       </button>
+
+      <span className="h-5 w-px bg-border" aria-hidden="true" />
 
       <ThemeToggle />
       <UserMenu />
@@ -139,7 +141,7 @@ function UserMenu() {
         <button
           type="button"
           aria-label="Account menu"
-          className="grid size-8 cursor-pointer place-items-center rounded-full border bg-brand/15 font-sans text-xs font-semibold text-brand"
+          className="grid size-8 cursor-pointer place-items-center rounded-full bg-brand/15 font-sans text-xs font-semibold text-brand ring-1 ring-brand/25 transition-shadow hover:ring-brand/40"
         >
           {initials}
         </button>
