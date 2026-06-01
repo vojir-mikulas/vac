@@ -1,0 +1,21 @@
+name: Setup toolchain
+description: >
+  Set up Go, pnpm, and Node, then install JS deps with a frozen lockfile.
+  Assumes the caller has already run actions/checkout.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: "1.25"
+        cache-dependency-path: api/go.sum
+    - uses: pnpm/action-setup@v4
+      with:
+        version: "10.14.0"
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+      shell: bash

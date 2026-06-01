@@ -1,0 +1,33 @@
+name: Bench RAM
+
+# Guards the headline "<200 MB idle RAM (excl. database)" claim (plan 07).
+# Kept off the PR hot path: it boots a Docker stack and waits SETTLE_SECONDS,
+# so it runs on main + nightly + on demand, not on every PR.
+on:
+  push:
+    branches: ["main"]
+    paths-ignore: ["docs/**", "**/*.md"]
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: bench-ram-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bench-ram:
+    # Fixed-size runner so the number is comparable across runs; ubuntu-latest
+    # is 2 vCPU / 7 GB, with Docker preinstalled.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Idle-RAM benchmark
+        run: make bench-ram
+        env:
+          WARN_MB: "180"
+          FAIL_MB: "200"
+          SETTLE_SECONDS: "90"
