@@ -204,12 +204,15 @@ func TestDeploymentsCRUD(t *testing.T) {
 	ctx := context.Background()
 	a := testApp(t, s, "deployments-app")
 
-	d, err := s.CreateDeployment(ctx, a.ID)
+	d, err := s.CreateDeployment(ctx, a.ID, store.TriggeredManual, nil)
 	if err != nil {
 		t.Fatalf("CreateDeployment: %v", err)
 	}
 	if d.Status != "queued" || d.StartedAt != nil || d.FinishedAt != nil {
 		t.Errorf("fresh deploy looks wrong: %+v", d)
+	}
+	if d.TriggeredBy != store.TriggeredManual || d.RolledBackFrom != nil {
+		t.Errorf("trigger fields wrong: by=%q from=%v", d.TriggeredBy, d.RolledBackFrom)
 	}
 
 	// Step through the lifecycle.
@@ -252,7 +255,7 @@ func TestDeploymentsCRUD(t *testing.T) {
 
 	// MarkInProgressDeploymentsInterrupted should be a no-op now (the row
 	// is terminal). Create a fresh queued row and run the sweep.
-	stranded, err := s.CreateDeployment(ctx, a.ID)
+	stranded, err := s.CreateDeployment(ctx, a.ID, store.TriggeredManual, nil)
 	if err != nil {
 		t.Fatalf("CreateDeployment 2: %v", err)
 	}
@@ -276,7 +279,7 @@ func TestDeploymentLogsAppendAndList(t *testing.T) {
 	s := setup(t)
 	ctx := context.Background()
 	a := testApp(t, s, "deploy-logs-app")
-	d, err := s.CreateDeployment(ctx, a.ID)
+	d, err := s.CreateDeployment(ctx, a.ID, store.TriggeredManual, nil)
 	if err != nil {
 		t.Fatalf("CreateDeployment: %v", err)
 	}

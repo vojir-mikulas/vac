@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/vojir-mikulas/vac/api/internal/audit"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
@@ -18,30 +19,34 @@ type DeploymentEnqueuer interface {
 }
 
 type deploymentDTO struct {
-	ID            string     `json:"id"`
-	AppID         string     `json:"app_id"`
-	Status        string     `json:"status"`
-	TriggeredAt   time.Time  `json:"triggered_at"`
-	StartedAt     *time.Time `json:"started_at,omitempty"`
-	FinishedAt    *time.Time `json:"finished_at,omitempty"`
-	ComposeHash   *string    `json:"compose_hash,omitempty"`
-	CommitSHA     *string    `json:"commit_sha,omitempty"`
-	CommitMessage *string    `json:"commit_message,omitempty"`
-	Error         *string    `json:"error,omitempty"`
+	ID             string     `json:"id"`
+	AppID          string     `json:"app_id"`
+	Status         string     `json:"status"`
+	TriggeredAt    time.Time  `json:"triggered_at"`
+	TriggeredBy    string     `json:"triggered_by"`
+	RolledBackFrom *string    `json:"rolled_back_from,omitempty"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	FinishedAt     *time.Time `json:"finished_at,omitempty"`
+	ComposeHash    *string    `json:"compose_hash,omitempty"`
+	CommitSHA      *string    `json:"commit_sha,omitempty"`
+	CommitMessage  *string    `json:"commit_message,omitempty"`
+	Error          *string    `json:"error,omitempty"`
 }
 
 func toDeploymentDTO(d store.Deployment) deploymentDTO {
 	return deploymentDTO{
-		ID:            d.ID,
-		AppID:         d.AppID,
-		Status:        d.Status,
-		TriggeredAt:   d.TriggeredAt,
-		StartedAt:     d.StartedAt,
-		FinishedAt:    d.FinishedAt,
-		ComposeHash:   d.ComposeHash,
-		CommitSHA:     d.CommitSHA,
-		CommitMessage: d.CommitMessage,
-		Error:         d.Error,
+		ID:             d.ID,
+		AppID:          d.AppID,
+		Status:         d.Status,
+		TriggeredAt:    d.TriggeredAt,
+		TriggeredBy:    d.TriggeredBy,
+		RolledBackFrom: d.RolledBackFrom,
+		StartedAt:      d.StartedAt,
+		FinishedAt:     d.FinishedAt,
+		ComposeHash:    d.ComposeHash,
+		CommitSHA:      d.CommitSHA,
+		CommitMessage:  d.CommitMessage,
+		Error:          d.Error,
 	}
 }
 
@@ -60,7 +65,7 @@ func TriggerDeployment(s *store.Store, w DeploymentEnqueuer) http.HandlerFunc {
 			WriteError(rw, http.StatusInternalServerError, "could not load app")
 			return
 		}
-		d, err := s.CreateDeployment(r.Context(), app.ID)
+		d, err := s.CreateDeployment(r.Context(), app.ID, store.TriggeredManual, nil)
 		if err != nil {
 			WriteError(rw, http.StatusInternalServerError, "could not create deployment")
 			return
@@ -73,6 +78,10 @@ func TriggerDeployment(s *store.Store, w DeploymentEnqueuer) http.HandlerFunc {
 			WriteError(rw, http.StatusInternalServerError, "could not enqueue deployment")
 			return
 		}
+		// Audit hook — the central middleware records actor/route/outcome; this
+		// one line gives the entry its target and a human summary.
+		audit.SetTarget(r.Context(), "app", app.ID)
+		audit.Describe(r.Context(), "triggered deployment of "+app.Slug)
 		WriteJSON(rw, http.StatusAccepted, toDeploymentDTO(d))
 	}
 }

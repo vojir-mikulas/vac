@@ -200,6 +200,7 @@ func main() {
 	pruner := retention.New(st, retention.Config{
 		RuntimeDays:    cfg.LogRetentionDays,
 		RequestMetrics: cfg.RequestMetricsRetention,
+		ActivityDays:   cfg.ActivityRetentionDays,
 		RingBuffer:     cfg.LogRingBuffer,
 		HourOfDay:      3,
 	}, slog.Default())

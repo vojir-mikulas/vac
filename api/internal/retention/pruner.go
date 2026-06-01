@@ -13,6 +13,7 @@ import (
 type PruneStore interface {
 	DeleteRuntimeLogsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteRequestMetricsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
+	DeleteAuditLogOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 	ListRuntimeLogServices(ctx context.Context) ([]struct{ AppID, ServiceName string }, error)
 	TrimRuntimeLogsToRingBuffer(ctx context.Context, appID, serviceName string, keepN int) (int64, error)
 }
@@ -23,6 +24,8 @@ type Config struct {
 	RuntimeDays int
 	// RequestMetrics is the retention for the request-rate window.
 	RequestMetrics time.Duration
+	// ActivityDays governs the audit_log (the activity feed). Default 30.
+	ActivityDays int
 	// RingBuffer caps runtime_logs per (app, service) — the mvp ring buffer.
 	// The live follower trims continuously; this catches stopped-app services
 	// whose follower isn't running. Default 10000.
@@ -49,6 +52,9 @@ func New(s PruneStore, cfg Config, logger *slog.Logger) *Pruner {
 	}
 	if cfg.RequestMetrics <= 0 {
 		cfg.RequestMetrics = 24 * time.Hour
+	}
+	if cfg.ActivityDays <= 0 {
+		cfg.ActivityDays = 30
 	}
 	if cfg.RingBuffer <= 0 {
 		cfg.RingBuffer = 10000
@@ -96,6 +102,13 @@ func (p *Pruner) PruneOnce(ctx context.Context) error {
 		return err
 	}
 	p.logger.Info("retention: pruned request metrics", "deleted", rn, "cutoff", rmCutoff.Format(time.RFC3339))
+
+	auditCutoff := p.now().Add(-time.Duration(p.cfg.ActivityDays) * 24 * time.Hour)
+	an, err := p.store.DeleteAuditLogOlderThan(ctx, auditCutoff)
+	if err != nil {
+		return err
+	}
+	p.logger.Info("retention: pruned audit log", "deleted", an, "cutoff", auditCutoff.Format(time.RFC3339))
 
 	// Ring-buffer cap per (app, service) — catches services whose live
 	// follower isn't running to trim them continuously.

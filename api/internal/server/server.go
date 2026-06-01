@@ -92,6 +92,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		r.Use(middleware.BodyLimit(middleware.MaxBodyBytes))
 		r.Use(middleware.Auth(sm, tokm))
 		r.Use(middleware.CSRF)
+		// Innermost: the actor is resolved (Auth) and CSRF has passed, so every
+		// mutating request that reaches a handler is audited with its outcome.
+		r.Use(middleware.Audit(s))
 
 		// Public — no session required. Setup-admin and the login endpoints
 		// are the brute-force surface, so they sit behind the rate limiter.

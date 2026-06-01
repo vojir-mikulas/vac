@@ -23,8 +23,9 @@ func Auth(sm *auth.SessionManager, tm *auth.TokenManager) func(http.Handler) htt
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if raw, ok := bearerToken(r); ok {
-				if _, user, err := tm.Lookup(r.Context(), raw); err == nil {
+				if tok, user, err := tm.Lookup(r.Context(), raw); err == nil {
 					ctx := auth.WithUser(r.Context(), &user)
+					ctx = auth.WithAPIToken(ctx, &tok)
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}

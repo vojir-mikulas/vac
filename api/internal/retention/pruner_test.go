@@ -10,12 +10,14 @@ import (
 )
 
 type fakeStore struct {
-	calls     atomic.Int64
-	last      time.Time
-	rmCalls   atomic.Int64
-	rmLast    time.Time
-	trimCalls atomic.Int64
-	trimKeep  int
+	calls      atomic.Int64
+	last       time.Time
+	rmCalls    atomic.Int64
+	rmLast     time.Time
+	auditCalls atomic.Int64
+	auditLast  time.Time
+	trimCalls  atomic.Int64
+	trimKeep   int
 }
 
 func (f *fakeStore) DeleteRuntimeLogsOlderThan(_ context.Context, cutoff time.Time) (int64, error) {
@@ -28,6 +30,12 @@ func (f *fakeStore) DeleteRequestMetricsOlderThan(_ context.Context, cutoff time
 	f.rmCalls.Add(1)
 	f.rmLast = cutoff
 	return 7, nil
+}
+
+func (f *fakeStore) DeleteAuditLogOlderThan(_ context.Context, cutoff time.Time) (int64, error) {
+	f.auditCalls.Add(1)
+	f.auditLast = cutoff
+	return 5, nil
 }
 
 func (f *fakeStore) ListRuntimeLogServices(_ context.Context) ([]struct{ AppID, ServiceName string }, error) {
@@ -53,6 +61,21 @@ func TestPruneOnce_ComputesCutoffFromRuntimeDays(t *testing.T) {
 	diff := time.Since(s.last)
 	if diff < (7*24*time.Hour-time.Minute) || diff > (7*24*time.Hour+time.Minute) {
 		t.Errorf("cutoff diff = %v, want ~7 days", diff)
+	}
+}
+
+func TestPruneOnce_ComputesAuditCutoffFromActivityDays(t *testing.T) {
+	s := &fakeStore{}
+	p := retention.New(s, retention.Config{ActivityDays: 30}, nil)
+	if err := p.PruneOnce(context.Background()); err != nil {
+		t.Fatalf("PruneOnce: %v", err)
+	}
+	if s.auditCalls.Load() != 1 {
+		t.Errorf("audit delete calls = %d, want 1", s.auditCalls.Load())
+	}
+	diff := time.Since(s.auditLast)
+	if diff < (30*24*time.Hour-time.Minute) || diff > (30*24*time.Hour+time.Minute) {
+		t.Errorf("audit cutoff diff = %v, want ~30 days", diff)
 	}
 }
 
