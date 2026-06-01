@@ -12,9 +12,13 @@ and is the foundation this builds on.
 
 | Item | Effort | Status |
 |---|---|---|
-| **A1** `02` Rollback | S–M | ⬜ |
-| **A2** `01` Push-to-deploy | L | ⬜ |
-| **A3** `05` Zero-downtime | L | ⬜ |
+| **A1** `02` Rollback | S–M | ✅ done — shipped stub in [`../done/02-rollback.md`](../done/02-rollback.md) |
+| **A2** `01` Push-to-deploy | L | ✅ done — shipped stub in [`../done/01-push-to-deploy.md`](../done/01-push-to-deploy.md) |
+| **A3** `05` Zero-downtime | L | ⬜ deferred — design in [`A3-zero-downtime-detail.md`](A3-zero-downtime-detail.md), evaluate later |
+
+> **A1 + A2 are implemented** (working tree, pending commit). A3 is the remaining item and is
+> intentionally **deferred** — it's spike-gated and large. This doc stays here while A3 is open;
+> the A1/A2 sections below are kept as the execution record.
 
 ---
 

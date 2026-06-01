@@ -16,13 +16,17 @@ trustworthy and effortless," not by what's technically interesting.
 
 ## Plans
 
+> **Shipped** (moved to [`../done/`](../done/)): **01 push-to-deploy** and **02 rollback** are
+> implemented (Track A1/A2). **05 zero-downtime** is **deferred** — detailed design captured in
+> [`A3-zero-downtime-detail.md`](A3-zero-downtime-detail.md), to be evaluated later.
+
 | # | File | Tier | Scope | Effort |
 |---|------|------|-------|--------|
-| 01 | [01-push-to-deploy.md](01-push-to-deploy.md) | Close the loop | Git webhook auto-deploy + trigger model (branch / tag / manual) | L |
-| 02 | [02-rollback.md](02-rollback.md) | Close the loop | One-click redeploy of a previous deployment | S–M |
+| 01 | ✅ [../done/01-push-to-deploy.md](../done/01-push-to-deploy.md) | Close the loop | Git webhook auto-deploy + trigger model (branch / tag / manual) | L |
+| 02 | ✅ [../done/02-rollback.md](../done/02-rollback.md) | Close the loop | One-click redeploy of a previous deployment | S–M |
 | 03 | [03-cert-expiry-notification.md](03-cert-expiry-notification.md) | Close the loop | Finish deferred D7 notification | S |
 | 04 | [04-onboarding-wizard.md](04-onboarding-wizard.md) | Close the loop | Guided connect-repo → first-deploy flow | M |
-| 05 | [05-zero-downtime-deploys.md](05-zero-downtime-deploys.md) | Reliability moat | Rolling deploy: up new → health → swap Caddy upstream → drain old | L |
+| 05 | [05-zero-downtime-deploys.md](05-zero-downtime-deploys.md) · ⏸ deferred, [detailed design](A3-zero-downtime-detail.md) | Reliability moat | Rolling deploy: up new → health → swap Caddy upstream → drain old | L |
 | 06 | [06-resource-guardrails.md](06-resource-guardrails.md) | Reliability moat | Per-app RAM limits + box-level budget UI + OOM protection | M |
 | 07 | [07-ram-benchmark-harness.md](07-ram-benchmark-harness.md) | Reliability moat | Repeatable, CI-enforced idle-RAM measurement | S–M |
 | 08 | [08-managed-backups.md](08-managed-backups.md) | Monetization seed | User-defined backup commands → schedule → S3/B2 | M |
