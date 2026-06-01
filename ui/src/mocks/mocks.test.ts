@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { handleRequest } from './handlers'
 import { resetState } from './db'
 import type { App, Deployment, EnvVar } from '@/types/api'
+import type { AuditEntry } from '@/lib/api/audit'
 
 const q = () => new URLSearchParams()
 
@@ -66,6 +67,56 @@ describe('mock backend handlers', () => {
 
     await call('DELETE', `apps/${app.id}`)
     expect(((await call('GET', 'apps')).body as App[]).length).toBe(4)
+  })
+})
+
+describe('activity feed + revert', () => {
+  beforeEach(() => resetState())
+
+  it('serves the seeded audit log newest-first', async () => {
+    const rows = (await call('GET', 'audit')).body as AuditEntry[]
+    expect(rows.length).toBeGreaterThan(0)
+    for (let i = 1; i < rows.length; i += 1) {
+      expect(new Date(rows[i - 1]!.created_at).getTime()).toBeGreaterThanOrEqual(
+        new Date(rows[i]!.created_at).getTime(),
+      )
+    }
+  })
+
+  it('reverts a revertable entry once, then 409s', async () => {
+    const rows = (await call('GET', 'audit')).body as AuditEntry[]
+    const target = rows.find((r) => r.revertable)!
+    expect(target).toBeDefined()
+
+    const res = await call('POST', `audit/${target.id}/revert`)
+    expect((res.body as { reverted: string }).reverted).toBe(target.id)
+
+    // The entry is now marked reverted, and a revert entry was appended.
+    const after = (await call('GET', 'audit')).body as AuditEntry[]
+    expect(after.find((r) => r.id === target.id)?.reverted_at).toBeTruthy()
+    expect(after.some((r) => r.action.includes('/revert'))).toBe(true)
+
+    await expect(call('POST', `audit/${target.id}/revert`)).rejects.toMatchObject({
+      status: 409,
+      code: 'conflict',
+    })
+  })
+
+  it('422s a non-revertable entry', async () => {
+    const rows = (await call('GET', 'audit')).body as AuditEntry[]
+    const target = rows.find((r) => !r.revertable && !r.reverted_at)!
+    await expect(call('POST', `audit/${target.id}/revert`)).rejects.toMatchObject({
+      status: 422,
+      code: 'not_revertable',
+    })
+  })
+
+  it('persists onboarding dismissal', async () => {
+    expect((await call('GET', 'instance/onboarding')).body).toMatchObject({ dismissed: false })
+    expect((await call('POST', 'instance/onboarding/dismiss')).body).toMatchObject({
+      dismissed: true,
+    })
+    expect((await call('GET', 'instance/onboarding')).body).toMatchObject({ dismissed: true })
   })
 })
 

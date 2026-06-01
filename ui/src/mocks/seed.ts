@@ -305,5 +305,88 @@ export function buildInitialState(): MockState {
     },
     baseDomain: 'apps.example.com',
     apps: [storefront, marketing, gateway, analytics],
+    audit: buildAuditSeed(storefront, marketing, gateway),
+    onboardingDismissed: false,
   }
+}
+
+// buildAuditSeed produces a small, realistic activity feed: a mix of actors and
+// actions, with a few revertable config changes (one already reverted) so the
+// Activity page demonstrates revert in both states.
+function buildAuditSeed(
+  storefront: AppRecord,
+  marketing: AppRecord,
+  gateway: AppRecord,
+): MockState['audit'] {
+  return [
+    {
+      id: uid('aud'),
+      actor_type: 'user',
+      actor: 'admin',
+      action: 'PUT /api/apps/{id}/env',
+      target_type: 'app',
+      target_id: storefront.id,
+      summary: `replaced environment for ${storefront.slug}`,
+      status_code: 200,
+      revertable: true,
+      created_at: minutesAgoISO(14),
+    },
+    {
+      id: uid('aud'),
+      actor_type: 'user',
+      actor: 'admin',
+      action: 'PATCH /api/apps/{id}',
+      target_type: 'app',
+      target_id: marketing.id,
+      summary: `updated configuration for ${marketing.slug}`,
+      status_code: 200,
+      revertable: true,
+      created_at: minutesAgoISO(42),
+    },
+    {
+      id: uid('aud'),
+      actor_type: 'api_token',
+      actor: 'ci-deploy',
+      action: 'POST /api/apps/{id}/deployments',
+      target_type: 'app',
+      target_id: gateway.id,
+      summary: `triggered deployment of ${gateway.slug}`,
+      status_code: 202,
+      revertable: false,
+      created_at: minutesAgoISO(67),
+    },
+    {
+      id: uid('aud'),
+      actor_type: 'user',
+      actor: 'admin',
+      action: 'PUT /api/instance/base-domain',
+      summary: 'set base domain to apps.example.com',
+      status_code: 200,
+      revertable: false,
+      reverted_at: minutesAgoISO(120),
+      created_at: minutesAgoISO(130),
+    },
+    {
+      id: uid('aud'),
+      actor_type: 'system',
+      actor: '',
+      action: 'POST /api/apps/{id}/deployments',
+      target_type: 'app',
+      target_id: storefront.id,
+      summary: `auto-deployed ${storefront.slug} from push to main`,
+      status_code: 202,
+      revertable: false,
+      created_at: minutesAgoISO(200),
+    },
+    {
+      id: uid('aud'),
+      actor_type: 'anonymous',
+      actor: '',
+      action: 'POST /api/auth/login',
+      summary: undefined,
+      status_code: 401,
+      revertable: false,
+      created_at: minutesAgoISO(305),
+    },
+  ]
 }

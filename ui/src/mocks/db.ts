@@ -17,6 +17,7 @@ import type {
 } from '@/types/api'
 import type { CreateAppInput, UpdateAppInput } from '@/types/api'
 import type { EnvVarInput } from '@/lib/api/env'
+import type { AuditEntry } from '@/lib/api/audit'
 import type { AppRecord, DeployRecord, MockState } from './types'
 import { buildInitialState } from './seed'
 import { fakeSha, nowISO, pick, randBetween, randInt, uid } from './util'
@@ -51,6 +52,57 @@ function publish(topic: string, frame: WsFrame): void {
 }
 
 export const deployLogTopic = (did: string) => `deploy-log:${did}`
+
+// ── Activity feed / curated revert (plan 11) ────────────────────────────────
+
+export function listAudit(limit: number): AuditEntry[] {
+  const cap = Math.max(1, Math.min(limit || 100, 500))
+  return (
+    [...state.audit]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, cap)
+      // Mirror the real DTO: an entry is offered for revert only while it is both
+      // revertable and not yet reverted. The stored flag itself never flips.
+      .map((e) => ({ ...e, revertable: e.revertable && !e.reverted_at }))
+  )
+}
+
+export type RevertOutcome =
+  | { status: 'ok'; summary: string }
+  | { status: 'not_found' | 'conflict' | 'not_revertable' }
+
+// revertAudit mirrors the real backend: it marks the entry reverted, then
+// appends the revert's own (non-revertable) audit entry.
+export function revertAudit(id: string): RevertOutcome {
+  const entry = state.audit.find((e) => e.id === id)
+  if (!entry) return { status: 'not_found' }
+  if (entry.reverted_at) return { status: 'conflict' }
+  if (!entry.revertable) return { status: 'not_revertable' }
+  // Stamp reverted_at only; the stored revertable flag stays put, matching the
+  // backend (the DTO derives the display value from both — see listAudit).
+  entry.reverted_at = nowISO()
+  const summary = revertSummary(entry)
+  state.audit.unshift({
+    id: uid('aud'),
+    actor_type: 'user',
+    actor: state.user.username,
+    action: `POST /api/audit/${id}/revert`,
+    target_type: 'audit_log',
+    target_id: id,
+    summary: `reverted: ${summary}`,
+    status_code: 200,
+    revertable: false,
+    created_at: nowISO(),
+  })
+  return { status: 'ok', summary }
+}
+
+function revertSummary(entry: AuditEntry): string {
+  if (entry.action.endsWith('/env')) return 'restored previous environment variables'
+  if (entry.action.endsWith('/base-domain')) return 'restored previous base domain'
+  if (/PATCH .*\/apps\/\{id\}$/.test(entry.action)) return 'restored previous app configuration'
+  return 'restored previous state'
+}
 
 // ── Lookups ─────────────────────────────────────────────────────────────────
 

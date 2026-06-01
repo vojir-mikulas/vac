@@ -14,10 +14,12 @@ import {
   findApp,
   getState,
   hostStats,
+  listAudit,
   listEnv,
   replaceEnv,
   restartService,
   revealEnv,
+  revertAudit,
   setStackState,
   toPublicDeployment,
   triggerDeploy,
@@ -186,6 +188,19 @@ const routes: Route[] = [
     },
   },
   {
+    method: 'GET',
+    pattern: 'instance/onboarding',
+    handler: () => ok({ dismissed: getState().onboardingDismissed }),
+  },
+  {
+    method: 'POST',
+    pattern: 'instance/onboarding/dismiss',
+    handler: () => {
+      getState().onboardingDismissed = true
+      return ok({ dismissed: true })
+    },
+  },
+  {
     method: 'POST',
     pattern: 'instance/restart-control-plane',
     handler: () => ok({ status: 'restarting' }),
@@ -232,6 +247,30 @@ const routes: Route[] = [
     },
   },
   { method: 'POST', pattern: 'settings/notifications/test', handler: () => ok({ sent: 1 }) },
+
+  // ── Activity feed / curated revert (plan 11) ────────────────────────────────
+  {
+    method: 'GET',
+    pattern: 'audit',
+    handler: (ctx) => ok(listAudit(Number(ctx.query.get('limit') ?? '100'))),
+  },
+  {
+    method: 'POST',
+    pattern: 'audit/:id/revert',
+    handler: (ctx) => {
+      const res = revertAudit(ctx.params.id ?? '')
+      switch (res.status) {
+        case 'ok':
+          return ok({ reverted: ctx.params.id, summary: res.summary })
+        case 'conflict':
+          throw new MockHttpError(409, 'conflict', 'already reverted')
+        case 'not_revertable':
+          throw new MockHttpError(422, 'not_revertable', 'this action cannot be reverted')
+        default:
+          throw notFound('activity entry')
+      }
+    },
+  },
 
   // ── Apps ────────────────────────────────────────────────────────────────────
   { method: 'GET', pattern: 'apps', handler: () => ok(getState().apps.map(stripApp)) },

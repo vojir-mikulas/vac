@@ -14,6 +14,7 @@ import type {
   User,
 } from '@/types/api'
 import type { InstanceInfo } from '@/lib/api/instance'
+import type { AuditEntry } from '@/lib/api/audit'
 
 export interface EnvRecord {
   key: string
@@ -40,4 +41,6 @@ export interface MockState {
   instance: InstanceInfo
   baseDomain: string
   apps: AppRecord[]
+  audit: AuditEntry[]
+  onboardingDismissed: boolean
 }
