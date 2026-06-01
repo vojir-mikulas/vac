@@ -58,9 +58,11 @@ func (s *Store) CreateDeployTrigger(ctx context.Context, appID, event, filter st
 	return t, err
 }
 
-// DeleteDeployTrigger removes a rule by id. Returns ErrNotFound if no row matched.
-func (s *Store) DeleteDeployTrigger(ctx context.Context, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM deploy_triggers WHERE id = $1`, id)
+// DeleteDeployTrigger removes a rule by id, scoped to its app so one app can't
+// delete another's trigger. Returns ErrNotFound if no row matched both.
+func (s *Store) DeleteDeployTrigger(ctx context.Context, appID, id string) error {
+	tag, err := s.pool.Exec(ctx,
+		`DELETE FROM deploy_triggers WHERE id = $1 AND app_id = $2`, id, appID)
 	if err != nil {
 		return err
 	}

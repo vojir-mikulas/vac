@@ -348,6 +348,77 @@ func TestCreateRollbackDeployment(t *testing.T) {
 	}
 }
 
+func TestAppWebhookSecretRoundTrip(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	a := testApp(t, s, "webhook-secret-app")
+
+	// Unset by default.
+	enc, err := s.GetAppWebhookSecret(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("GetAppWebhookSecret: %v", err)
+	}
+	if enc != nil {
+		t.Errorf("fresh app webhook secret = %v, want nil", enc)
+	}
+
+	// Set, read back, clear.
+	if err := s.SetAppWebhookSecret(ctx, a.ID, []byte("sealed-bytes")); err != nil {
+		t.Fatalf("SetAppWebhookSecret: %v", err)
+	}
+	enc, err = s.GetAppWebhookSecret(ctx, a.ID)
+	if err != nil || string(enc) != "sealed-bytes" {
+		t.Fatalf("GetAppWebhookSecret = (%q,%v)", enc, err)
+	}
+	if err := s.SetAppWebhookSecret(ctx, a.ID, nil); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if enc, _ := s.GetAppWebhookSecret(ctx, a.ID); enc != nil {
+		t.Errorf("after clear = %v, want nil", enc)
+	}
+
+	// Unknown app → ErrNotFound on both read and write.
+	if _, err := s.GetAppWebhookSecret(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("get unknown app err = %v, want ErrNotFound", err)
+	}
+	if err := s.SetAppWebhookSecret(ctx, "00000000-0000-0000-0000-000000000000", []byte("x")); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("set unknown app err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestHasActiveDeployment(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	a := testApp(t, s, "active-deploy-app")
+
+	if active, err := s.HasActiveDeployment(ctx, a.ID); err != nil || active {
+		t.Fatalf("no deploys: active=%v err=%v, want false", active, err)
+	}
+
+	d, err := s.CreateDeployment(ctx, a.ID, store.TriggeredManual, nil)
+	if err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
+	// A freshly queued deploy is active.
+	if active, _ := s.HasActiveDeployment(ctx, a.ID); !active {
+		t.Error("queued deploy should be active")
+	}
+	// Mid-pipeline is active.
+	if err := s.UpdateDeploymentStatus(ctx, d.ID, "building", nil); err != nil {
+		t.Fatalf("UpdateDeploymentStatus: %v", err)
+	}
+	if active, _ := s.HasActiveDeployment(ctx, a.ID); !active {
+		t.Error("building deploy should be active")
+	}
+	// Terminal is not active.
+	if err := s.MarkDeploymentFinished(ctx, d.ID, "running", nil); err != nil {
+		t.Fatalf("MarkDeploymentFinished: %v", err)
+	}
+	if active, _ := s.HasActiveDeployment(ctx, a.ID); active {
+		t.Error("finished deploy should not be active")
+	}
+}
+
 func TestDeploymentLogsAppendAndList(t *testing.T) {
 	s := setup(t)
 	ctx := context.Background()

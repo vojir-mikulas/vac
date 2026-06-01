@@ -132,9 +132,14 @@ endpoint with signature verification; ignored pushes logged.
    `webhook` actor) in the audit log; ignored pushes recorded with a summary.
 
 ### Decisions (confirmed)
-- Webhook URL shape: **`/api/webhooks/{appID}` — appID in path, secret in header/query**
-  (revocable via regenerate). Confirmed 2026-06-01.
-- One secret per app (not per provider).
+- Webhook URL shape: **`/webhooks/{appID}` — appID in path** (top-level, *not* under
+  `/api`, so it sits outside the session Auth+CSRF group and avoids a chi mount conflict).
+  Revocable via regenerate. Confirmed 2026-06-01.
+- Credentials are accepted from **headers only** (GitHub `X-Hub-Signature-256` HMAC, GitLab
+  `X-Gitlab-Token`, generic `X-VAC-Token`) — never `?token=`, so the secret can't leak into
+  proxy/access logs (security-review finding).
+- One secret per app (not per provider). Trigger deletes are app-scoped in the store so one
+  app can't remove another's rule.
 
 ### Tests
 - Matching engine table tests (globs, event/ref-type pairing, empty filter).

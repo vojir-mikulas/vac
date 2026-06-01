@@ -26,6 +26,8 @@ export const queryKeys = {
     env: (id: string) => ['apps', id, 'env'] as const,
     domains: (id: string) => ['apps', id, 'domains'] as const,
     sshKey: (id: string) => ['apps', id, 'ssh-key'] as const,
+    triggers: (id: string) => ['apps', id, 'triggers'] as const,
+    webhook: (id: string) => ['apps', id, 'webhook'] as const,
     metrics: (id: string, since: string) => ['apps', id, 'metrics', since] as const,
   },
 } as const

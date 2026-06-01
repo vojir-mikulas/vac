@@ -135,6 +135,22 @@ func (s *Store) ListDeploymentsForApp(ctx context.Context, appID string) ([]Depl
 	return out, rows.Err()
 }
 
+// HasActiveDeployment reports whether the app already has a deployment in a
+// non-terminal state. Push-to-deploy uses it to coalesce a burst of rapid
+// pushes: while one build is in flight, further matching pushes don't stack new
+// deployments behind it. The status set mirrors deploy's non-terminal enum.
+func (s *Store) HasActiveDeployment(ctx context.Context, appID string) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM deployments
+			WHERE app_id = $1
+			  AND status IN ('queued', 'cloning', 'building', 'deploying', 'health-checking')
+		)
+	`, appID).Scan(&exists)
+	return exists, err
+}
+
 // UpdateDeploymentStatus is called by the pipeline at each step transition.
 // `errMsg` is set only on the terminal failure transition.
 func (s *Store) UpdateDeploymentStatus(ctx context.Context, id, status string, errMsg *string) error {
