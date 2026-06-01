@@ -239,6 +239,51 @@ what we do instead, why, and the trade-off (what we give up / when we'd revisit)
 
 ---
 
+## Track A — Deploy core
+
+### D — A3 zero-downtime: mechanism-independent foundation landed; rolling cutover is spike-gated
+
+- **Context:** A3 (`docs/plans/upcoming/A3-zero-downtime-detail.md`) makes a redeploy of a
+  **stateless HTTP service** serve continuously through cutover — bring the new version up
+  beside the old, let Caddy see it healthy, swap the route's upstream, drain, remove the old.
+  The plan front-loads a **spike** (its deliverable 0) to settle the one genuine unknown:
+  how to run **two generations of one service simultaneously** under the compose model
+  (M1 = compose `--scale` + image-ID side-by-side, vs. M2 = VAC-managed `docker run`
+  generation containers). Per the plan, the spike "blocks all below" — the pipeline rolling
+  branch, drain integration, UI, and integration tests (its steps 4–7) all depend on which
+  mechanism the spike picks.
+- **What we did instead (this change):** landed everything the plan specifies as
+  **mechanism-independent** (its steps 1–3 + config), behaviour-preserving by default, so the
+  spike-gated work is smaller and the foundation is unit-tested now:
+  - `compose.Service` gains `HasVolumes` + `Replicas`, parsed from the service body; a
+    `rollable()` classifier (`api/internal/deploy/rollable.go`) marks a service rollable iff it
+    has an internal HTTP port, declares no volumes (stateless), and is single-replica.
+  - Migration `00032` adds `services.route_alias`; `proxy.Manager.dial` (hence `routeFor` and
+    `WaitHealthy`) honours it, falling back to the bare `{slug}--{service}` alias when
+    empty — so existing apps and the non-rolling path are byte-for-byte unchanged.
+  - `proxy.Manager` gains the Caddy-cutover primitives (mechanism-independent, given a new
+    container id + short generation token): `AttachGeneration`, `GateGeneration` (route carries
+    **both** old + new upstreams, then waits for the new one healthy — old keeps serving),
+    `Cutover` (atomic per-route narrow to the new upstream), `DetachContainer`.
+  - Config knobs `ZeroDowntime` (global enable) + `DrainWindow` (default 10s), via
+    `VAC_ZERO_DOWNTIME` / `VAC_DRAIN_WINDOW`. **`ZeroDowntime` defaults OFF** until the spike
+    validates the mechanism, so the pipeline keeps recreate-in-place behaviour today.
+- **What is NOT done (spike-gated, intentionally deferred):** the spike itself (deliverable 0);
+  the pipeline rolling branch that actually starts the new generation (steps 4–5); UI
+  sub-states / per-app toggle (step 6); Docker integration tests asserting 0 non-200s across
+  cutover (step 7). These need a real Docker host with load testing (`hey`/`wrk`) that can't be
+  run in the implementation environment, and the plan deliberately gates them on the mechanism
+  decision. The recommended mechanism to spike first is **M1**, falling back to **M2**.
+- **Why:** respects the plan's own sequencing — building the rolling branch before the spike
+  would commit to an unproven mechanism. The foundation is safe to land early precisely because
+  it changes nothing observable until `ZeroDowntime` is turned on after a successful spike.
+- **Trade-off / revisit:** `services.route_alias`, the proxy cutover primitives, and the config
+  knobs are present but inert until the pipeline branch is wired. When the spike lands, record
+  the chosen mechanism (M1/M2) and the exact command sequence here, then implement steps 4–7
+  and regenerate `docs/kb/deployment-flow.md`.
+
+---
+
 > Maintenance note: when a deviation is later reconciled (e.g. we adopt the mvp's original
 > approach, or update `mvp.md` to match), mark the row **Resolved** with the date and the
 > commit/PR rather than deleting it — the history is the point.

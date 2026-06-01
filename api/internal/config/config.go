@@ -38,11 +38,21 @@ type Config struct {
 	LoginRateWindow    time.Duration `yaml:"login_rate_window"`
 
 	// Phase 2: deployment pipeline configuration.
-	WorkDir               string        `yaml:"work_dir"`
-	DockerSocket          string        `yaml:"docker_socket"`
-	ImageKeepCount        int           `yaml:"image_keep_count"`
-	HealthCheckTimeout    time.Duration `yaml:"health_check_timeout"`
-	HealthCheckRetries    int           `yaml:"health_check_retries"`
+	WorkDir            string        `yaml:"work_dir"`
+	DockerSocket       string        `yaml:"docker_socket"`
+	ImageKeepCount     int           `yaml:"image_keep_count"`
+	HealthCheckTimeout time.Duration `yaml:"health_check_timeout"`
+	HealthCheckRetries int           `yaml:"health_check_retries"`
+
+	// Track A (A3): zero-downtime / rolling redeploys of stateless HTTP
+	// services. ZeroDowntime is the global enable; it defaults OFF until the
+	// mechanism spike (A3 §3) validates the new+old container path on a real
+	// host, so the pipeline keeps today's recreate-in-place behaviour by
+	// default. DrainWindow is how long the old generation keeps serving
+	// in-flight requests after Caddy cuts over to the new one, before it's
+	// removed.
+	ZeroDowntime          bool          `yaml:"zero_downtime"`
+	DrainWindow           time.Duration `yaml:"drain_window"`
 	CrashLoopThreshold    int           `yaml:"crash_loop_threshold"`
 	CrashLoopWindow       time.Duration `yaml:"crash_loop_window"`
 	LogRetentionDays      int           `yaml:"log_retention_days"`
@@ -107,6 +117,8 @@ func Default() Config {
 		ImageKeepCount:        3,
 		HealthCheckTimeout:    30 * time.Second,
 		HealthCheckRetries:    5,
+		ZeroDowntime:          false, // off until the A3 mechanism spike validates it
+		DrainWindow:           10 * time.Second,
 		CrashLoopThreshold:    5,
 		CrashLoopWindow:       2 * time.Minute,
 		LogRetentionDays:      7,
@@ -217,6 +229,16 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("VAC_HEALTH_CHECK_RETRIES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.HealthCheckRetries = n
+		}
+	}
+	if v := os.Getenv("VAC_ZERO_DOWNTIME"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.ZeroDowntime = b
+		}
+	}
+	if v := os.Getenv("VAC_DRAIN_WINDOW"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.DrainWindow = d
 		}
 	}
 	if v := os.Getenv("VAC_CRASH_LOOP_THRESHOLD"); v != "" {

@@ -155,16 +155,29 @@ func (m *Manager) Ping(ctx context.Context) error {
 // service's vac-edge alias on its container port; an active health check lets
 // Caddy (and, via the upstreams endpoint, WaitHealthy) track liveness.
 func (m *Manager) routeFor(d store.Domain, svc store.Service, slug string) caddy.Route {
+	return m.routeForDials(d, healthPathOf(svc), m.dial(slug, svc))
+}
+
+// routeForDials builds a reverse-proxy route for one domain pointing at one or
+// more upstream dial addresses, all under a single active health check. The
+// multi-dial form backs the A3 generation gate, where the route briefly carries
+// both the old and new generation upstreams so Caddy health-checks the new one
+// while the old keeps serving; the single-dial form is the steady state.
+func (m *Manager) routeForDials(d store.Domain, healthPath string, dials ...string) caddy.Route {
 	path := "/"
-	if svc.HealthPath != nil && *svc.HealthPath != "" {
-		path = *svc.HealthPath
+	if healthPath != "" {
+		path = healthPath
+	}
+	ups := make([]caddy.Upstream, 0, len(dials))
+	for _, dl := range dials {
+		ups = append(ups, caddy.Upstream{Dial: dl})
 	}
 	return caddy.Route{
 		ID:    routeID(d.ID),
 		Match: []caddy.Match{{Host: []string{d.Hostname}}},
 		Handle: []caddy.Handler{{
 			Handler:   "reverse_proxy",
-			Upstreams: []caddy.Upstream{{Dial: m.dial(slug, svc)}},
+			Upstreams: ups,
 			HealthChecks: &caddy.HealthChecks{Active: &caddy.ActiveHealthCheck{
 				Path:     path,
 				Interval: m.cfg.HealthInterval.String(),
@@ -174,8 +187,28 @@ func (m *Manager) routeFor(d store.Domain, svc store.Service, slug string) caddy
 	}
 }
 
+// healthPathOf is the active-health-check path for a service: the operator-set
+// path, or "/" when unset.
+func healthPathOf(svc store.Service) string {
+	if svc.HealthPath != nil && *svc.HealthPath != "" {
+		return *svc.HealthPath
+	}
+	return "/"
+}
+
 func (m *Manager) dial(slug string, svc store.Service) string {
-	return fmt.Sprintf("%s:%d", alias(slug, svc.ServiceName), portOr(svc.InternalPort))
+	return fmt.Sprintf("%s:%d", routeAliasFor(slug, svc), portOr(svc.InternalPort))
+}
+
+// routeAliasFor is the vac-edge alias Caddy should dial for a service: the
+// live route_alias override (set during a zero-downtime cutover to point at the
+// new generation), or the stable bare {slug}--{service} alias when unset. Used
+// by dial — so routeFor and WaitHealthy follow the live generation too.
+func routeAliasFor(slug string, svc store.Service) string {
+	if svc.RouteAlias != nil && *svc.RouteAlias != "" {
+		return *svc.RouteAlias
+	}
+	return alias(slug, svc.ServiceName)
 }
 
 func portOr(p *int) int {

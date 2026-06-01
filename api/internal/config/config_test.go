@@ -57,6 +57,33 @@ func TestDefault_Phase3(t *testing.T) {
 	}
 }
 
+func TestDefault_ZeroDowntime(t *testing.T) {
+	c := Default()
+	if c.ZeroDowntime {
+		t.Error("ZeroDowntime should default OFF until the A3 spike validates it")
+	}
+	if c.DrainWindow != 10*time.Second {
+		t.Errorf("drain window default = %v, want 10s", c.DrainWindow)
+	}
+}
+
+func TestLoad_ZeroDowntimeEnvOverrides(t *testing.T) {
+	t.Setenv("VAC_DATABASE_URL", "postgres://test")
+	t.Setenv("VAC_ZERO_DOWNTIME", "true")
+	t.Setenv("VAC_DRAIN_WINDOW", "20s")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ZeroDowntime {
+		t.Error("ZeroDowntime should be enabled via VAC_ZERO_DOWNTIME=true")
+	}
+	if cfg.DrainWindow != 20*time.Second {
+		t.Errorf("drain window = %v, want 20s", cfg.DrainWindow)
+	}
+}
+
 func TestLoad_Phase3EnvOverrides(t *testing.T) {
 	t.Setenv("VAC_DATABASE_URL", "postgres://test")
 	t.Setenv("VAC_BASE_DOMAIN", "vac.example.com")

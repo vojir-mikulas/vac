@@ -11,14 +11,25 @@ import (
 )
 
 // Service is the shallow view of a compose service VAC cares about. We do
-// not implement the full compose schema — only the three things the
-// pipeline needs: was a build context declared, what image (if any), and
-// which host-side ports were published.
+// not implement the full compose schema — only the handful of things the
+// pipeline needs: was a build context declared, what image (if any), which
+// host-side ports were published, and the two signals the zero-downtime
+// (A3) classifier reads — whether the service declares any volumes (state),
+// and its replica count.
 type Service struct {
 	Name     string
 	Image    string
 	HasBuild bool
 	Ports    []int
+
+	// HasVolumes is true when the service body declares a `volumes:` list
+	// (named or bind mount). A volume is the signal that the service holds
+	// state that can't be duplicated for a zero-downtime overlap window, so
+	// a service with volumes is never rolled — it's recreated in place.
+	HasVolumes bool
+	// Replicas is the declared `deploy.replicas` (or scale), defaulting to 1
+	// when unset. A3 v1 only rolls single-replica services.
+	Replicas int
 }
 
 // Parse reads a compose file from disk and returns its services in
@@ -39,7 +50,7 @@ func Parse(path string) ([]Service, error) {
 
 	out := make([]Service, 0, len(servicesAny))
 	for name, body := range servicesAny {
-		svc := Service{Name: name}
+		svc := Service{Name: name, Replicas: 1}
 		bodyMap, ok := body.(map[string]any)
 		if !ok {
 			out = append(out, svc)
@@ -53,6 +64,12 @@ func Parse(path string) ([]Service, error) {
 		}
 		if ports, ok := bodyMap["ports"].([]any); ok {
 			svc.Ports = extractPorts(ports)
+		}
+		if vols, ok := bodyMap["volumes"].([]any); ok && len(vols) > 0 {
+			svc.HasVolumes = true
+		}
+		if n := replicasOf(bodyMap); n > 0 {
+			svc.Replicas = n
 		}
 		out = append(out, svc)
 	}
@@ -94,6 +111,31 @@ func extractPorts(entries []any) []int {
 		}
 	}
 	return out
+}
+
+// replicasOf reads a service's replica count from either the modern
+// `deploy.replicas` (Compose Spec) or the legacy top-level `scale:` key.
+// Returns 0 when neither is declared, letting the caller keep its default of 1.
+func replicasOf(body map[string]any) int {
+	if deploy, ok := body["deploy"].(map[string]any); ok {
+		if n := asInt(deploy["replicas"]); n > 0 {
+			return n
+		}
+	}
+	return asInt(body["scale"])
+}
+
+// asInt coerces the int / string shapes YAML may decode a count into. Returns
+// 0 for anything unparsable so callers fall back to their default.
+func asInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case string:
+		i, _ := strconv.Atoi(n)
+		return i
+	}
+	return 0
 }
 
 func hostPortFromString(s string) int {

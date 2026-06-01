@@ -19,6 +19,7 @@ type Service struct {
 	ExposedPort    *int // host-published port (Phase 2; diagnostics only now)
 	InternalPort   *int // container port — what Caddy dials over vac-edge
 	HealthPath     *string
+	RouteAlias     *string // vac-edge alias Caddy should dial; nil/"" → bare {slug}--{service} (A3 rolling deploys)
 	Status         string
 	RestartCount   int
 	LastExitCode   *int
@@ -28,14 +29,14 @@ type Service struct {
 }
 
 const serviceColumns = `id, app_id, service_name, container_id, exposed_port,
-	internal_port, health_path, status, restart_count, last_exit_code,
+	internal_port, health_path, route_alias, status, restart_count, last_exit_code,
 	oom_killed_count, created_at, updated_at`
 
 func scanService(row pgx.Row) (Service, error) {
 	var svc Service
 	err := row.Scan(
 		&svc.ID, &svc.AppID, &svc.ServiceName, &svc.ContainerID, &svc.ExposedPort,
-		&svc.InternalPort, &svc.HealthPath, &svc.Status, &svc.RestartCount,
+		&svc.InternalPort, &svc.HealthPath, &svc.RouteAlias, &svc.Status, &svc.RestartCount,
 		&svc.LastExitCode, &svc.OOMKilledCount, &svc.CreatedAt, &svc.UpdatedAt,
 	)
 	return svc, err
@@ -162,6 +163,26 @@ func (s *Store) SetServiceConfig(ctx context.Context, appID, name string, expose
 		return Service{}, ErrNotFound
 	}
 	return svc, err
+}
+
+// SetServiceRouteAlias sets (or clears, with nil) the live vac-edge alias the
+// service's Caddy route should dial. A3 sets it to the new generation alias on
+// a successful cutover; the non-rolling path clears it so dial/routeFor fall
+// back to the bare {slug}--{service} alias. Unlike SetServiceConfig this is a
+// direct write — nil means NULL, not "leave unchanged".
+func (s *Store) SetServiceRouteAlias(ctx context.Context, appID, name string, alias *string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE services
+		SET route_alias = $3, updated_at = NOW()
+		WHERE app_id = $1 AND service_name = $2
+	`, appID, name, alias)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteService removes a service row — used by the pipeline when a compose

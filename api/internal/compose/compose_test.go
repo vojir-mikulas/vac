@@ -182,6 +182,64 @@ services:
 	}
 }
 
+func TestParse_VolumesAndReplicas(t *testing.T) {
+	t.Parallel()
+	d := t.TempDir()
+	path := filepath.Join(d, "compose.yaml")
+	mustWrite(t, path, `
+services:
+  web:
+    image: nginx
+  api:
+    image: ghcr.io/example/api
+    deploy:
+      replicas: 3
+  db:
+    image: postgres:16
+    volumes:
+      - db-data:/var/lib/postgresql/data
+  cache:
+    image: redis
+    volumes:
+      - /host/path:/data
+  legacy:
+    image: busybox
+    scale: 2
+`)
+	svcs, err := compose.Parse(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]compose.Service{}
+	for _, s := range svcs {
+		byName[s.Name] = s
+	}
+
+	// web: no volumes, default replicas 1.
+	if byName["web"].HasVolumes {
+		t.Error("web should not report volumes")
+	}
+	if byName["web"].Replicas != 1 {
+		t.Errorf("web replicas = %d, want default 1", byName["web"].Replicas)
+	}
+	// api: deploy.replicas honoured.
+	if byName["api"].Replicas != 3 {
+		t.Errorf("api replicas = %d, want 3", byName["api"].Replicas)
+	}
+	// db: named volume → HasVolumes.
+	if !byName["db"].HasVolumes {
+		t.Error("db should report volumes (named mount)")
+	}
+	// cache: bind mount also counts.
+	if !byName["cache"].HasVolumes {
+		t.Error("cache should report volumes (bind mount)")
+	}
+	// legacy: top-level scale honoured.
+	if byName["legacy"].Replicas != 2 {
+		t.Errorf("legacy replicas = %d, want 2", byName["legacy"].Replicas)
+	}
+}
+
 func TestParse_MissingServicesSection(t *testing.T) {
 	t.Parallel()
 	d := t.TempDir()

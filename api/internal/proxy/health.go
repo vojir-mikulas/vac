@@ -46,10 +46,17 @@ func (m *Manager) WaitHealthy(ctx context.Context, appID string) error {
 			want[m.dial(app.Slug, svc)] = true
 		}
 	}
-	if len(want) == 0 {
-		return nil // nothing routable to gate on
-	}
+	return m.waitForDials(ctx, want)
+}
 
+// waitForDials polls Caddy's upstream pool until every dial address in want
+// reports healthy (present, zero fails) or the health budget expires. An empty
+// want is a no-op (nothing routable to gate on). Shared by WaitHealthy (the
+// whole-app gate) and the A3 generation gate (a single new upstream).
+func (m *Manager) waitForDials(ctx context.Context, want map[string]bool) error {
+	if len(want) == 0 {
+		return nil
+	}
 	retries := m.cfg.HealthRetries
 	if retries < 1 {
 		retries = 1
