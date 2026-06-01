@@ -182,7 +182,8 @@ This preserves the repo invariant: **deploy failure never tears down the running
 ## 8. Store / schema
 
 - **`services.route_alias TEXT`** (or `services.generation TEXT`) — the live alias the route
-  should dial. Migration **`00022`** (Track A owns `00022+`). `routeFor`/`dial` read it;
+  should dial. Migration **`00032`** (Track A sits above observability's `00030`; A2 took
+  `00031`). `routeFor`/`dial` read it;
   default/empty falls back to the bare `{slug}--{service}` so existing apps and the non-rolling
   path are unchanged.
 - Reserve, decide in spike: whether a per-app **active slot** column is needed (only if M3).
@@ -222,7 +223,7 @@ This preserves the repo invariant: **deploy failure never tears down the running
 |---|---|---|
 | 0 | **Spike** the mechanism (§3) → pick M1/M2, record commands + rationale | **blocks all below** |
 | 1 | Extend `compose.Parse`/`Service` with volume (+replica) info; `rollable()` classifier + tests | — |
-| 2 | Schema `00022` (`services.route_alias`); `routeFor`/`dial` read it; non-rolling path unchanged | — |
+| 2 | Schema `00032` (`services.route_alias`); `routeFor`/`dial` read it; non-rolling path unchanged | — |
 | 3 | `proxy.Manager`: route to a named generation alias; atomic upstream swap; `WaitHealthy(newGen)`; old-alias detach | — |
 | 4 | Pipeline rolling branch (§6) using the spiked mechanism; non-rollable + first-deploy keep today's path | after 0–3 |
 | 5 | Drain window + failure handling (§5, §7); config knobs (§9) | after 4 |

@@ -115,7 +115,7 @@ endpoint with signature verification; ignored pushes logged.
    ref of that type. Tag pushes only fire `tag` rules, branch pushes only `push` rules.
 2. **Webhook secret storage.** Per-app secret, encrypted with `crypto.Box` like other
    secrets. New column or reuse a secrets table — **decision:** add `apps.webhook_secret`
-   (encrypted bytes) via a new migration `00021`, generated lazily on first trigger-rule
+   (encrypted bytes) via a new migration `00031`, generated lazily on first trigger-rule
    creation. Surface only the masked secret + a "regenerate" action.
 3. **Inbound endpoint** `POST /api/webhooks/{appID}` — **unauthenticated** (outside the
    session/CSRF group; its own router mount), rate-limited, body-size-capped:
@@ -177,7 +177,7 @@ Summary:
   VAC-managed `docker run` generation containers), success = **0 non-200s across cutover** +
   clean renormalization. The detail doc has the exact spike definition and the
   mechanism-independent pieces (generation-alias routing + atomic upstream swap, drain window,
-  pipeline branch, never-502 failure handling that composes with A1, schema `00022`, config,
+  pipeline branch, never-502 failure handling that composes with A1, schema `00032`, config,
   UI, tests).
 
 ### Acceptance
@@ -187,9 +187,10 @@ A redeploy of a stateless HTTP service serves continuously (no 502s) through the
 
 ## Cross-cutting
 
-- **Migrations:** Track A owns `00021+`. A2 added `00021` (`apps.webhook_secret_enc`); A3
-  reserves `00022` (`services.route_alias`). Coordinate numbers if other tracks merge first
-  (rebase numbers at merge).
+- **Migrations:** the observability track merged first and took `00030`, so Track A migrations
+  sit **above** it to keep goose's order strictly increasing. A2 shipped `00031`
+  (`apps.webhook_secret_enc`, renumbered from `00021` at merge); A3 reserves `00032`
+  (`services.route_alias`). Coordinate numbers if other tracks merge first (rebase at merge).
 - **KB:** A2/A3 change the deploy pipeline → regenerate `docs/kb/deployment-flow.md`
   (run `/refresh-kb`) and log image-tag-reuse deferral in `docs/deviations.md`.
 - **Each item:** `make test` + `make lint` + `make typecheck` green; run `/code-review` and
