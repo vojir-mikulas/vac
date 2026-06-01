@@ -17,6 +17,7 @@ import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppLogsRouteImport } from './routes/_app/logs'
 import { Route as AppDeploymentsRouteImport } from './routes/_app/deployments'
 import { Route as AppDatabaseRouteImport } from './routes/_app/database'
+import { Route as AppActivityRouteImport } from './routes/_app/activity'
 import { Route as AppAppsIndexRouteImport } from './routes/_app/apps/index'
 import { Route as AppAppsNewRouteImport } from './routes/_app/apps/new'
 import { Route as AppAppsAppIdRouteImport } from './routes/_app/apps/$appId'
@@ -65,6 +66,11 @@ const AppDeploymentsRoute = AppDeploymentsRouteImport.update({
 const AppDatabaseRoute = AppDatabaseRouteImport.update({
   id: '/database',
   path: '/database',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppActivityRoute = AppActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAppsIndexRoute = AppAppsIndexRouteImport.update({
@@ -122,6 +128,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/activity': typeof AppActivityRoute
   '/database': typeof AppDatabaseRoute
   '/deployments': typeof AppDeploymentsRoute
   '/logs': typeof AppLogsRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/activity': typeof AppActivityRoute
   '/database': typeof AppDatabaseRoute
   '/deployments': typeof AppDeploymentsRoute
   '/logs': typeof AppLogsRoute
@@ -161,6 +169,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/_app/activity': typeof AppActivityRoute
   '/_app/database': typeof AppDatabaseRoute
   '/_app/deployments': typeof AppDeploymentsRoute
   '/_app/logs': typeof AppLogsRoute
@@ -182,6 +191,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/setup'
+    | '/activity'
     | '/database'
     | '/deployments'
     | '/logs'
@@ -201,6 +211,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/setup'
+    | '/activity'
     | '/database'
     | '/deployments'
     | '/logs'
@@ -220,6 +231,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/setup'
+    | '/_app/activity'
     | '/_app/database'
     | '/_app/deployments'
     | '/_app/logs'
@@ -299,6 +311,13 @@ declare module '@tanstack/react-router' {
       path: '/database'
       fullPath: '/database'
       preLoaderRoute: typeof AppDatabaseRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/activity': {
+      id: '/_app/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof AppActivityRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/apps/': {
@@ -399,6 +418,7 @@ const AppAppsAppIdRouteWithChildren = AppAppsAppIdRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
+  AppActivityRoute: typeof AppActivityRoute
   AppDatabaseRoute: typeof AppDatabaseRoute
   AppDeploymentsRoute: typeof AppDeploymentsRoute
   AppLogsRoute: typeof AppLogsRoute
@@ -409,6 +429,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppActivityRoute: AppActivityRoute,
   AppDatabaseRoute: AppDatabaseRoute,
   AppDeploymentsRoute: AppDeploymentsRoute,
   AppLogsRoute: AppLogsRoute,

@@ -77,6 +77,9 @@ func buildEntry(r *http.Request, record *audit.Record, status int) store.AuditEn
 		ActorType:  actorType,
 		Action:     r.Method + " " + routePattern(r),
 		StatusCode: status,
+		// Only a successful mutation carries a usable inverse — a 4xx/5xx left
+		// the prior state in place, so there's nothing to undo.
+		Revertable: record.Revertable && status >= 200 && status < 300,
 	}
 	entry.ActorUserID = actorUserID
 	if ip := clientIP(r); ip != "" {

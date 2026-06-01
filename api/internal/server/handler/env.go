@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/vojir-mikulas/vac/api/internal/audit"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
@@ -112,7 +114,8 @@ func ReplaceAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		if _, err := s.GetApp(r.Context(), id); err != nil {
+		app, err := s.GetApp(r.Context(), id)
+		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				WriteError(w, http.StatusNotFound, "app not found")
 				return
@@ -120,6 +123,14 @@ func ReplaceAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "could not load app")
 			return
 		}
+		// Curated-revert snapshot: capture the prior env set (sealed values, never
+		// plaintext — the audit_log JSONB is not encrypted) so this replace can be
+		// undone. Best-effort: a snapshot failure must not block the save.
+		if prior, err := s.ListEnvVarsForApp(r.Context(), id); err == nil {
+			audit.Snapshot(r.Context(), map[string]any{"env": envSnapshot(prior)})
+		}
+		audit.SetTarget(r.Context(), "app", id)
+		audit.Describe(r.Context(), "replaced environment for "+app.Slug)
 		inputs := make([]store.EnvVarInput, 0, len(req.Vars))
 		seen := make(map[string]struct{}, len(req.Vars))
 		for _, e := range req.Vars {
@@ -150,6 +161,28 @@ func ReplaceAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 		}
 		WriteJSON(w, http.StatusOK, map[string]int{"saved": len(inputs)})
 	}
+}
+
+// envVarSnap is the per-row shape stored in the revert before-snapshot. Value is
+// base64 of the *sealed* bytes — the audit_log is not encrypted, so plaintext
+// must never land here; the reverter feeds the sealed bytes straight back into
+// ReplaceEnvVars without ever decrypting. Mirrors revert.envEntrySnap.
+type envVarSnap struct {
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	Sensitive bool   `json:"sensitive"`
+}
+
+func envSnapshot(rows []store.EnvVar) []envVarSnap {
+	out := make([]envVarSnap, 0, len(rows))
+	for _, v := range rows {
+		out = append(out, envVarSnap{
+			Key:       v.Key,
+			Value:     base64.StdEncoding.EncodeToString(v.Value),
+			Sensitive: v.Sensitive,
+		})
+	}
+	return out
 }
 
 // validEnvKey enforces the POSIX-style env-var name rules: first char letter

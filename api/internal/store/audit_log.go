@@ -3,7 +3,10 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // Actor types recorded in audit_log.actor_type. Kept here (not a DB enum) so
@@ -29,6 +32,9 @@ type AuditEntry struct {
 	IP          *string
 	UserAgent   *string
 	StatusCode  int
+	// Revertable marks the curated set of actions that carry a before-snapshot
+	// in Metadata and can be undone (plan 11, Part 2).
+	Revertable bool
 }
 
 // AuditLog is the read shape, including the server-assigned id and timestamp.
@@ -44,6 +50,8 @@ type AuditLog struct {
 	IP          *string
 	UserAgent   *string
 	StatusCode  int
+	Revertable  bool
+	RevertedAt  *time.Time
 	CreatedAt   time.Time
 }
 
@@ -57,11 +65,11 @@ func (s *Store) InsertAuditLog(ctx context.Context, e AuditEntry) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO audit_log
 			(actor_user_id, actor_type, action, target_type, target_id,
-			 summary, metadata, ip, user_agent, status_code)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			 summary, metadata, ip, user_agent, status_code, revertable)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`,
 		e.ActorUserID, e.ActorType, e.Action, e.TargetType, e.TargetID,
-		e.Summary, meta, e.IP, e.UserAgent, e.StatusCode,
+		e.Summary, meta, e.IP, e.UserAgent, e.StatusCode, e.Revertable,
 	)
 	return err
 }
@@ -74,8 +82,7 @@ func (s *Store) ListAuditLog(ctx context.Context, limit int) ([]AuditLog, error)
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, actor_user_id, actor_type, action, target_type, target_id,
-		       summary, metadata, ip, user_agent, status_code, created_at
+		SELECT `+auditColumns+`
 		FROM audit_log
 		ORDER BY created_at DESC
 		LIMIT $1
@@ -86,16 +93,53 @@ func (s *Store) ListAuditLog(ctx context.Context, limit int) ([]AuditLog, error)
 	defer rows.Close()
 	var out []AuditLog
 	for rows.Next() {
-		var a AuditLog
-		if err := rows.Scan(
-			&a.ID, &a.ActorUserID, &a.ActorType, &a.Action, &a.TargetType, &a.TargetID,
-			&a.Summary, &a.Metadata, &a.IP, &a.UserAgent, &a.StatusCode, &a.CreatedAt,
-		); err != nil {
+		a, err := scanAuditLog(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+const auditColumns = `id, actor_user_id, actor_type, action, target_type, target_id,
+	summary, metadata, ip, user_agent, status_code, revertable, reverted_at, created_at`
+
+func scanAuditLog(row pgx.Row) (AuditLog, error) {
+	var a AuditLog
+	err := row.Scan(
+		&a.ID, &a.ActorUserID, &a.ActorType, &a.Action, &a.TargetType, &a.TargetID,
+		&a.Summary, &a.Metadata, &a.IP, &a.UserAgent, &a.StatusCode, &a.Revertable, &a.RevertedAt, &a.CreatedAt,
+	)
+	return a, err
+}
+
+// GetAuditLog fetches one entry by id. Returns ErrNotFound when absent — the
+// revert handler uses this to resolve the action + before-snapshot to undo.
+func (s *Store) GetAuditLog(ctx context.Context, id string) (AuditLog, error) {
+	a, err := scanAuditLog(s.pool.QueryRow(ctx, `SELECT `+auditColumns+` FROM audit_log WHERE id = $1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AuditLog{}, ErrNotFound
+	}
+	return a, err
+}
+
+// MarkAuditReverted stamps reverted_at on an entry so the UI shows it as undone
+// and refuses a second revert. Only stamps a row that is revertable and not
+// already reverted; RowsAffected==0 means it was already undone (caller maps to
+// a 409 conflict).
+func (s *Store) MarkAuditReverted(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE audit_log SET reverted_at = NOW()
+		WHERE id = $1 AND revertable AND reverted_at IS NULL
+	`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrConflict
+	}
+	return nil
 }
 
 // DeleteAuditLogOlderThan prunes entries past the retention window. Wired into

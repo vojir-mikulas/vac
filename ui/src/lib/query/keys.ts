@@ -14,9 +14,11 @@ export const queryKeys = {
     budget: ['host', 'budget'] as const,
   },
   notifications: ['notifications'] as const,
+  activity: ['activity'] as const,
   instance: {
     info: ['instance', 'info'] as const,
     baseDomain: ['instance', 'base-domain'] as const,
+    onboarding: ['instance', 'onboarding'] as const,
   },
   apps: {
     all: ['apps'] as const,
