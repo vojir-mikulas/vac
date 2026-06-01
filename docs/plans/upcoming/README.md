@@ -22,19 +22,26 @@ trustworthy and effortless," not by what's technically interesting.
 | 06 | [06-resource-guardrails.md](06-resource-guardrails.md) | Reliability moat | Per-app RAM limits + box-level budget UI + OOM protection | M |
 | 07 | [07-ram-benchmark-harness.md](07-ram-benchmark-harness.md) | Reliability moat | Repeatable, CI-enforced idle-RAM measurement | S–M |
 | 08 | [08-managed-backups.md](08-managed-backups.md) | Monetization seed | User-defined backup commands → schedule → S3/B2 | M |
-| 09 | [09-managed-databases.md](09-managed-databases.md) | Monetization seed | One-click Postgres/Redis on the shared instance | L |
+| 09 | [09-managed-databases.md](09-managed-databases.md) | Monetization seed | Multi-engine managed DBs (PG/MariaDB/Mongo/Redis), one process per engine | L |
 | 10 | [10-managed-vac-provisioning.md](10-managed-vac-provisioning.md) | Monetization seed | One-click VPS provisioning (Managed VAC) + managed-updates stepping stone | XL |
+| 11 | [11-audit-log-and-revert.md](11-audit-log-and-revert.md) | Close the loop / moat | Audit log (who did what) + curated revert of safely-invertible actions | M |
+| 12 | [12-addon-templates-catalog.md](12-addon-templates-catalog.md) | Monetization seed | One-click add-on templates catalog; Grafana flagship | M |
+| 13 | [13-prometheus-metrics-exposition.md](13-prometheus-metrics-exposition.md) | Reliability / observability | Expose VAC metrics on a Prometheus `/metrics` endpoint | S–M |
 
 ## Suggested order
 
 1. **01 push-to-deploy** — highest leverage; turns VAC from a tool into a platform.
 2. **02 rollback** — nearly free given the data model; the safety net that makes
    aggressive deploys (incl. 05) emotionally safe. Do alongside 01.
-3. **03 cert-expiry** + **07 ram-benchmark** — cheap, finish-the-promise items.
-4. **04 onboarding** — first-run trust.
-5. **06 resource guardrails** — the small-VPS reliability story.
-6. **05 zero-downtime** — hardest; do once 01/02 are solid.
-7. **08 → 09 → 10** — the Managed VAC arc, in that order, furthest out.
+3. **11 audit log** (Part 1) — cheap, attribution is ~free; foundation for revert and a
+   trust signal on its own. Its revert half (Part 2) layers on after 02.
+4. **03 cert-expiry** + **07 ram-benchmark** — cheap, finish-the-promise items.
+5. **04 onboarding** — first-run trust.
+6. **06 resource guardrails** — the small-VPS reliability story.
+7. **05 zero-downtime** — hardest; do once 01/02 are solid.
+8. **13 prometheus exposition** — standalone-useful; unblocks 12's "charts about VAC."
+9. **08 → 09 → 12 → 10** — the Managed VAC arc, furthest out (backups → managed DBs →
+   add-on catalog/Grafana → full provisioning).
 
 ## Deliberately NOT doing (guard the moat)
 
@@ -43,3 +50,8 @@ trustworthy and effortless," not by what's technically interesting.
 - No preview environments yet — Tier-1-distracting complexity for the solo-dev target.
 - No multi-cloud abstraction *in the product* — provider logic only ever lives in
   the separate Managed VAC orchestrator (see 10), never in `vac-api`.
+- **VAC's own control-plane store stays single-engine** (Postgres; a SQLite-only
+  ultra-light mode is the *only* defensible alternative, behind a build tag). Do NOT make
+  the internal store pluggable across MariaDB/Mongo — that doubles the persistence
+  maintenance surface forever for zero end-user benefit. "User picks the engine" belongs in
+  managed DBs *for user apps* (09), not in VAC's own persistence.
