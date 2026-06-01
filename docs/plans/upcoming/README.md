@@ -40,6 +40,7 @@ trustworthy and effortless," not by what's technically interesting.
 | 11 | [11-audit-log-and-revert.md](11-audit-log-and-revert.md) | Close the loop / moat | Audit log (who did what) + curated revert of safely-invertible actions | M |
 | 12 | [12-addon-templates-catalog.md](12-addon-templates-catalog.md) | Monetization seed | One-click add-on templates catalog; Grafana flagship | M |
 | 13 | [13-prometheus-metrics-exposition.md](13-prometheus-metrics-exposition.md) | Reliability / observability | Expose VAC metrics on a Prometheus `/metrics` endpoint | S–M |
+| 16 | [16-compose-preflight-validation.md](16-compose-preflight-validation.md) | Trust & UX | Preflight lint of user compose: hard-error/warn on edge-port/bundled-proxy/docker.sock/host-ports | M |
 
 ## Suggested order
 
