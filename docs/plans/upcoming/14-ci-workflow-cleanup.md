@@ -23,7 +23,7 @@ Three workflows in `.github/workflows/`:
 1. **`bench-ram` runs on every push and PR.** It boots a Docker stack and waits
    `SETTLE_SECONDS: 90`, so it's by far the slowest, heaviest job — gating routine
    PRs that don't touch RAM behavior. (Harness defined in plan
-   [`07-ram-benchmark-harness.md`](./07-ram-benchmark-harness.md).)
+   [`07-ram-benchmark-harness.md`](../done/07-ram-benchmark-harness.md).)
 2. **`lint` and `test` repeat identical setup** (checkout → Go → pnpm → node →
    `pnpm install --frozen-lockfile`). Setup cost paid 3× across the file.
 3. **Two workflows fire on the same `v*` tag.** Release logic is split for no real

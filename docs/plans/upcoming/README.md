@@ -20,6 +20,9 @@ trustworthy and effortless," not by what's technically interesting.
 > implemented (Track A1/A2). **05 zero-downtime** is **deferred** — detailed design captured in
 > [`A3-zero-downtime-detail.md`](A3-zero-downtime-detail.md), to be evaluated later.
 >
+> **Track B shipped** (Observability & Limits): **07 ram-benchmark**, **13 prometheus**, and
+> **06 resource guardrails** are implemented.
+>
 > **Track C shipped** (Trust & Lifecycle): **11 audit + revert**, **03 cert-expiry**, and
 > **04 onboarding** are implemented. Audit log is exposed as an Activity feed with curated revert
 > (`internal/revert`); cert-expiry runs via `internal/certcheck` (resolves deviation D7); onboarding
@@ -29,17 +32,17 @@ trustworthy and effortless," not by what's technically interesting.
 |---|------|------|-------|--------|
 | 01 | ✅ [../done/01-push-to-deploy.md](../done/01-push-to-deploy.md) | Close the loop | Git webhook auto-deploy + trigger model (branch / tag / manual) | L |
 | 02 | ✅ [../done/02-rollback.md](../done/02-rollback.md) | Close the loop | One-click redeploy of a previous deployment | S–M |
-| 03 | [03-cert-expiry-notification.md](03-cert-expiry-notification.md) | Close the loop | Finish deferred D7 notification | S |
-| 04 | [04-onboarding-wizard.md](04-onboarding-wizard.md) | Close the loop | Guided connect-repo → first-deploy flow | M |
+| 03 | ✅ [../done/03-cert-expiry-notification.md](../done/03-cert-expiry-notification.md) | Close the loop | Finish deferred D7 notification | S |
+| 04 | ✅ [../done/04-onboarding-wizard.md](../done/04-onboarding-wizard.md) | Close the loop | Guided connect-repo → first-deploy flow | M |
 | 05 | [05-zero-downtime-deploys.md](05-zero-downtime-deploys.md) · ⏸ deferred, [detailed design](A3-zero-downtime-detail.md) | Reliability moat | Rolling deploy: up new → health → swap Caddy upstream → drain old | L |
-| 06 | [06-resource-guardrails.md](06-resource-guardrails.md) | Reliability moat | Per-app RAM limits + box-level budget UI + OOM protection | M |
-| 07 | [07-ram-benchmark-harness.md](07-ram-benchmark-harness.md) | Reliability moat | Repeatable, CI-enforced idle-RAM measurement | S–M |
+| 06 | ✅ [../done/06-resource-guardrails.md](../done/06-resource-guardrails.md) | Reliability moat | Per-app RAM limits + box-level budget UI + OOM protection | M |
+| 07 | ✅ [../done/07-ram-benchmark-harness.md](../done/07-ram-benchmark-harness.md) | Reliability moat | Repeatable, CI-enforced idle-RAM measurement | S–M |
 | 08 | [08-managed-backups.md](08-managed-backups.md) | Monetization seed | User-defined backup commands → schedule → S3/B2 | M |
 | 09 | [09-managed-databases.md](09-managed-databases.md) | Monetization seed | Multi-engine managed DBs (PG/MariaDB/Mongo/Redis), one process per engine | L |
 | 10 | [10-managed-vac-provisioning.md](10-managed-vac-provisioning.md) | Monetization seed | One-click VPS provisioning (Managed VAC) + managed-updates stepping stone | XL |
-| 11 | [11-audit-log-and-revert.md](11-audit-log-and-revert.md) | Close the loop / moat | Audit log (who did what) + curated revert of safely-invertible actions | M |
+| 11 | ✅ [../done/11-audit-log-and-revert.md](../done/11-audit-log-and-revert.md) | Close the loop / moat | Audit log (who did what) + curated revert of safely-invertible actions | M |
 | 12 | [12-addon-templates-catalog.md](12-addon-templates-catalog.md) | Monetization seed | One-click add-on templates catalog; Grafana flagship | M |
-| 13 | [13-prometheus-metrics-exposition.md](13-prometheus-metrics-exposition.md) | Reliability / observability | Expose VAC metrics on a Prometheus `/metrics` endpoint | S–M |
+| 13 | ✅ [../done/13-prometheus-metrics-exposition.md](../done/13-prometheus-metrics-exposition.md) | Reliability / observability | Expose VAC metrics on a Prometheus `/metrics` endpoint | S–M |
 | 16 | [16-compose-preflight-validation.md](16-compose-preflight-validation.md) | Trust & UX | Preflight lint of user compose: hard-error/warn on edge-port/bundled-proxy/docker.sock/host-ports | M |
 
 ## Suggested order
