@@ -275,6 +275,79 @@ func TestDeploymentsCRUD(t *testing.T) {
 	}
 }
 
+func TestCreateRollbackDeployment(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	a := testApp(t, s, "rollback-app")
+
+	// A successful source deployment to roll back to.
+	src, err := s.CreateDeployment(ctx, a.ID, store.TriggeredManual, nil)
+	if err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
+	if err := s.SetDeploymentCommit(ctx, src.ID, stringPtr("c0ffee1234"), stringPtr("good build")); err != nil {
+		t.Fatalf("SetDeploymentCommit: %v", err)
+	}
+	if err := s.MarkDeploymentFinished(ctx, src.ID, "running", nil); err != nil {
+		t.Fatalf("MarkDeploymentFinished: %v", err)
+	}
+
+	// Happy path: the rollback row points back at the source and pre-seeds its
+	// commit so the pipeline can pin to it.
+	rb, err := s.CreateRollbackDeployment(ctx, a.ID, src.ID)
+	if err != nil {
+		t.Fatalf("CreateRollbackDeployment: %v", err)
+	}
+	if rb.TriggeredBy != store.TriggeredRollback {
+		t.Errorf("triggered_by = %q, want rollback", rb.TriggeredBy)
+	}
+	if rb.RolledBackFrom == nil || *rb.RolledBackFrom != src.ID {
+		t.Errorf("rolled_back_from = %v, want %q", rb.RolledBackFrom, src.ID)
+	}
+	if rb.CommitSHA == nil || *rb.CommitSHA != "c0ffee1234" {
+		t.Errorf("commit_sha = %v, want copied from source", rb.CommitSHA)
+	}
+	if rb.Status != "queued" {
+		t.Errorf("status = %q, want queued", rb.Status)
+	}
+
+	// Unknown source → ErrNotFound.
+	if _, err := s.CreateRollbackDeployment(ctx, a.ID, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("unknown source err = %v, want ErrNotFound", err)
+	}
+
+	// A failed source is not a valid rollback target.
+	bad, err := s.CreateDeployment(ctx, a.ID, store.TriggeredManual, nil)
+	if err != nil {
+		t.Fatalf("CreateDeployment(bad): %v", err)
+	}
+	if err := s.MarkDeploymentFinished(ctx, bad.ID, "error", stringPtr("boom")); err != nil {
+		t.Fatalf("MarkDeploymentFinished(bad): %v", err)
+	}
+	if _, err := s.CreateRollbackDeployment(ctx, a.ID, bad.ID); !errors.Is(err, store.ErrRollbackSourceInvalid) {
+		t.Errorf("failed-source err = %v, want ErrRollbackSourceInvalid", err)
+	}
+
+	// A successful deployment that belongs to another app is rejected.
+	other := testApp(t, s, "rollback-other")
+	if _, err := s.CreateRollbackDeployment(ctx, other.ID, src.ID); !errors.Is(err, store.ErrRollbackSourceInvalid) {
+		t.Errorf("cross-app err = %v, want ErrRollbackSourceInvalid", err)
+	}
+
+	// A successful source with no recorded commit can't be pinned (it would
+	// rebuild branch HEAD under a rollback label), so it's rejected too.
+	noCommit, err := s.CreateDeployment(ctx, a.ID, store.TriggeredManual, nil)
+	if err != nil {
+		t.Fatalf("CreateDeployment(noCommit): %v", err)
+	}
+	if err := s.MarkDeploymentFinished(ctx, noCommit.ID, "running", nil); err != nil {
+		t.Fatalf("MarkDeploymentFinished(noCommit): %v", err)
+	}
+	if _, err := s.CreateRollbackDeployment(ctx, a.ID, noCommit.ID); !errors.Is(err, store.ErrRollbackSourceInvalid) {
+		t.Errorf("no-commit err = %v, want ErrRollbackSourceInvalid", err)
+	}
+}
+
 func TestDeploymentLogsAppendAndList(t *testing.T) {
 	s := setup(t)
 	ctx := context.Background()

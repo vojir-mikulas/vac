@@ -88,11 +88,15 @@ export type DeploymentStatus =
   | 'interrupted'
   | string
 
+export type DeploymentTrigger = 'manual' | 'push' | 'tag' | 'rollback' | 'system' | string
+
 export interface Deployment {
   id: string
   app_id: string
   status: DeploymentStatus
   triggered_at: string
+  triggered_by: DeploymentTrigger
+  rolled_back_from: string | null
   started_at: string | null
   finished_at: string | null
   compose_hash: string | null

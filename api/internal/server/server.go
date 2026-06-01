@@ -161,6 +161,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Get("/{id}/deployments", handler.ListDeployments(s))
 					r.Get("/{id}/deployments/{did}", handler.GetDeployment(s))
 					r.Get("/{id}/deployments/{did}/logs", handler.GetDeploymentLogs(s))
+					r.Post("/{id}/deployments/{did}/rollback", handler.RollbackDeployment(s, worker))
 				}
 
 				r.Get("/{id}/env", handler.ListAppEnv(s, box))

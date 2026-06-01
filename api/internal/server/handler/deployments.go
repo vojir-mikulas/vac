@@ -86,6 +86,54 @@ func TriggerDeployment(s *store.Store, w DeploymentEnqueuer) http.HandlerFunc {
 	}
 }
 
+// RollbackDeployment re-deploys the commit of a prior successful deployment
+// (`did`), recording it as a new deployment with triggered_by=rollback and
+// rolled_back_from pointing at the source. Code only — env vars are not rolled
+// back. 202 with the new deployment; 404 unknown source; 422 invalid source
+// (wrong app / not a successful deploy); 503 if the queue is full.
+func RollbackDeployment(s *store.Store, w DeploymentEnqueuer) http.HandlerFunc {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		appID := chi.URLParam(r, "id")
+		sourceID := chi.URLParam(r, "did")
+		app, err := s.GetApp(r.Context(), appID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				WriteError(rw, http.StatusNotFound, "app not found")
+				return
+			}
+			WriteError(rw, http.StatusInternalServerError, "could not load app")
+			return
+		}
+		d, err := s.CreateRollbackDeployment(r.Context(), app.ID, sourceID)
+		if err != nil {
+			switch {
+			case errors.Is(err, store.ErrNotFound):
+				WriteError(rw, http.StatusNotFound, "deployment not found")
+			case errors.Is(err, store.ErrRollbackSourceInvalid):
+				WriteError(rw, http.StatusUnprocessableEntity, "can only roll back to a successful deployment of this app")
+			default:
+				WriteError(rw, http.StatusInternalServerError, "could not create rollback")
+			}
+			return
+		}
+		if err := w.Enqueue(d.ID); err != nil {
+			if errors.Is(err, deploy.ErrQueueFull) {
+				WriteError(rw, http.StatusServiceUnavailable, "deploy queue full — retry shortly")
+				return
+			}
+			WriteError(rw, http.StatusInternalServerError, "could not enqueue rollback")
+			return
+		}
+		shortSHA := "previous version"
+		if d.CommitSHA != nil && len(*d.CommitSHA) >= 7 {
+			shortSHA = (*d.CommitSHA)[:7]
+		}
+		audit.SetTarget(r.Context(), "app", app.ID)
+		audit.Describe(r.Context(), "rolled back "+app.Slug+" to "+shortSHA)
+		WriteJSON(rw, http.StatusAccepted, toDeploymentDTO(d))
+	}
+}
+
 // ListDeployments returns the most recent deployments for the app, newest
 // first. Cap of 100 is enforced at the store layer.
 func ListDeployments(s *store.Store) http.HandlerFunc {
