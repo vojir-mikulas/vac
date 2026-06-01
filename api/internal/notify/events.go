@@ -14,12 +14,13 @@ const (
 	EventDeploySucceeded EventType = "deploy_succeeded"
 	EventDeployFailed    EventType = "deploy_failed"
 	EventCrashLoop       EventType = "crash_loop"
+	EventOOMKilled       EventType = "oom_killed"
 	EventVACRestarted    EventType = "vac_restarted"
 )
 
 // AllEvents is the set of implemented events, used to default a missing toggle
 // to "on".
-var AllEvents = []EventType{EventDeploySucceeded, EventDeployFailed, EventCrashLoop, EventVACRestarted}
+var AllEvents = []EventType{EventDeploySucceeded, EventDeployFailed, EventCrashLoop, EventOOMKilled, EventVACRestarted}
 
 // Event is a render-neutral notification. Channels turn it into their own
 // payload shape.

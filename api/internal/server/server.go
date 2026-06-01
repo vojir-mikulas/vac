@@ -29,7 +29,7 @@ import (
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, hostStats handler.HostStatsProvider, notifier handler.TestSender) (*http.Server, error) {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender) (*http.Server, error) {
 	// Convert the concrete (possibly-nil) manager into nil-able interface
 	// values so handlers' `== nil` guards behave (a typed-nil pointer in an
 	// interface is not nil).
@@ -87,6 +87,21 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	// On-demand-TLS ask hook for Caddy. Unauthenticated by design (Caddy can't
 	// present a session); reachable only on the internal compose network.
 	r.Get("/internal/caddy/ask", handler.CaddyAsk(s, cfg.CaddyAskToken, ctrlChk))
+
+	// Token-gated runtime introspection for the RAM benchmark (plan 07).
+	// Default-closed: with VAC_METRICS_TOKEN unset these 404. Sits outside the
+	// /api session group because a scraper / the bench harness present a bearer
+	// token, not a session cookie + CSRF.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.MetricsToken(cfg.MetricsToken))
+		r.Handle("/debug/vars", handler.DebugVars())
+		r.Get("/debug/gc", handler.ForceGC())
+		// Prometheus exposition (plan 13). Needs the stats surface for host +
+		// per-service gauges; omitted in tests that pass a nil provider.
+		if statsProv != nil {
+			r.Get("/metrics", handler.MetricsExposition(statsProv, s, cfg.RequestMetricsRetention, cfg.Version, cfg.Commit))
+		}
+	})
 
 	r.Route("/api", func(r chi.Router) {
 		r.Use(middleware.BodyLimit(middleware.MaxBodyBytes))
@@ -201,8 +216,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			}
 
 			// Host vitals: JSON snapshot, or a live stream on WS upgrade.
-			if hub != nil && hostStats != nil {
-				r.Get("/host/stats", handler.HostStats(hostStats, hub, wsOpts))
+			if hub != nil && statsProv != nil {
+				r.Get("/host/stats", handler.HostStats(statsProv, hub, wsOpts))
+			}
+			// Box RAM budget: allocated-vs-total for the dashboard panel.
+			if statsProv != nil {
+				r.Get("/host/budget", handler.HostBudget(statsProv, s))
 			}
 		})
 

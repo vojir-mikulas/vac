@@ -83,6 +83,52 @@ func TestWrap_WritesGeneratedFile(t *testing.T) {
 	}
 }
 
+func TestWriteResourceOverride(t *testing.T) {
+	t.Parallel()
+	d := t.TempDir()
+	path := filepath.Join(d, "compose.yaml")
+	mustWrite(t, path, "services:\n  web:\n    image: nginx\n  worker:\n    image: busybox\n")
+
+	ovr, err := compose.WriteResourceOverride(path, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ovr == "" {
+		t.Fatal("expected an override path, got empty")
+	}
+	body, err := os.ReadFile(ovr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"web:", "worker:", "mem_limit: 256m"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("override missing %q:\n%s", want, body)
+		}
+	}
+	// The override must itself be a valid compose fragment naming the same
+	// services, so the `-f` merge lines up.
+	svcs, err := compose.Parse(ovr)
+	if err != nil {
+		t.Fatalf("parse override: %v", err)
+	}
+	if len(svcs) != 2 {
+		t.Errorf("override services = %+v, want 2", svcs)
+	}
+}
+
+func TestWriteResourceOverride_NoLimitWritesNothing(t *testing.T) {
+	t.Parallel()
+	d := t.TempDir()
+	path := filepath.Join(d, "compose.yaml")
+	mustWrite(t, path, "services:\n  web:\n    image: nginx\n")
+	for _, limit := range []int{0, -5} {
+		ovr, err := compose.WriteResourceOverride(path, limit)
+		if err != nil || ovr != "" {
+			t.Errorf("limit %d: got (%q, %v), want (\"\", nil)", limit, ovr, err)
+		}
+	}
+}
+
 func TestParse_MultiServiceComposeFile(t *testing.T) {
 	t.Parallel()
 	d := t.TempDir()

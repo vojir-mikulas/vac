@@ -11,6 +11,7 @@ export const queryKeys = {
   },
   host: {
     stats: ['host', 'stats'] as const,
+    budget: ['host', 'budget'] as const,
   },
   notifications: ['notifications'] as const,
   instance: {

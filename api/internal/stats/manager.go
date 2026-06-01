@@ -23,6 +23,18 @@ type StatSource interface {
 // StatStore is the slice of *store.Store the collector reads.
 type StatStore interface {
 	ListServicesForApp(ctx context.Context, appID string) ([]store.Service, error)
+	// ListRunningServices enumerates every live container across all apps for
+	// the scrape-time SnapshotAll (Prometheus exposition, plan 13).
+	ListRunningServices(ctx context.Context) ([]store.RunningServiceRef, error)
+}
+
+// AppSample is a one-shot per-service resource reading for the Prometheus
+// exposition. Unlike the live WS Sample, it carries the app slug for labelling.
+type AppSample struct {
+	App        string
+	Service    string
+	CPUPercent float64
+	MemBytes   int64
 }
 
 // Publisher tees frames to the hub. *ws.Hub satisfies it.
@@ -110,6 +122,44 @@ func (m *Manager) Snapshot(ctx context.Context) HostSnapshot {
 		return HostSnapshot{}
 	}
 	return m.host.Snapshot(ctx)
+}
+
+// SnapshotAll polls `docker stats` once for every running container and returns
+// a per-service sample for the Prometheus exposition. It is independent of the
+// subscriber-gated live collectors — a point-in-time read for one scrape. On any
+// error it returns nil so a scrape degrades to "no per-app samples" rather than
+// failing the whole endpoint.
+func (m *Manager) SnapshotAll(ctx context.Context) []AppSample {
+	refs, err := m.store.ListRunningServices(ctx)
+	if err != nil || len(refs) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(refs))
+	byID := make(map[string]store.RunningServiceRef, len(refs))
+	for _, r := range refs {
+		ids = append(ids, r.ContainerID)
+		byID[r.ContainerID] = r
+	}
+	samples, err := m.docker.Stats(ctx, ids)
+	if err != nil {
+		m.logger.Debug("stats: snapshot-all poll failed", "err", err)
+		return nil
+	}
+	out := make([]AppSample, 0, len(samples))
+	for _, s := range samples {
+		ref, ok := matchRef(s.ID, byID)
+		if !ok {
+			continue
+		}
+		memUsed, _ := parsePair(s.MemUsage)
+		out = append(out, AppSample{
+			App:        ref.Slug,
+			Service:    ref.ServiceName,
+			CPUPercent: parsePercent(s.CPUPerc),
+			MemBytes:   memUsed,
+		})
+	}
+	return out
 }
 
 func (m *Manager) startApp(appID string) {
@@ -282,4 +332,15 @@ func matchService(sampleID string, idToService map[string]string) (fullID, servi
 		}
 	}
 	return "", ""
+}
+
+// matchRef is matchService's counterpart for SnapshotAll: it resolves a
+// `docker stats` short id back to the running-service ref the store knows.
+func matchRef(sampleID string, byID map[string]store.RunningServiceRef) (store.RunningServiceRef, bool) {
+	for id, ref := range byID {
+		if id == sampleID || strings.HasPrefix(id, sampleID) || strings.HasPrefix(sampleID, id) {
+			return ref, true
+		}
+	}
+	return store.RunningServiceRef{}, false
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,9 @@ const (
 	defaultComposeFile = "compose.yaml"
 	maxAppNameLen      = 100
 	maxSlugLen         = 63
+	// minMemLimitMB is the smallest per-app RAM limit we accept — below this a
+	// container can't realistically start, so a smaller value is a typo.
+	minMemLimitMB = 6
 )
 
 // gitURLRe matches SSH (git@host:path), ssh:// or http(s):// repository URLs.
@@ -54,6 +58,9 @@ type updateAppRequest struct {
 	ComposeFile *string         `json:"compose_file,omitempty"`
 	BuildKind   *string         `json:"build_kind,omitempty"`
 	BuildConfig json.RawMessage `json:"build_config,omitempty"`
+	// MemLimitMB: nil leaves the limit unchanged; 0 clears it (unlimited);
+	// a positive value sets the per-app RAM ceiling in MiB (plan 06).
+	MemLimitMB *int `json:"mem_limit_mb,omitempty"`
 }
 
 type appDTO struct {
@@ -66,6 +73,7 @@ type appDTO struct {
 	BuildKind   string          `json:"build_kind"`
 	BuildConfig json.RawMessage `json:"build_config"`
 	Status      string          `json:"status"`
+	MemLimitMB  *int            `json:"mem_limit_mb"`
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 }
@@ -85,6 +93,7 @@ func toAppDTO(a store.App) appDTO {
 		BuildKind:   a.BuildKind,
 		BuildConfig: bc,
 		Status:      a.Status,
+		MemLimitMB:  a.MemLimitMB,
 		CreatedAt:   a.CreatedAt,
 		UpdatedAt:   a.UpdatedAt,
 	}
@@ -291,7 +300,14 @@ func UpdateApp(s *store.Store) http.HandlerFunc {
 			buildConfig = canonical
 		}
 
-		a, err := s.UpdateApp(r.Context(), id, req.Name, req.GitURL, req.GitBranch, req.ComposeFile, req.BuildKind, buildConfig)
+		// RAM limit: 0 clears it; a positive value must be a sane floor so a
+		// typo can't pin an app to a few MiB and wedge it in a restart loop.
+		if req.MemLimitMB != nil && *req.MemLimitMB != 0 && *req.MemLimitMB < minMemLimitMB {
+			WriteError(w, http.StatusBadRequest, "mem_limit_mb must be 0 (unlimited) or at least "+strconv.Itoa(minMemLimitMB))
+			return
+		}
+
+		a, err := s.UpdateApp(r.Context(), id, req.Name, req.GitURL, req.GitBranch, req.ComposeFile, req.BuildKind, buildConfig, req.MemLimitMB)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				WriteError(w, http.StatusNotFound, "app not found")

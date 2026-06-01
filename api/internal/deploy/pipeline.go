@@ -32,7 +32,7 @@ type GitClient interface {
 // DockerClient is the slice of dockercli.Compose the pipeline calls.
 type DockerClient interface {
 	Build(ctx context.Context, projectDir, composeFile, projectName string, out io.Writer) error
-	Up(ctx context.Context, projectDir, composeFile, projectName, envFile string) error
+	Up(ctx context.Context, projectDir, composeFile, projectName, envFile string, overrideFiles ...string) error
 	Ps(ctx context.Context, projectName string) ([]dockercli.PsService, error)
 }
 
@@ -239,7 +239,19 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		return err
 	}
 	_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusDeploying)
-	if err := p.Docker.Up(ctx, repoDir, composeFile, projectName, envFile); err != nil {
+	// Per-app RAM limit (plan 06 / Track B): write a resource override and merge
+	// it over the user's compose so one container can't OOM the box. Additive —
+	// an extra `-f` file, never a rewrite of the user's compose. (Track B touch
+	// of the deploy path; coordinate at merge with the Deploy Core track.)
+	var overrides []string
+	if app.MemLimitMB != nil && *app.MemLimitMB > 0 {
+		if ovr, oerr := compose.WriteResourceOverride(composeFile, *app.MemLimitMB); oerr != nil {
+			_ = p.logSystem(ctx, deploymentID, "warning: could not apply RAM limit: "+oerr.Error())
+		} else if ovr != "" {
+			overrides = append(overrides, ovr)
+		}
+	}
+	if err := p.Docker.Up(ctx, repoDir, composeFile, projectName, envFile, overrides...); err != nil {
 		return fmt.Errorf("up: %w", err)
 	}
 

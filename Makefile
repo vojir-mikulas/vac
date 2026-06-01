@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-api dev-ui build build-ui build-api build-api-noembed lint lint-go lint-ui test test-go test-ui test-integration typecheck format clean compose-up compose-down compose-logs
+.PHONY: help install dev dev-api dev-ui build build-ui build-api build-api-noembed lint lint-go lint-ui test test-go test-ui test-integration typecheck format clean compose-up compose-down compose-logs bench-ram
 
 # Version metadata baked into vac-api via -ldflags. Override on the command line
 # (e.g. `make build-api VERSION=v1.2.3`) or via env. The release Dockerfile sets
@@ -53,6 +53,9 @@ test-go: ## go test (unit only, race detector on)
 
 test-integration: ## go test with integration tag (requires Docker, race detector on)
 	cd api && go test -race -tags integration ./...
+
+bench-ram: ## Idle-RAM benchmark — boots vac-api, asserts <200MB (excl. DB). Needs Docker.
+	./scripts/bench-ram.sh
 
 test-ui: ## vitest
 	pnpm --filter ui test

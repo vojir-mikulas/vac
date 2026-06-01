@@ -27,6 +27,7 @@ type fakeStore struct {
 	lastStatus    string
 	lastExitCode  *int
 	logs          atomic.Int64
+	oomCount      atomic.Int64
 }
 
 func (f *fakeStore) GetAppBySlug(_ context.Context, _ string) (store.App, error) {
@@ -44,10 +45,32 @@ func (f *fakeStore) IncrementServiceRestart(_ context.Context, _, _ string) (int
 	return 1, nil
 }
 
+func (f *fakeStore) IncrementServiceOOM(_ context.Context, _, _ string, _ *int) (int, error) {
+	return int(f.oomCount.Add(1)), nil
+}
+
 func (f *fakeStore) AppendRuntimeLogs(_ context.Context, _ string, rows []store.RuntimeLogRow) ([]int64, error) {
 	f.logs.Add(1)
 	ids := make([]int64, len(rows))
 	return ids, nil
+}
+
+type fakeInspector struct{ oom bool }
+
+func (f fakeInspector) ContainerOOMKilled(_ context.Context, _ string) (bool, error) {
+	return f.oom, nil
+}
+
+type fakeNotifier struct {
+	crashLoops atomic.Int64
+	ooms       atomic.Int64
+	lastLimit  int
+}
+
+func (f *fakeNotifier) CrashLoop(_, _, _ string, _ int, _ *int) { f.crashLoops.Add(1) }
+func (f *fakeNotifier) OOMKilled(_, _, _ string, limitMB int) {
+	f.ooms.Add(1)
+	f.lastLimit = limitMB
 }
 
 func TestMonitor_TripsAfterThresholdInWindow(t *testing.T) {
@@ -130,6 +153,53 @@ func TestMonitor_WindowEvictsOldEvents(t *testing.T) {
 	m.Handle(context.Background(), dieEvent("vac-myapp", "web", 1, time.Now()))
 	if stop.calls.Load() != 0 {
 		t.Errorf("stop fired despite events being outside window: %d", stop.calls.Load())
+	}
+}
+
+func TestMonitor_OOMDetectionNotifiesOncePerEpisode(t *testing.T) {
+	limit := 256
+	st := &fakeStore{app: store.App{ID: "app-1", Slug: "myapp", Name: "myapp", MemLimitMB: &limit}}
+	notif := &fakeNotifier{}
+	// High threshold so the crash-loop path never trips during this test —
+	// we're isolating OOM handling.
+	m := crashloop.New(nil, &fakeStopper{}, st, crashloop.Config{Threshold: 99, Window: time.Minute}, nil)
+	m.SetNotifier(notif)
+	m.SetInspector(fakeInspector{oom: true})
+
+	now := time.Now()
+	for i := 0; i < 3; i++ {
+		m.Handle(context.Background(), dieEvent("vac-myapp", "web", 137, now.Add(time.Duration(i)*time.Second)))
+	}
+
+	if st.oomCount.Load() != 3 {
+		t.Errorf("oom count = %d, want 3 (incremented every kill)", st.oomCount.Load())
+	}
+	if notif.ooms.Load() != 1 {
+		t.Errorf("oom notifications = %d, want 1 (once per episode)", notif.ooms.Load())
+	}
+	if notif.lastLimit != 256 {
+		t.Errorf("notified limit = %d, want 256", notif.lastLimit)
+	}
+
+	// After Reset the next OOM notifies again.
+	m.Reset("vac-myapp", "web")
+	m.Handle(context.Background(), dieEvent("vac-myapp", "web", 137, now.Add(time.Minute)))
+	if notif.ooms.Load() != 2 {
+		t.Errorf("after reset oom notifications = %d, want 2", notif.ooms.Load())
+	}
+}
+
+func TestMonitor_NonOOMExitNotInspected(t *testing.T) {
+	st := &fakeStore{app: store.App{ID: "app-1", Slug: "myapp"}}
+	notif := &fakeNotifier{}
+	m := crashloop.New(nil, &fakeStopper{}, st, crashloop.Config{Threshold: 99, Window: time.Minute}, nil)
+	m.SetNotifier(notif)
+	m.SetInspector(fakeInspector{oom: true}) // would report OOM if asked
+
+	// Exit code 1 (not 137) must never reach the inspector → no OOM handling.
+	m.Handle(context.Background(), dieEvent("vac-myapp", "web", 1, time.Now()))
+	if st.oomCount.Load() != 0 || notif.ooms.Load() != 0 {
+		t.Errorf("non-137 exit triggered OOM handling: count=%d notifs=%d", st.oomCount.Load(), notif.ooms.Load())
 	}
 }
 

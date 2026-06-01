@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { useApps } from '@/lib/api/apps'
-import { useHostStats } from '@/lib/api/metrics'
+import { useBoxBudget, useHostStats } from '@/lib/api/metrics'
 import { formatBytes, formatPercent, relativeTime } from '@/lib/format'
 import { countByFilter, matchesFilter, type AppFilter } from '@/features/apps/status-filter'
 import type { App } from '@/types/api'
@@ -29,6 +29,7 @@ import type { App } from '@/types/api'
 export function AppsDashboard() {
   const { data: apps, isLoading } = useApps()
   const { data: host } = useHostStats()
+  const { data: budget } = useBoxBudget()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<AppFilter>('all')
   const deferredQuery = useDeferredValue(query)
@@ -201,7 +202,26 @@ export function AppsDashboard() {
                   />
                 </>
               ) : null}
+              {budget && budget.total_ram_mb > 0 ? (
+                <BudgetRow
+                  label="Allocated RAM"
+                  current={budget.allocated_mb}
+                  total={budget.total_ram_mb}
+                  unit="MiB"
+                />
+              ) : null}
             </div>
+            {budget?.over_committed ? (
+              <p className="mt-3 text-2xs text-err">
+                Apps have reserved more RAM than the box has — over-committed.
+              </p>
+            ) : budget && budget.apps_total > budget.apps_with_limit ? (
+              <p className="mt-3 text-2xs text-muted-foreground">
+                {budget.apps_total - budget.apps_with_limit} app
+                {budget.apps_total - budget.apps_with_limit === 1 ? '' : 's'} without a RAM limit
+                aren&apos;t budgeted.
+              </p>
+            ) : null}
             {host ? (
               <div className="mt-4 flex items-center justify-between border-t pt-3.5 text-xs text-muted-foreground">
                 <span>Request rate</span>

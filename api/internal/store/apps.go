@@ -27,8 +27,12 @@ type App struct {
 	BuildKind   string
 	BuildConfig json.RawMessage
 	Status      string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// MemLimitMB is the per-app hard memory ceiling in mebibytes (plan 06).
+	// nil = unlimited / box default; wired into the deploy as a compose
+	// mem_limit and SUMmed for the box-budget panel.
+	MemLimitMB *int
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, composeFile, buildKind string, buildConfig json.RawMessage) (App, error) {
@@ -42,9 +46,9 @@ func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, co
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO apps (name, slug, git_url, git_branch, compose_file, build_kind, build_config)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, created_at, updated_at
+		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, created_at, updated_at
 	`, name, slug, gitURL, gitBranch, composeFile, buildKind, buildConfig).Scan(
-		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if isUniqueViolation(err) {
 		return App{}, ErrConflict
@@ -57,9 +61,9 @@ func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, co
 func (s *Store) GetAppBySlug(ctx context.Context, slug string) (App, error) {
 	var a App
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, created_at, updated_at
+		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, created_at, updated_at
 		FROM apps WHERE slug = $1
-	`, slug).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.CreatedAt, &a.UpdatedAt)
+	`, slug).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.CreatedAt, &a.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return App{}, ErrNotFound
 	}
@@ -69,9 +73,9 @@ func (s *Store) GetAppBySlug(ctx context.Context, slug string) (App, error) {
 func (s *Store) GetApp(ctx context.Context, id string) (App, error) {
 	var a App
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, created_at, updated_at
+		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, created_at, updated_at
 		FROM apps WHERE id = $1
-	`, id).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.CreatedAt, &a.UpdatedAt)
+	`, id).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.CreatedAt, &a.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return App{}, ErrNotFound
 	}
@@ -80,7 +84,7 @@ func (s *Store) GetApp(ctx context.Context, id string) (App, error) {
 
 func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, created_at, updated_at
+		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, created_at, updated_at
 		FROM apps ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -90,7 +94,7 @@ func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 	var out []App
 	for rows.Next() {
 		var a App
-		if err := rows.Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -101,7 +105,9 @@ func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 // UpdateApp applies a partial patch: any of the fields that are nil stay as
 // they were. Returns the row post-update. Slug is intentionally not patchable —
 // once set it's a stable URL handle.
-func (s *Store) UpdateApp(ctx context.Context, id string, name, gitURL, gitBranch, composeFile, buildKind *string, buildConfig json.RawMessage) (App, error) {
+// memLimitMB semantics: nil leaves the limit unchanged; a non-nil pointer sets
+// it, with 0 meaning "clear → unlimited" (NULLIF maps 0 to SQL NULL).
+func (s *Store) UpdateApp(ctx context.Context, id string, name, gitURL, gitBranch, composeFile, buildKind *string, buildConfig json.RawMessage, memLimitMB *int) (App, error) {
 	var a App
 	// buildConfig is a JSONB column, so a nil RawMessage must reach the query as
 	// a typed nil (not an empty []byte) for COALESCE to keep the existing value.
@@ -117,11 +123,12 @@ func (s *Store) UpdateApp(ctx context.Context, id string, name, gitURL, gitBranc
 			compose_file = COALESCE($5, compose_file),
 			build_kind   = COALESCE($6, build_kind),
 			build_config = COALESCE($7, build_config),
+			mem_limit_mb = CASE WHEN $8::int IS NULL THEN mem_limit_mb ELSE NULLIF($8::int, 0) END,
 			updated_at   = NOW()
 		WHERE id = $1
-		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, created_at, updated_at
-	`, id, name, gitURL, gitBranch, composeFile, buildKind, bc).Scan(
-		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.CreatedAt, &a.UpdatedAt,
+		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, created_at, updated_at
+	`, id, name, gitURL, gitBranch, composeFile, buildKind, bc, memLimitMB).Scan(
+		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return App{}, ErrNotFound
@@ -141,6 +148,28 @@ func (s *Store) SetAppStatus(ctx context.Context, id, status string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// MemAllocation is the box-budget aggregate: how much RAM apps have explicitly
+// reserved via per-app limits, and how many apps carry a limit (plan 06).
+type MemAllocation struct {
+	AllocatedMB   int64
+	AppsWithLimit int
+	AppsTotal     int
+}
+
+// SumAppMemLimits totals the per-app memory limits for the box-budget panel.
+// Apps with no limit (NULL) contribute nothing to AllocatedMB but are counted
+// in AppsTotal, so the UI can warn that unlimited apps aren't budgeted.
+func (s *Store) SumAppMemLimits(ctx context.Context) (MemAllocation, error) {
+	var m MemAllocation
+	err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(mem_limit_mb), 0)::bigint,
+		       COUNT(mem_limit_mb)::int,
+		       COUNT(*)::int
+		FROM apps
+	`).Scan(&m.AllocatedMB, &m.AppsWithLimit, &m.AppsTotal)
+	return m, err
 }
 
 func (s *Store) DeleteApp(ctx context.Context, id string) error {

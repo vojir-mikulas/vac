@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -76,6 +77,16 @@ func main() {
 	// report it without importing main.
 	cfg.Version, cfg.Commit, cfg.BuildDate = version, commit, buildDate
 	hostIP := cfg.PublicIPAddr()
+
+	// GOMEMLIMIT / GOGC are applied natively by the Go runtime from the
+	// environment (set in compose.prod.yaml to a ~180 MiB soft target so a
+	// memory regression paces GC hard and, with the compose hard memory limit,
+	// OOMs in testing rather than on a user's box). Log the active soft limit so
+	// the RAM benchmark (plan 07) and operators can see what's in effect;
+	// SetMemoryLimit(-1) reads the current value without changing it.
+	slog.Info("runtime memory limits",
+		"gomemlimit_bytes", debug.SetMemoryLimit(-1),
+		"gogc", os.Getenv("GOGC"))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -186,6 +197,7 @@ func main() {
 		Window:    cfg.CrashLoopWindow,
 	}, slog.Default())
 	monitor.SetNotifier(notifier)
+	monitor.SetInspector(docker)
 	go monitor.Run(ctx)
 
 	// Runtime-log capture: one follower per running container, writing to the

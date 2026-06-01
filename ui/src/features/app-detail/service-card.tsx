@@ -64,6 +64,11 @@ export function ServiceCard({ appId, service }: { appId: string; service: Servic
         {service.last_exit_code != null ? (
           <span className="text-err-foreground">exit {service.last_exit_code}</span>
         ) : null}
+        {service.oom_killed_count > 0 ? (
+          <span className="text-err-foreground" title="Killed for exceeding its memory limit">
+            OOM-killed ×{service.oom_killed_count}
+          </span>
+        ) : null}
       </div>
     </Card>
   )

@@ -46,9 +46,17 @@ func (c *Compose) Build(ctx context.Context, projectDir, composeFile, projectNam
 }
 
 // Up runs `docker compose up -d --remove-orphans`. The caller is expected to
-// have already written the .env file (via --env-file or co-located).
-func (c *Compose) Up(ctx context.Context, projectDir, composeFile, projectName string, envFile string) error {
+// have already written the .env file (via --env-file or co-located). Any
+// overrideFiles are merged after the base compose file (each as an extra `-f`),
+// in order — used to layer VAC's per-app resource limits over the user's compose
+// without rewriting it.
+func (c *Compose) Up(ctx context.Context, projectDir, composeFile, projectName string, envFile string, overrideFiles ...string) error {
 	args := []string{"compose", "-p", projectName, "-f", composeFile}
+	for _, f := range overrideFiles {
+		if f != "" {
+			args = append(args, "-f", f)
+		}
+	}
 	if envFile != "" {
 		args = append(args, "--env-file", envFile)
 	}

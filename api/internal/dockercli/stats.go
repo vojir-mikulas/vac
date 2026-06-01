@@ -73,3 +73,16 @@ func (c *Compose) ContainerStartedAt(ctx context.Context, id string) (time.Time,
 	}
 	return time.Parse(time.RFC3339Nano, strings.TrimSpace(string(out)))
 }
+
+// ContainerOOMKilled reports whether a container's last exit was an
+// out-of-memory kill. The docker *event* stream doesn't carry this flag, so the
+// crash-loop monitor confirms a suspicious death (exit code 137) by inspecting
+// State.OOMKilled here. A cheap `-f` template read, like ContainerStartedAt.
+func (c *Compose) ContainerOOMKilled(ctx context.Context, id string) (bool, error) {
+	cmd := c.command(ctx, "", "inspect", "-f", "{{.State.OOMKilled}}", id)
+	out, err := cmd.Output()
+	if err != nil {
+		return false, mapCmdError(err, out)
+	}
+	return strings.TrimSpace(string(out)) == "true", nil
+}

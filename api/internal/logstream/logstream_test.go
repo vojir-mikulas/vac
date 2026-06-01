@@ -85,16 +85,16 @@ func TestFollowerCapturesAndPublishes(t *testing.T) {
 	lines <- dockercli.LogLine{Stream: "stdout", Message: "hello"}
 	lines <- dockercli.LogLine{Stream: "stderr", Message: "oops"}
 
-	deadline := time.After(time.Second)
-	for sink.rowCount() < 2 {
+	// Wait for both the sink write and the hub publish to land — the publish
+	// trails the sink write within a flush, so polling only the sink races the
+	// pub assertion (visible under -race's slowdown).
+	deadline := time.After(2 * time.Second)
+	for sink.rowCount() < 2 || pub.count() < 2 {
 		select {
 		case <-deadline:
-			t.Fatalf("captured %d rows, want 2", sink.rowCount())
+			t.Fatalf("captured %d rows / published %d frames, want 2/2", sink.rowCount(), pub.count())
 		case <-time.After(5 * time.Millisecond):
 		}
-	}
-	if pub.count() != 2 {
-		t.Errorf("published %d frames, want 2", pub.count())
 	}
 	cancel()
 	<-done

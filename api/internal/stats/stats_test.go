@@ -79,6 +79,10 @@ func (fakeStatStore) ListServicesForApp(_ context.Context, _ string) ([]store.Se
 	return []store.Service{{ServiceName: "web", ContainerID: &cid, Status: deploy.ServiceStatusRunning}}, nil
 }
 
+func (fakeStatStore) ListRunningServices(_ context.Context) ([]store.RunningServiceRef, error) {
+	return []store.RunningServiceRef{{Slug: "blog", ServiceName: "web", ContainerID: "c1"}}, nil
+}
+
 func TestManagerGatesOnSubscribers(t *testing.T) {
 	src := &fakeStatSrc{}
 	hub := ws.NewHub()
@@ -114,5 +118,17 @@ func TestManagerGatesOnSubscribers(t *testing.T) {
 	time.Sleep(80 * time.Millisecond)
 	if src.calls.Load() != stopped {
 		t.Fatalf("kept polling after unsubscribe: %d → %d", stopped, src.calls.Load())
+	}
+}
+
+func TestSnapshotAll(t *testing.T) {
+	mgr := NewManager(&fakeStatSrc{}, fakeStatStore{}, ws.NewHub(), nil, time.Second, nil)
+	got := mgr.SnapshotAll(context.Background())
+	if len(got) != 1 {
+		t.Fatalf("SnapshotAll returned %d samples, want 1", len(got))
+	}
+	s := got[0]
+	if s.App != "blog" || s.Service != "web" || s.CPUPercent != 5 || s.MemBytes != 10*1024*1024 {
+		t.Fatalf("sample = %+v, want {blog web 5 %d}", s, 10*1024*1024)
 	}
 }

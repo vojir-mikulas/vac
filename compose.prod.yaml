@@ -50,6 +50,10 @@ services:
       VAC_CADDY_ADMIN_URL: "http://vac-proxy:2019"
       VAC_EDGE_NETWORK: "vac-edge"
       VAC_CADDY_ACCESS_LOG: "/var/log/caddy/access.log"
+      # Bearer token gating /metrics + /debug/* (Prometheus exposition and the
+      # RAM benchmark). Empty (default) leaves both endpoints closed (404); set
+      # it to scrape VAC with your own Prometheus.
+      VAC_METRICS_TOKEN: "${VAC_METRICS_TOKEN:-}"
       # Automatic {app}.{domain} subdomains + HTTPS for the dashboard itself
       # (vac.<domain>). Empty leaves the dashboard on plain HTTP and disables
       # auto-subdomains; custom per-app domains still work. Set later without
@@ -57,6 +61,12 @@ services:
       VAC_BASE_DOMAIN: "${VAC_BASE_DOMAIN:-}"
       # Override the dashboard hostname (defaults to vac.<base domain>).
       VAC_CONTROL_DOMAIN: "${VAC_CONTROL_DOMAIN:-}"
+      # Soft heap ceiling: keeps the control plane pacing GC against the
+      # <200 MB idle target (plan 07) and, paired with the hard memory limit
+      # below, makes a memory regression OOM in testing rather than on a user's
+      # box. GOMEMLIMIT is a soft target; the limit below is the hard wall.
+      GOMEMLIMIT: "${VAC_GOMEMLIMIT:-188743680}" # 180 MiB
+      GOGC: "${VAC_GOGC:-100}"
     ports:
       - "${VAC_HOST_PORT:-3000}:3000"
     volumes:
@@ -65,6 +75,10 @@ services:
       - vac_caddy_logs:/var/log/caddy:ro
     group_add:
       - "${DOCKER_GID:-999}"
+    # Hard memory wall for the control plane (excludes vac-db). 256 MiB leaves
+    # headroom above the 180 MiB soft target so a transient spike doesn't OOM,
+    # while still catching a real regression. Tune via VAC_API_MEM_LIMIT.
+    mem_limit: ${VAC_API_MEM_LIMIT:-256m}
 
   vac-proxy:
     image: ${VAC_REGISTRY:-ghcr.io/vojir-mikulas}/vac-proxy:${VAC_VERSION:-latest}

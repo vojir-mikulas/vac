@@ -56,6 +56,11 @@ type Config struct {
 	RequestMetricsRetention time.Duration `yaml:"request_metrics_retention"`
 	ACMECA                  string        `yaml:"acme_ca"` // override for ACME staging in tests
 
+	// Track B (observability): bearer token gating /metrics and /debug/* — both
+	// leak instance topology / runtime internals, so they are default-closed.
+	// Env-only secret (VAC_METRICS_TOKEN); unset → those endpoints return 404.
+	MetricsToken string `yaml:"-"`
+
 	// PublicIP is the VPS's public address, surfaced in the dashboard (sidebar
 	// host row) and used by the per-app DNS-setup guidance so operators see the
 	// exact A-record value. Empty triggers best-effort outbound-IP detection.
@@ -260,6 +265,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("VAC_CADDY_ASK_TOKEN"); v != "" {
 		cfg.CaddyAskToken = v
+	}
+	if v := os.Getenv("VAC_METRICS_TOKEN"); v != "" {
+		cfg.MetricsToken = v
 	}
 	if v := os.Getenv("VAC_REQUEST_METRICS_RETENTION"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {

@@ -46,6 +46,24 @@ function SettingsForm({ app }: { app: App }) {
     build_kind: app.build_kind ?? 'auto',
     build_config: app.build_config ?? {},
   })
+  const [ramLimit, setRamLimit] = useState(app.mem_limit_mb != null ? String(app.mem_limit_mb) : '')
+
+  const saveRuntime = () => {
+    const trimmed = ramLimit.trim()
+    // Blank clears the limit (0 → unlimited on the backend).
+    const value = trimmed === '' ? 0 : Number(trimmed)
+    if (!Number.isInteger(value) || value < 0) {
+      toast.error('RAM limit must be a whole number of MiB (or blank for unlimited)')
+      return
+    }
+    update.mutate(
+      { mem_limit_mb: value },
+      {
+        onSuccess: () => toast.success(value === 0 ? 'RAM limit removed' : 'RAM limit updated'),
+        onError: (e) => toast.error(e.message),
+      },
+    )
+  }
 
   const saveBuild = () =>
     update.mutate(
@@ -154,6 +172,32 @@ function SettingsForm({ app }: { app: App }) {
           <BuildSourcePicker value={build} onChange={setBuild} />
           <div className="flex justify-end">
             <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveBuild}>
+              Save
+            </Button>
+          </div>
+        </Card>
+      </section>
+
+      <section>
+        <SectionHeader>Runtime</SectionHeader>
+        <Card className="gap-4 p-5">
+          <div className="grid gap-2">
+            <Label htmlFor="ram-limit">RAM limit (MiB)</Label>
+            <Input
+              id="ram-limit"
+              inputMode="numeric"
+              placeholder="Unlimited"
+              value={ramLimit}
+              onChange={(e) => setRamLimit(e.target.value)}
+              className="max-w-40 font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              Hard memory ceiling per container — VAC kills it before it can OOM the box. Leave
+              blank for unlimited. Applied on the next deploy.
+            </p>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveRuntime}>
               Save
             </Button>
           </div>

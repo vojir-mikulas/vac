@@ -28,6 +28,8 @@ export interface App {
   build_kind: BuildKind
   build_config: BuildConfig
   status: AppStatus
+  /** Per-app RAM ceiling in MiB; null = unlimited / box default (plan 06). */
+  mem_limit_mb: number | null
   created_at: string
   updated_at: string
 }
@@ -49,6 +51,8 @@ export interface UpdateAppInput {
   compose_file?: string
   build_kind?: BuildKind
   build_config?: BuildConfig
+  /** 0 clears the limit (unlimited); a positive value sets it in MiB. */
+  mem_limit_mb?: number
 }
 
 export type ServiceStatus = 'running' | 'stopped' | 'crashed' | 'building' | string
@@ -64,8 +68,19 @@ export interface Service {
   status: ServiceStatus
   restart_count: number
   last_exit_code: number | null
+  /** Times this service's container was OOM-killed (plan 06). */
+  oom_killed_count: number
   created_at: string
   updated_at: string
+}
+
+/** Box-level RAM budget for the dashboard panel (GET /api/host/budget). */
+export interface BoxBudget {
+  total_ram_mb: number
+  allocated_mb: number
+  apps_with_limit: number
+  apps_total: number
+  over_committed: boolean
 }
 
 export interface UpdateServiceInput {

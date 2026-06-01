@@ -43,6 +43,9 @@ services:
       VAC_CADDY_ADMIN_URL: "http://vac-proxy:2019"
       VAC_EDGE_NETWORK: "vac-edge"
       VAC_CADDY_ACCESS_LOG: "/var/log/caddy/access.log"
+      # Bearer token gating /metrics + /debug/* (Prometheus exposition and the
+      # RAM benchmark). Empty (default) leaves both endpoints closed (404).
+      VAC_METRICS_TOKEN: "${VAC_METRICS_TOKEN:-}"
       # Set VAC_BASE_DOMAIN in your .env to put the dashboard on HTTPS
       # (vac.<domain>) and enable automatic {app}.{domain} subdomains. Empty
       # leaves the dashboard on plain HTTP and disables auto-subdomains

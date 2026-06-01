@@ -11,7 +11,10 @@ function app(status: string): App {
     git_url: 'git@x:y.git',
     git_branch: 'main',
     compose_file: 'compose.yaml',
+    build_kind: 'auto',
+    build_config: {},
     status,
+    mem_limit_mb: null,
     created_at: '',
     updated_at: '',
   }

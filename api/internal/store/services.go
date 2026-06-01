@@ -12,30 +12,31 @@ import (
 // defined in Go (internal/deploy/status.go); the DB stores the raw string
 // with no CHECK.
 type Service struct {
-	ID           string
-	AppID        string
-	ServiceName  string
-	ContainerID  *string
-	ExposedPort  *int // host-published port (Phase 2; diagnostics only now)
-	InternalPort *int // container port — what Caddy dials over vac-edge
-	HealthPath   *string
-	Status       string
-	RestartCount int
-	LastExitCode *int
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID             string
+	AppID          string
+	ServiceName    string
+	ContainerID    *string
+	ExposedPort    *int // host-published port (Phase 2; diagnostics only now)
+	InternalPort   *int // container port — what Caddy dials over vac-edge
+	HealthPath     *string
+	Status         string
+	RestartCount   int
+	LastExitCode   *int
+	OOMKilledCount int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 const serviceColumns = `id, app_id, service_name, container_id, exposed_port,
 	internal_port, health_path, status, restart_count, last_exit_code,
-	created_at, updated_at`
+	oom_killed_count, created_at, updated_at`
 
 func scanService(row pgx.Row) (Service, error) {
 	var svc Service
 	err := row.Scan(
 		&svc.ID, &svc.AppID, &svc.ServiceName, &svc.ContainerID, &svc.ExposedPort,
 		&svc.InternalPort, &svc.HealthPath, &svc.Status, &svc.RestartCount,
-		&svc.LastExitCode, &svc.CreatedAt, &svc.UpdatedAt,
+		&svc.LastExitCode, &svc.OOMKilledCount, &svc.CreatedAt, &svc.UpdatedAt,
 	)
 	return svc, err
 }
@@ -117,6 +118,28 @@ func (s *Store) IncrementServiceRestart(ctx context.Context, appID, name string)
 		WHERE app_id = $1 AND service_name = $2
 		RETURNING restart_count
 	`, appID, name).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return n, err
+}
+
+// IncrementServiceOOM bumps oom_killed_count and records the exit code. The
+// crash-loop monitor calls this when a container death is confirmed (via docker
+// inspect) to be an OOM kill, so the UI can label it distinctly from an ordinary
+// crash. Status is left alone — the container is restart:always, so its
+// lifecycle status (running again, or crash-loop if it trips) is owned
+// elsewhere; OOM is surfaced through the count, not a status flip.
+func (s *Store) IncrementServiceOOM(ctx context.Context, appID, name string, exitCode *int) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `
+		UPDATE services
+		SET oom_killed_count = oom_killed_count + 1,
+		    last_exit_code   = COALESCE($3, last_exit_code),
+		    updated_at       = NOW()
+		WHERE app_id = $1 AND service_name = $2
+		RETURNING oom_killed_count
+	`, appID, name, exitCode).Scan(&n)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ErrNotFound
 	}

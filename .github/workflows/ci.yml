@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request: {}
+  workflow_dispatch: {}
+
+# Cancel superseded runs on the same ref to save runner minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: api/go.sum
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.14.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: api
+      - name: UI lint + format check
+        run: make lint-ui
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: api/go.sum
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.14.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Go unit tests (race)
+        run: make test-go
+      - name: UI unit tests
+        run: make test-ui
+      - name: Typecheck
+        run: make typecheck
+
+  bench-ram:
+    # Guards the headline "<200 MB idle RAM (excl. database)" claim (plan 07).
+    # Fixed-size runner so the number is comparable across PRs; ubuntu-latest is
+    # 2 vCPU / 7 GB, with Docker preinstalled.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Idle-RAM benchmark
+        run: make bench-ram
+        env:
+          WARN_MB: "180"
+          FAIL_MB: "200"
+          SETTLE_SECONDS: "90"

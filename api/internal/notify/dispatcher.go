@@ -277,6 +277,21 @@ func (d *Dispatcher) CrashLoop(appName, appID, service string, restarts int, exi
 	})
 }
 
+// OOMKilled fires the out-of-memory event. Distinct from CrashLoop: it means a
+// container hit its memory limit and was killed by the kernel, which a RAM-limit
+// bump usually fixes — so the message points at that rather than at the code.
+func (d *Dispatcher) OOMKilled(appName, appID, service string, limitMB int) {
+	msg := service + " was killed for exceeding its memory limit"
+	if limitMB > 0 {
+		msg = fmt.Sprintf("%s exceeded its %d MiB memory limit and was killed", service, limitMB)
+	}
+	d.dispatch(Event{
+		Type: EventOOMKilled, OK: false,
+		Title:   "Out of memory: " + appName + "/" + service,
+		AppName: appName, AppID: appID, Service: service, Message: msg,
+	})
+}
+
 // VACRestarted fires the control-plane-restarted event.
 func (d *Dispatcher) VACRestarted() {
 	d.dispatch(Event{
