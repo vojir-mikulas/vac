@@ -26,6 +26,8 @@ type GitClient interface {
 	LsRemote(ctx context.Context, gitURL, branch, sshKeyPath string) error
 	Clone(ctx context.Context, gitURL, dest, branch, sshKeyPath string) error
 	Pull(ctx context.Context, dest, branch, sshKeyPath string) error
+	// FetchCommit pins the working clone to a specific commit (rollback).
+	FetchCommit(ctx context.Context, dest, sha, sshKeyPath string) error
 	HeadCommit(ctx context.Context, dest string) (sha, message string, err error)
 }
 
@@ -70,6 +72,9 @@ func (realGit) Clone(ctx context.Context, u, d, b, k string) error {
 	return gitcli.Clone(ctx, u, d, b, k)
 }
 func (realGit) Pull(ctx context.Context, d, b, k string) error { return gitcli.Pull(ctx, d, b, k) }
+func (realGit) FetchCommit(ctx context.Context, d, sha, k string) error {
+	return gitcli.FetchCommit(ctx, d, sha, k)
+}
 func (realGit) HeadCommit(ctx context.Context, d string) (string, string, error) {
 	return gitcli.HeadCommit(ctx, d)
 }
@@ -168,6 +173,17 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 
 	if err := p.cloneOrPull(ctx, app, repoDir, keyPath); err != nil {
 		return err
+	}
+	// Rollback pins the clone to a prior commit. The deployment row already
+	// carries the target SHA (copied from the source at enqueue), so we fetch
+	// + checkout it here, before reading HEAD — the rest of the pipeline then
+	// builds that exact commit through the normal health-gated path.
+	if target := rollbackTargetSHA(d); target != "" {
+		short := target[:min(7, len(target))]
+		_ = p.logSystem(ctx, deploymentID, "rollback: pinning to commit "+short)
+		if err := p.Git.FetchCommit(ctx, repoDir, target, keyPath); err != nil {
+			return fmt.Errorf("rollback checkout %s: %w", short, err)
+		}
 	}
 	sha, msg, _ := p.Git.HeadCommit(ctx, repoDir)
 	if sha != "" {
@@ -441,6 +457,17 @@ func markHTTPServicesDegraded(ctx context.Context, s *store.Store, appID string)
 			_ = s.UpdateServiceStatus(ctx, appID, r.ServiceName, ServiceStatusDegraded, nil)
 		}
 	}
+}
+
+// rollbackTargetSHA returns the commit a deployment must be pinned to, or ""
+// for a normal deploy that should build HEAD. Only a rollback with a known
+// source commit pins; a rollback whose source had no recorded SHA falls back
+// to a plain HEAD deploy (better than failing the rollback outright).
+func rollbackTargetSHA(d store.Deployment) string {
+	if d.TriggeredBy == store.TriggeredRollback && d.CommitSHA != nil {
+		return *d.CommitSHA
+	}
+	return ""
 }
 
 // composeProject is the docker compose project name VAC uses for every

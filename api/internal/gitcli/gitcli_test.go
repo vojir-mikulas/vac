@@ -106,6 +106,99 @@ func TestCloneAndHeadCommit(t *testing.T) {
 	}
 }
 
+// initTwoCommitRepo builds a bare repo with two commits on `branch` and
+// returns (bareURL, firstCommitSHA). When allowSHAFetch is true the bare repo
+// permits fetching an arbitrary SHA (mirroring the reachable-SHA1 support
+// GitHub/GitLab provide); when false, FetchCommit must fall back to deepening.
+func initTwoCommitRepo(t *testing.T, branch string, allowSHAFetch bool) (bare, firstSHA string) {
+	t.Helper()
+	requireGit(t)
+
+	root := t.TempDir()
+	bare = filepath.Join(root, "remote.git")
+	work := filepath.Join(root, "work")
+
+	mustRun(t, root, "git", "init", "--bare", "-b", branch, bare)
+	if allowSHAFetch {
+		mustRun(t, bare, "git", "config", "uploadpack.allowAnySHA1InWant", "true")
+		mustRun(t, bare, "git", "config", "uploadpack.allowReachableSHA1InWant", "true")
+	}
+	mustRun(t, root, "git", "init", "-b", branch, work)
+	mustRun(t, work, "git", "config", "user.email", "test@example.com")
+	mustRun(t, work, "git", "config", "user.name", "test")
+	mustRun(t, work, "git", "remote", "add", "origin", bare)
+
+	if err := os.WriteFile(filepath.Join(work, "v.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, work, "git", "add", "v.txt")
+	mustRun(t, work, "git", "commit", "-m", "first")
+	firstSHA = mustOutput(t, work, "git", "rev-parse", "HEAD")
+
+	if err := os.WriteFile(filepath.Join(work, "v.txt"), []byte("two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, work, "git", "add", "v.txt")
+	mustRun(t, work, "git", "commit", "-m", "second")
+	mustRun(t, work, "git", "push", "origin", branch)
+	return bare, firstSHA
+}
+
+func mustOutput(t *testing.T, dir, name string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("%s %s: %v", name, strings.Join(args, " "), err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func TestFetchCommit_PinsToPriorCommit(t *testing.T) {
+	// Both the by-SHA fast path (host allows it) and the deepen fallback (host
+	// refuses by-SHA fetches) must land the shallow clone on the older commit.
+	for _, tc := range []struct {
+		name          string
+		allowSHAFetch bool
+	}{
+		{"by-sha fast path", true},
+		{"deepen fallback", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requireGit(t)
+			bare, firstSHA := initTwoCommitRepo(t, "main", tc.allowSHAFetch)
+			dest := filepath.Join(t.TempDir(), "clone")
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			// Shallow clone gets only the latest commit — the older one isn't present.
+			if err := gitcli.Clone(ctx, bare, dest, "main", ""); err != nil {
+				t.Fatalf("Clone: %v", err)
+			}
+			if sha, _, _ := gitcli.HeadCommit(ctx, dest); sha == firstSHA {
+				t.Fatal("clone unexpectedly already at the first commit")
+			}
+
+			// FetchCommit must fetch + check out the older commit even though the
+			// shallow clone didn't have it.
+			if err := gitcli.FetchCommit(ctx, dest, firstSHA, ""); err != nil {
+				t.Fatalf("FetchCommit: %v", err)
+			}
+			sha, msg, err := gitcli.HeadCommit(ctx, dest)
+			if err != nil {
+				t.Fatalf("HeadCommit: %v", err)
+			}
+			if sha != firstSHA {
+				t.Errorf("after FetchCommit HEAD = %q, want %q", sha, firstSHA)
+			}
+			if msg != "first" {
+				t.Errorf("message = %q, want 'first'", msg)
+			}
+		})
+	}
+}
+
 func TestPull(t *testing.T) {
 	requireGit(t)
 	bare := initBareRepo(t, "main")

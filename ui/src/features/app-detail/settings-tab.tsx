@@ -18,6 +18,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { SectionHeader } from '@/components/common/section-header'
+import { AutoDeploySection } from '@/features/app-detail/auto-deploy-section'
 import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
 import { BuildSourcePicker, type BuildSourceValue } from '@/features/apps/build-source'
 import { useApp, useDeleteApp, useUpdateApp } from '@/lib/api/apps'
@@ -165,6 +166,8 @@ function SettingsForm({ app }: { app: App }) {
           <DeployKeyCard appId={appId} gitUrl={app.git_url} />
         </div>
       </section>
+
+      <AutoDeploySection appId={appId} defaultBranch={app.git_branch} />
 
       <section>
         <SectionHeader>Build</SectionHeader>

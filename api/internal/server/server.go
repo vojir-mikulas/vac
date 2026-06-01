@@ -84,6 +84,15 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 
 	r.Get("/health", handler.Health(s, caddyPin))
 
+	// Inbound push-to-deploy webhook (plan 01). Unauthenticated by design — it
+	// authenticates the payload against the app's secret (HMAC / token), not a
+	// session — so it lives OUTSIDE the /api Auth+CSRF group. Body-limited like
+	// the API surface. Mounted only when the deploy worker is wired.
+	if worker != nil {
+		r.With(middleware.BodyLimit(middleware.MaxBodyBytes)).
+			Post("/webhooks/{appID}", handler.Webhook(s, box, worker))
+	}
+
 	// On-demand-TLS ask hook for Caddy. Unauthenticated by design (Caddy can't
 	// present a session); reachable only on the internal compose network.
 	r.Get("/internal/caddy/ask", handler.CaddyAsk(s, cfg.CaddyAskToken, ctrlChk))
@@ -176,7 +185,18 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Get("/{id}/deployments", handler.ListDeployments(s))
 					r.Get("/{id}/deployments/{did}", handler.GetDeployment(s))
 					r.Get("/{id}/deployments/{did}/logs", handler.GetDeploymentLogs(s))
+					r.Post("/{id}/deployments/{did}/rollback", handler.RollbackDeployment(s, worker))
 				}
+
+				// Push-to-deploy config (plan 01): trigger rules + the inbound
+				// webhook URL/secret. These only read/write config, so unlike the
+				// inbound endpoint they don't depend on the deploy worker.
+				r.Get("/{id}/triggers", handler.ListDeployTriggers(s))
+				r.Post("/{id}/triggers", handler.CreateDeployTrigger(s))
+				r.Delete("/{id}/triggers/{triggerId}", handler.DeleteDeployTrigger(s))
+				r.Get("/{id}/webhook", handler.GetAppWebhookConfig(s))
+				r.Post("/{id}/webhook/regenerate", handler.RegenerateAppWebhookSecret(s, box))
+				r.Delete("/{id}/webhook", handler.DeleteAppWebhookSecret(s))
 
 				r.Get("/{id}/env", handler.ListAppEnv(s, box))
 				r.Put("/{id}/env", handler.ReplaceAppEnv(s, box))

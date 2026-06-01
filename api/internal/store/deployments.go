@@ -68,6 +68,42 @@ func (s *Store) CreateDeployment(ctx context.Context, appID, triggeredBy string,
 	return d, err
 }
 
+// ErrRollbackSourceInvalid is returned when a rollback names a source
+// deployment that isn't a successful deploy of the same app.
+var ErrRollbackSourceInvalid = errors.New("store: rollback source is not a successful deployment of this app")
+
+// CreateRollbackDeployment enqueues a rollback: a new deployment that rebuilds
+// the commit of a prior successful deployment (`sourceID`). History is
+// append-only — the source row is never mutated; the new row points back at it
+// via rolled_back_from and pre-seeds the source's commit SHA/message so the
+// pipeline can pin the build to it (see deploy.rollbackTargetSHA).
+//
+// Returns ErrNotFound if the source doesn't exist and ErrRollbackSourceInvalid
+// if it belongs to another app or didn't finish `running`.
+func (s *Store) CreateRollbackDeployment(ctx context.Context, appID, sourceID string) (Deployment, error) {
+	src, err := s.GetDeployment(ctx, sourceID)
+	if err != nil {
+		return Deployment{}, err
+	}
+	// Status literal mirrors deploy.DeploymentStatusRunning — store can't import
+	// deploy (cycle); the rest of this file uses the same literals in SQL. A
+	// source with no recorded commit can't be pinned (the pipeline ignores a
+	// HeadCommit error, so a `running` row can still have a NULL commit_sha);
+	// without the SHA a "rollback" would silently rebuild branch HEAD, so reject
+	// it rather than mislabel a HEAD deploy as a rollback.
+	if src.AppID != appID || src.Status != "running" || src.CommitSHA == nil {
+		return Deployment{}, ErrRollbackSourceInvalid
+	}
+	var d Deployment
+	err = scanDeployment(s.pool.QueryRow(ctx, `
+		INSERT INTO deployments (app_id, triggered_by, rolled_back_from, commit_sha, commit_message)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING `+deploymentColumns,
+		appID, TriggeredRollback, sourceID, src.CommitSHA, src.CommitMessage,
+	), &d)
+	return d, err
+}
+
 func (s *Store) GetDeployment(ctx context.Context, id string) (Deployment, error) {
 	var d Deployment
 	err := scanDeployment(s.pool.QueryRow(ctx,
@@ -97,6 +133,22 @@ func (s *Store) ListDeploymentsForApp(ctx context.Context, appID string) ([]Depl
 		out = append(out, d)
 	}
 	return out, rows.Err()
+}
+
+// HasActiveDeployment reports whether the app already has a deployment in a
+// non-terminal state. Push-to-deploy uses it to coalesce a burst of rapid
+// pushes: while one build is in flight, further matching pushes don't stack new
+// deployments behind it. The status set mirrors deploy's non-terminal enum.
+func (s *Store) HasActiveDeployment(ctx context.Context, appID string) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM deployments
+			WHERE app_id = $1
+			  AND status IN ('queued', 'cloning', 'building', 'deploying', 'health-checking')
+		)
+	`, appID).Scan(&exists)
+	return exists, err
 }
 
 // UpdateDeploymentStatus is called by the pipeline at each step transition.

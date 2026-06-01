@@ -68,6 +68,29 @@ func Pull(ctx context.Context, dest, branch, sshKeyPath string) error {
 	return nil
 }
 
+// FetchCommit pins an existing working clone to a specific commit. The deploy
+// clone is shallow (--depth=1 --single-branch), so an older SHA — e.g. the one
+// a rollback targets — usually isn't present yet, so we fetch it before
+// checking it out detached.
+//
+// Fast path: fetch just the target object — works on hosts that allow
+// reachable-SHA1 wants (GitHub/GitLab). Fallback for hosts that refuse a by-SHA
+// fetch: deepen the shallow clone to full history. A rollback target is always
+// an ancestor of the tracked branch, so deepening makes it available; the
+// deepen is a harmless no-op on an already-complete repo.
+func FetchCommit(ctx context.Context, dest, sha, sshKeyPath string) error {
+	env := buildEnv(sshKeyPath)
+	if _, err := run(ctx, "", env, "-C", dest, "fetch", "--depth=1", "origin", sha); err != nil {
+		if out, err := run(ctx, "", env, "-C", dest, "fetch", "--depth=2147483647", "origin"); err != nil {
+			return classify(err, out, false)
+		}
+	}
+	if out, err := run(ctx, "", env, "-C", dest, "checkout", "--detach", sha); err != nil {
+		return classify(err, out, false)
+	}
+	return nil
+}
+
 // HeadCommit returns the short SHA + first line of the commit message of
 // HEAD inside `dest`. Used by the pipeline to populate deployments.commit_*.
 func HeadCommit(ctx context.Context, dest string) (sha, message string, err error) {
