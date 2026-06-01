@@ -1,167 +1,204 @@
-# 09 — Domains lifecycle overhaul
+# 09 — Vercel-like domain management
 
-**Goal:** Fix the rough edges that plan 06 (now shipped) left behind. Make domain
-management feel coherent: changing the base domain should never leave stale/half-wrong
-domains around, every domain should have one honest status, and the operator should be
-able to see, understand, and remove domains from the UI.
+**Goal:** Make domains a coherent, first-class thing the operator *manages* — add a
+domain, see exactly what DNS to set, watch it verify itself, assign it to an app, and
+never be left with stale junk. Today domain management is functional but clunky: domains
+only exist buried under an app/service, base-domain changes leave orphans, status is a
+guess, and you can't even delete from the UI. This plan brings it up to the Vercel bar.
 
-Plan 06 delivered the *surface* (Domains tab, base-domain control, DNS guidance,
-`/dns-check`). This plan fixes the *lifecycle* underneath it.
+Builds on plan **06** (which shipped the Domains tab, base-domain control, DNS guidance,
+`/dns-check`). This is the lifecycle + UX overhaul on top of it.
 
-## Current state (the pain)
+## What "Vercel-like" means here (and what it deliberately is *not*)
 
-- **Auto-subdomains are persisted rows, created lazily at deploy.**
-  `proxy.AutoSubdomain` computes `{slug}.{base}` (or `{service}.{slug}.{base}`),
-  but the result is written into the `domains` table by `AssignAutoDomains`
-  (`proxy/manager.go:380`) only during a deploy. Nothing recomputes them otherwise.
-- **Changing the base domain does no cleanup.** `PUT /api/instance/base-domain`
-  (`handler/instance.go:100`) persists the value and calls `pm.SetBaseDomain`, then
-  returns. Existing `app.old-base` rows stay in the DB *and* in Caddy. New
-  `app.new-base` rows only appear when each app is next deployed → both coexist,
-  both route to the same upstream, and the table grows on every base-domain change.
-  This is the "hanging old domains" the operator sees.
-- **`cert_status` is advisory-only.** It defaults to `pending` (`store/domains.go:15`)
-  and is set to `error` on a Caddy route-push failure (`manager.go:243`). Nothing
-  reliably flips it to `active`. "pending" is overloaded: DNS-not-pointed, issuing,
-  or just-never-updated all look identical.
-- **`/dns-check` is one-shot and stateless** (`handler/instance.go:184`) — it reports
-  to the client and persists nothing.
-- **No delete UI.** `useDeleteDomain()` exists (`ui/src/lib/api/domains.ts`) but is
-  imported nowhere. Domains can't be removed from the dashboard.
-- **Auto vs custom is invisible** in the UI, so stale auto rows are indistinguishable
-  from intentional custom domains.
+Vercel's domain UX, mapped onto a single-VPS, single-operator box:
 
-## The core decision: derive auto-subdomains, don't store them
+**We adopt:**
+- Domains are added and managed in one place, then **assigned** to an app/service.
+- Each domain shows a clear **DNS configuration check** — the exact record to create
+  (apex → `A`, subdomain → `CNAME`/`A`), the real VPS IP, and **Valid / Invalid /
+  Pending** status that updates itself (auto-poll), not a one-shot button.
+- **Apex + www** handled as a pair, with a **primary domain** and the other redirecting
+  to it (e.g. `www.example.com` → `example.com`).
+- **Reassign** a domain between apps/services without a destructive delete-add.
+- **Wildcard** domains for auto-subdomains, surfaced as a guided step.
+
+**We deliberately skip** (single-box reality — call these out so nobody "adds them back"):
+- **Nameserver delegation.** We only do A/CNAME records; VAC is not a DNS provider.
+- **TXT ownership verification.** On a single box, "you control the DNS *and* you added
+  it in VAC" is sufficient proof, and cert issuance is already gated by `CaddyAsk`
+  (on-demand TLS). No TXT challenge needed.
+- **Multi-team / domain transfer / marketplace.** One operator.
+
+Document the adopted/skipped split in `docs/deviations.md`.
+
+---
+
+## Foundation — fix the lifecycle (must land first)
+
+These are prerequisites; the Vercel-like UX sits on top of a model that can't produce
+orphans and tells the truth about status.
+
+### F1 — Derive auto-subdomains, don't store them
 
 **Auto-subdomains become a pure function of `(app slug, app's HTTP services, current
-base domain)`, computed at route-reconcile time — not rows in `domains`.**
+base domain)`, computed at reconcile time — not rows in `domains`.**
 
 - The `domains` table holds **custom domains only**.
-- At reconcile / sync, the proxy manager enumerates each app's HTTP services and, if a
-  base domain is set, generates the auto host(s) on the fly and emits Caddy routes for
-  them (route IDs derived from app/service rather than a domain UUID).
-- `CaddyAsk` (`handler/caddy_ask.go`) accepts a hostname if it is a known custom domain
+- At reconcile/sync, the proxy manager enumerates each app's HTTP services and, if a base
+  domain is set, generates the auto host(s) (`proxy.AutoSubdomain`) and emits Caddy
+  routes for them, with route IDs derived from app/service rather than a domain UUID
+  (today `routeID` is `vac-route-{domain.ID}`, `proxy/network.go:16` — add a parallel
+  `vac-auto-{appID}-{service}` scheme).
+- `CaddyAsk` (`handler/caddy_ask.go`) accepts a hostname if it's a known custom domain
   **or** matches a currently-derived auto host.
 
-**Why this is the right call:**
-- Changing the base domain becomes a no-op beyond "reconcile" — the full auto route set
-  regenerates from the new base and the old routes are pruned by the existing
-  `pruneOrphans()` (`manager.go:249`). **Orphans become structurally impossible.** No
-  migration, no cleanup job, no "stale" badge, no accumulation.
-- Existing apps pick up the new base domain immediately on reconcile — no redeploy
-  needed (closes the "existing apps keep old domains until redeploy" gap).
-- Removes the lazy `AssignAutoDomains`-at-deploy coupling.
+**Why:** changing the base domain becomes a no-op beyond "reconcile" — the auto route set
+regenerates from the new base and old routes are pruned by the existing `pruneOrphans()`
+(`proxy/manager.go:249`). **Orphans become structurally impossible**, and existing apps
+pick up the new base immediately, no redeploy. Removes the lazy `AssignAutoDomains`-at-
+deploy coupling (`proxy/manager.go:380`, `deploy/pipeline.go:300`).
 
-**Trade-off / what we give up:**
-- Per-auto-domain `cert_status` no longer has a row to live on. Auto domains sit under
-  the operator's own wildcard, which they control, so their cert state is lower-stakes —
-  track it in-memory / recompute rather than persist (see Part B). Custom-domain cert
-  status keeps its column.
-- One-time migration: drop existing `type='auto'` rows (they're now derived) and prune
-  their Caddy routes on first boot. `type='custom'` rows are untouched. The `type`
-  column / CHECK can stay for back-compat or be dropped — decide during impl.
-- Document in `docs/deviations.md` (auto-subdomains are derived, not persisted).
+**Trade-off:** per-auto cert status loses its row — track it in-memory/recompute (auto
+hosts sit under the operator's own wildcard, lower stakes). One-time migration: drop
+existing `type='auto'` rows and prune their routes on first boot; `type='custom'` rows
+untouched. Document in `docs/deviations.md`.
 
-> **Open decision:** if persisting auto rows turns out to be load-bearing for something
-> not yet found (e.g. a metrics join on `domains.hostname`), the fallback is to *keep*
-> the rows but make base-domain change transactionally reconcile them: delete all
-> `type='auto'` rows, re-run `AssignAutoDomains` for every app, then `Reconcile()`. This
-> fixes the orphan problem too but keeps the lazy-row complexity. Prefer "derive" unless
-> a join forces "reconcile rows."
+> **Open decision:** if a join on `domains.hostname` turns out to need auto rows present,
+> fallback is to *keep* the rows but transactionally reconcile on base-domain change
+> (delete all `type='auto'`, re-run `AssignAutoDomains` per app, `Reconcile()`). Fixes
+> orphans too, keeps the lazy-row complexity. Prefer "derive." (Verify before committing.)
 
-## Part A — Base-domain change flow
+### F2 — Base-domain change flow
 
-- On `PUT /api/instance/base-domain`: after persisting + `SetBaseDomain`, trigger a full
-  `Reconcile()` synchronously (or enqueue and report status) so routes reflect the new
-  base immediately.
-- **UI confirmation before save.** The base-domain control currently saves silently.
-  Add a confirm step that shows the consequence concretely: "N apps will move from
-  `*.old` to `*.new`. Old URLs will stop working. Continue?" Compute the preview from
-  the app list + current/next base domain.
-- **Clearing the base domain** (disabling auto-subdomains) should warn that every app's
-  auto URL will stop resolving, and list which apps that affects.
-- **Suggest the wildcard DNS record.** Auto-subdomains only resolve if the operator
-  points `*.{base}` at this VPS, so the base-domain control must guide that explicitly,
-  not bury it. When a base domain is set (or being set), show the exact record to create
-  alongside the apex/host record:
-  - `*.{base}` → `A` → **the VPS public IP** (or `CNAME` → the base host), with the real
-    IP from the host-IP source (plan **01.4**) so it's copy-pasteable, not a placeholder.
-  - Make it an actionable suggestion: "Want every app to get an automatic subdomain? Add
-    a wildcard `*.{base}` record pointing here." — with a "Check DNS" affordance (reuse
-    `/dns-check`) that confirms the wildcard resolves to this VPS, e.g. by probing a
-    throwaway label like `_vac-wildcard-check.{base}`.
-  - The base-domain UI already mentions a wildcard in passing
-    (`settings/domains-section.tsx`); this elevates it to a first-class, verifiable step
-    so the operator isn't surprised when `whoami.{base}` doesn't resolve.
+- On `PUT /api/instance/base-domain` (`handler/instance.go:100`): after persist +
+  `SetBaseDomain`, trigger `Reconcile()` so routes reflect the new base immediately.
+- **UI confirm before save:** "N apps will move from `*.old` to `*.new`. Old URLs stop
+  working. Continue?" — preview computed from the app list.
+- **Clearing the base domain** warns and lists the apps whose auto URL will stop resolving.
+- **Suggest the wildcard record.** Auto-subdomains only resolve if `*.{base}` points here,
+  so the base-domain control must guide it, not bury it: show `*.{base}` → `A` → real VPS
+  IP (or `CNAME` → base host), copy-pasteable (IP from plan **01.4**). Make it actionable:
+  "Want every app to get an automatic subdomain? Add a wildcard `*.{base}` record pointing
+  here," with a Check-DNS affordance that probes a throwaway label (e.g.
+  `_vac-wildcard-check.{base}`) since a bare `*` can't be resolved.
 
-## Part B — One honest domain status
+### F3 — One honest status (the DNS-detection engine)
 
-Replace the overloaded `cert_status` surface with a single derived **domain status** the
-UI can show without guessing:
+This is the core of the Vercel feel. Replace the overloaded advisory `cert_status`
+(`store/domains.go`, set to `error` only on route-push failure, never reliably `active`)
+with a single **derived domain status** the UI shows without the operator guessing:
 
-- `awaiting_dns` — hostname does not resolve to this VPS yet.
-- `issuing` — DNS points here, cert not yet observed active.
-- `active` — cert observed valid and serving.
-- `error` — last route push failed, or cert issuance failed.
+| Status | Meaning |
+|--------|---------|
+| `awaiting_dns` | hostname does not resolve to this VPS yet |
+| `misconfigured` | resolves, but to a different IP / wrong record type |
+| `issuing` | points here, cert not yet observed active |
+| `active` | DNS valid **and** cert observed valid + serving |
+| `error` | route push failed or cert issuance failed (show the reason) |
 
-Source it from two signals VAC already has access to:
-- **DNS:** reuse the `/dns-check` resolver logic (`handler/instance.go:184`) but run it
-  in a lightweight background reconciler for known domains and cache the result, instead
-  of only on button click.
-- **Cert:** the cert-expiry checker already dials the proxy SNI to read leaf cert
-  metadata (`migration 00033`, `store/domains.go` cert fields). Reuse that probe to mark
-  `active` and feed `cert_not_after`.
+The detection engine knows what *should* exist and checks it:
+- **Apex domain** (`example.com`) → must be an `A` record to the VPS IP (CNAME-at-apex is
+  invalid) — detect and say so explicitly.
+- **Subdomain** (`app.example.com`) → `CNAME` to the base host **or** `A` to the VPS IP.
+- Run it as a **lightweight background reconciler** over known custom domains + derived
+  auto hosts (bounded concurrency, short cache), reusing the resolver from `/dns-check`
+  (`handler/instance.go:184`) — so status updates itself instead of only on button click.
+- **Cert signal:** reuse the cert-expiry probe (dials proxy SNI to read leaf cert
+  metadata, migration **00033**) to flip `issuing → active` and populate `cert_not_after`.
+- Surface the **actual error text** for `error`/`misconfigured` (today the red badge has
+  no detail) so the operator knows whether it's DNS or issuance.
 
-Keep it cheap: a periodic reconcile pass (custom domains from the table + derived auto
-hosts), bounded concurrency, short cache. No per-request probing.
+---
 
-Surface the actual error text for `error` status (today the red "SSL error" badge has no
-detail) so the operator knows whether it's DNS or issuance.
+## Phase 1 — The Domains screen (add, verify, assign)
 
-## Part C — UI: see, understand, remove
+The Settings → Domains tab becomes the Vercel-style hub.
 
-- **Wire up delete.** Use the existing `useDeleteDomain()` in both the Settings →
-  Domains list and the app-detail domains panel. Confirm on delete. (Custom domains
-  only — auto hosts are managed/derived and shown read-only.)
-- **Distinguish auto vs custom.** Tag derived auto hosts as "managed" / read-only;
-  custom domains get the delete affordance. Removes the "is this junk or intentional?"
-  ambiguity.
-- **Status → action.** Map the Part B status to a clear badge + next step:
-  `awaiting_dns` → show the DNS record to create (Part C of plan 06 already has the
-  guidance component) and a re-check button; `issuing` → "DNS looks good, cert issues on
-  first request (~60s)"; `error` → show the reason.
-- **App-detail parity.** The overview domains panel (`app-detail/overview-tab.tsx`) is
-  read-only today; let custom domains be added/removed there too, or link clearly to the
-  settings tab.
+- **Add a domain** anywhere (not gated behind picking an app first): enter hostname,
+  validated via `proxy.NormalizeHostname`. It lands in a list immediately with status
+  `awaiting_dns` and an inline **configuration panel**.
+- **Configuration panel per domain** (the Vercel "Valid/Invalid Configuration" card):
+  - The exact record to create — Type / Name / Value — with the **real VPS IP**
+    (host-IP source, plan **01.4**), copy-to-clipboard, apex-vs-subdomain aware (F3).
+  - Live status badge from F3 that auto-refreshes (poll while not `active`), plus a manual
+    "Refresh" for impatience.
+  - On `active`: green "Valid Configuration ✓" and the record table collapses.
+  - On `misconfigured`: "Resolves to X — expected this server," with the right record shown.
+- **Assign to app + service:** a domain row carries its `app_id` + `service_name`
+  (existing composite FK). The add flow lets you pick the target; the row shows
+  `{app} · {service}`. A domain may be added *unassigned* and assigned later (decide:
+  nullable assignment vs. assign-on-add; nullable is more Vercel-like).
+- **List shows everything** across apps: hostname, app/service, status, type
+  (custom vs. managed/auto), actions. Auto hosts are shown **read-only/managed** — you
+  change them by changing the slug or base domain, never by hand.
+
+## Phase 2 — Editing & reassignment
+
+No update path exists today (`store/domains.go` is create/list/get/delete only) — add one.
+
+- **`UpdateDomain`** store method + **`PATCH /api/apps/{id}/domains/{domainId}`** handler
+  to change the **service binding** (re-point `api.example.com` from `web` → `api`) and/or
+  rename the hostname, then re-sync — an **in-place route swap**, not delete-add, so there's
+  no route gap or needless cert re-issue.
+- **Move between apps:** reassigning `app_id` (guard the composite FK; the target
+  app/service must exist). Surface as "Move domain to another app."
+- **Wire up delete** (the existing `useDeleteDomain()` hook is imported nowhere): delete
+  from both the Domains tab and the app-detail panel, with confirm. Custom only — auto
+  hosts aren't deletable.
+- **App-detail parity:** `app-detail/overview-tab.tsx` domains panel is read-only today;
+  let custom domains be added/removed/reassigned there too (or link clearly to the hub).
+
+## Phase 3 — Apex + www and redirects (the polish)
+
+Vercel's "add both, pick a primary, redirect the other." Requires new plumbing — the
+current route is **Host-matcher + reverse_proxy only** and the `caddy.Handler` struct
+(`caddy/config.go`) has **no fields for a redirect** (only `Handler`, `Upstreams`,
+`HealthChecks`).
+
+- **Model:** add a nullable `redirect_to` (hostname) to `domains`. If set, the domain
+  emits a **redirect route** instead of a proxy route. A "primary" domain is simply the
+  one others redirect to.
+- **Caddy types:** extend `caddy.Handler` with `static_response` fields — `StatusCode int`,
+  `Headers map[string][]string` (for `Location`) — all `omitempty`. Add a `redirectRoute`
+  builder alongside `routeFor` (`proxy/manager.go:154`) that emits a 308 to the primary.
+- **UX:** when adding `example.com`, offer to also add `www.example.com` (and vice versa),
+  pick the primary, auto-create the redirect for the other. Show both in the list with a
+  "Primary" badge and "Redirects to …" subtext.
+
+Phase 3 is optional / can land later — Phases F + 1 + 2 already deliver the bulk of the
+"add domains in settings, check DNS properly, manage them" experience.
+
+---
 
 ## Acceptance criteria
 
-- Changing the base domain updates every app's auto URL immediately, with **zero** stale
-  rows or stale Caddy routes left behind, and the operator confirmed the change knowing
-  which apps move.
-- Clearing the base domain warns and lists affected apps before disabling auto-subdomains.
-- Setting a base domain surfaces the exact wildcard record (`*.{base}` → real VPS IP) as
-  a suggested, "Check DNS"-verifiable step so auto-subdomains actually resolve.
-- Every domain shows exactly one status (`awaiting_dns | issuing | active | error`) that
-  reflects reality without the operator clicking "Check DNS", and `error` shows why.
-- Custom domains can be deleted from the UI (with confirm); auto hosts are shown as
-  managed/read-only and never need manual cleanup.
+- Operator can add a domain in Settings, see the exact DNS record (real VPS IP, apex-vs-
+  subdomain correct), and watch it flip to **Valid** on its own once DNS points here — no
+  manual polling required, and `misconfigured`/`error` explain why.
+- Changing the base domain updates every app's auto URL immediately with **zero** stale
+  rows/routes, after a confirm that names the affected apps; setting a base domain surfaces
+  a verifiable wildcard suggestion.
+- Custom domains can be **added, reassigned (service or app), renamed, and deleted** from
+  the UI; auto hosts are shown managed/read-only.
+- (Phase 3) Apex + www can both be added with one chosen primary and the other redirecting.
 
 ## Verification
 
-- Go test: base-domain change reconciles routes and leaves no orphan routes (mock Caddy
-  + store); derived auto-host generation matches old `AutoSubdomain` output;
-  `CaddyAsk` accepts derived auto hosts.
-- Integration: set base domain A, deploy app, set base domain B → app reachable only on
-  B, A's route gone from Caddy, no leftover rows.
+- Go: derived auto-host generation matches old `AutoSubdomain`; base-domain change leaves
+  no orphan routes (mock Caddy + store); `CaddyAsk` accepts derived auto hosts; DNS-detection
+  classifies apex-A vs subdomain-CNAME vs wrong-IP correctly (mock resolver); `UpdateDomain`
+  reassign swaps the route in place; (P3) redirect route emits a 308 to primary.
+- Integration: set base A → deploy app → set base B → reachable only on B, A's route gone,
+  no leftover rows.
 - `make test`, `make typecheck`, `make lint`.
-- Manual: set base domain, observe existing app's URL flips without redeploy; add custom
-  domain not yet pointed → `awaiting_dns` + guidance; point it → flips to `active`;
-  delete it → gone from list and Caddy.
+- Manual: add custom domain not pointed → `awaiting_dns` + record card; point it → auto-flips
+  to Valid + cert active; reassign service → no downtime; delete → gone from list and Caddy.
 
-## Cross-refs
+## Cross-refs / non-goals
 
-- Builds on plan **06** (domains tab, DNS guidance, `/dns-check`, base-domain control).
-- Orphan-route pruning: `proxy/manager.go` `pruneOrphans()`. On-demand TLS gate:
-  `handler/caddy_ask.go`. Cert-expiry probe: migration **00033**.
-- Architecture invariants (Caddy owns health/routing, vac-api off `vac-edge`): `CLAUDE.md`.
+- Builds on plan **06**; host-IP source plan **01.4**; settings tab shell plan **05**.
+- Orphan pruning `proxy/manager.go:249`; route build `proxy/manager.go:154`; on-demand TLS
+  gate `handler/caddy_ask.go`; cert probe migration **00033**; architecture invariants
+  (Caddy owns routing/health, vac-api off `vac-edge`) `CLAUDE.md`.
+- **Non-goals:** nameserver delegation, TXT ownership verification, multi-team/transfer.
