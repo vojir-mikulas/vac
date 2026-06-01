@@ -95,6 +95,7 @@ export function AppsDashboard() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Filter apps…"
+                aria-label="Filter apps"
                 className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
               />
             </div>
@@ -309,7 +310,7 @@ function BudgetRow({
         <span className="text-muted-foreground">{label}</span>
         <span className="font-mono tabular-nums">{display}</span>
       </div>
-      <Meter pct={pct} className="h-1" tone="brand" />
+      <Meter pct={pct} className="h-1" tone="brand" label={label} />
     </div>
   )
 }

@@ -51,6 +51,9 @@ export function EnvTab({ appId }: { appId: string }) {
   const [deletedKeys, setDeletedKeys] = useState<Set<string>>(new Set())
   const [restartPending, setRestartPending] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  // Surfaced both as a toast (transient) and in an inline role="alert" region so
+  // screen-reader users hear validation failures, not just sighted ones.
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // Seed local editor state from the server list once per fetch, using the
   // sanctioned "adjust state when a prop changes" pattern (tracking the source
@@ -171,14 +174,19 @@ export function EnvTab({ appId }: { appId: string }) {
   }
 
   const save = async () => {
+    setSaveError(null)
     const keys = list.map((r) => r.key.trim())
     const bad = keys.filter((k) => !isValidEnvKey(k))
     if (bad.length) {
-      toast.error(`Invalid keys: ${bad.join(', ')}`)
+      const msg = `Invalid keys: ${bad.join(', ')}`
+      setSaveError(msg)
+      toast.error(msg)
       return
     }
     if (new Set(keys).size !== keys.length) {
-      toast.error('Duplicate keys are not allowed')
+      const msg = 'Duplicate keys are not allowed'
+      setSaveError(msg)
+      toast.error(msg)
       return
     }
     // Full-replace PUT needs plaintext for every row; fetch any sensitive value
@@ -267,6 +275,7 @@ export function EnvTab({ appId }: { appId: string }) {
                 <EnvRow
                   key={row.uid}
                   row={row}
+                  index={i + 1}
                   divider={i > 0}
                   onKey={(key) => patch(row.uid, { key, dirty: true })}
                   onValue={(value) => patch(row.uid, { value, revealed: true, dirty: true })}
@@ -278,6 +287,12 @@ export function EnvTab({ appId }: { appId: string }) {
               ))
             )}
           </Card>
+
+          {saveError ? (
+            <p role="alert" className="mt-3 text-xs text-err-foreground">
+              {saveError}
+            </p>
+          ) : null}
 
           <div className="mt-4 flex items-center justify-between">
             <span className="text-2xs text-muted-foreground">
@@ -316,6 +331,7 @@ export function EnvTab({ appId }: { appId: string }) {
 
 function EnvRow({
   row,
+  index,
   divider,
   onKey,
   onValue,
@@ -325,6 +341,7 @@ function EnvRow({
   onRemove,
 }: {
   row: Row
+  index: number
   divider: boolean
   onKey: (key: string) => void
   onValue: (value: string) => void
@@ -334,6 +351,9 @@ function EnvRow({
   onRemove: () => void
 }) {
   const masked = row.sensitive && !row.revealed
+  // Inputs are placeholder-only by design (a per-row visible label would bloat
+  // the grid), so each carries an aria-label naming the field and its row.
+  const named = row.key || `row ${index}`
   return (
     <div
       className={`grid grid-cols-[minmax(0,200px)_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 ${
@@ -344,6 +364,7 @@ function EnvRow({
         value={row.key}
         onChange={(e) => onKey(e.target.value)}
         placeholder="KEY"
+        aria-label={`Variable name, row ${index}`}
         spellCheck={false}
         className="h-8 font-mono text-xs"
       />
@@ -352,25 +373,30 @@ function EnvRow({
         type={masked ? 'password' : 'text'}
         onChange={(e) => onValue(e.target.value)}
         placeholder={masked ? '••••••••••••' : 'value'}
+        aria-label={`Value for ${named}`}
         spellCheck={false}
         className="h-8 font-mono text-xs"
       />
       <div className="flex items-center gap-1 text-muted-foreground">
         {row.sensitive ? (
-          <IconButton title={row.revealed ? 'Hide' : 'Reveal'} onClick={onReveal}>
+          <IconButton
+            label={`${row.revealed ? 'Hide' : 'Reveal'} value for ${named}`}
+            pressed={row.revealed}
+            onClick={onReveal}
+          >
             {row.revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
           </IconButton>
         ) : null}
         <IconButton
-          title={row.sensitive ? 'Mark plaintext' : 'Mark sensitive'}
+          label={row.sensitive ? `Mark ${named} plaintext` : `Mark ${named} sensitive`}
           onClick={onToggleSensitive}
         >
           {row.sensitive ? <Lock className="size-3.5" /> : <LockOpen className="size-3.5" />}
         </IconButton>
-        <IconButton title="Copy value" onClick={onCopy}>
+        <IconButton label={`Copy value for ${named}`} onClick={onCopy}>
           <Copy className="size-3.5" />
         </IconButton>
-        <IconButton title="Delete" onClick={onRemove}>
+        <IconButton label={`Delete ${named}`} onClick={onRemove}>
           <Trash2 className="size-3.5" />
         </IconButton>
       </div>
@@ -379,18 +405,22 @@ function EnvRow({
 }
 
 function IconButton({
-  title,
+  label,
+  pressed,
   onClick,
   children,
 }: {
-  title: string
+  label: string
+  pressed?: boolean
   onClick: () => void
   children: React.ReactNode
 }) {
   return (
     <button
       type="button"
-      title={title}
+      title={label}
+      aria-label={label}
+      aria-pressed={pressed}
       onClick={onClick}
       className="grid size-7 place-items-center rounded-md transition-colors hover:bg-muted hover:text-foreground"
     >

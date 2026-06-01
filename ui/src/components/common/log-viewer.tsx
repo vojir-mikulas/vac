@@ -29,12 +29,15 @@ export function LogViewer({
   showService = true,
   className,
   emptyLabel = 'Waiting for logs…',
+  label = 'Logs',
 }: {
   lines: LogLine[]
   autoScroll?: boolean
   showService?: boolean
   className?: string
   emptyLabel?: string
+  // Accessible name for the live region, e.g. "Deployment logs" / "Runtime logs".
+  label?: string
 }) {
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -78,6 +81,8 @@ export function LogViewer({
   if (lines.length === 0) {
     return (
       <div
+        role="log"
+        aria-label={label}
         className={cn(
           'grid min-h-64 place-items-center rounded-xl border bg-console font-mono text-xs text-console-muted',
           className,
@@ -90,11 +95,21 @@ export function LogViewer({
 
   return (
     <div className="relative">
+      {/* role="log" + aria-live announces newly arriving tail lines politely.
+          Note: the list is virtualized, so only on-screen rows are in the DOM —
+          screen readers can't read scrolled-off history here. That's an accepted
+          trade-off for the live tail; the "read everything" path is the log
+          export in log-panel.tsx. tabIndex={0} keeps the custom scroll region
+          keyboard-operable (arrow / PageDown) without a mouse. */}
       <div
         ref={parentRef}
         onScroll={recomputePinned}
+        role="log"
+        aria-live="polite"
+        aria-label={label}
+        tabIndex={0}
         className={cn(
-          'h-112 overflow-auto rounded-xl border bg-console p-3 font-mono text-xs leading-5',
+          'h-112 overflow-auto rounded-xl border bg-console p-3 font-mono text-xs leading-5 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
           className,
         )}
       >
@@ -129,6 +144,7 @@ export function LogViewer({
         <button
           type="button"
           onClick={jumpToLatest}
+          aria-label="Jump to latest log line"
           className="absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-surface-2 px-3 py-1 text-2xs font-medium shadow-sm hover:bg-surface-2/70"
         >
           <ArrowDown className="size-3" />

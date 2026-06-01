@@ -35,6 +35,60 @@ prettier (`make lint`) — don't restate it; this covers structure and patterns.
 - **UI kit** is the shadcn/Radix-based components in `components/` + Tailwind 4. Reuse them
   before adding new primitives.
 
+## Accessibility (a11y) — build it in by default
+
+`eslint-plugin-jsx-a11y` runs in `make lint` and an axe smoke test
+(`ui/src/test/a11y.test.tsx`) runs in `make test` — both fail loudly on gross
+regressions (unlabeled controls, `<div onClick>`, duplicate ids, heading skips).
+They're a tripwire, not full coverage. The checklist keeps the bar:
+
+1. **Use the primitive.** Reach for the Radix-backed component in `components/ui/`
+   (dialog, dropdown, popover, tooltip, tabs, select, switch) before hand-rolling —
+   they bring focus trapping, `Escape`, and ARIA for free.
+2. **Real elements for real actions.** Clickable → `<button type="button">`;
+   navigation → `<a>`/`<Link>`. Never `<div onClick>`.
+3. **Every interactive thing has an accessible name.** Icon-only button →
+   `aria-label` *or* an `sr-only` span. Decorative icon/image → `aria-hidden` + `alt=""`.
+4. **Every input has a label.** Associate with `<Label htmlFor>` (or `aria-label` /
+   an `sr-only` label). Placeholders are **not** labels. Required → `required`. Error →
+   set `aria-invalid` and `aria-describedby={errorId}` (see the field pattern below).
+5. **State is never color-only.** Status, validity, thresholds, active tabs must also be
+   conveyed by text, icon, or an ARIA attribute (`aria-current`, `aria-pressed`,
+   `aria-invalid`, `role="status"`). E.g. `Meter` carries the over-threshold "high"
+   state in `aria-valuetext`.
+6. **Keyboard-operable, in order.** Tab reaches every control sensibly; nothing is
+   mouse-only. Custom scroll regions get `tabIndex={0}`. Never use a positive `tabIndex`.
+7. **Visible focus.** Use the shared `focus-visible:ring-*` pattern; don't strip outlines.
+8. **Live updates announce.** Streaming/async regions use `role="status"` /
+   `aria-live="polite"` (or `role="alert"` for errors). Scope it to the changing node;
+   don't over-announce. (The log viewer's live tail is `role="log"` — see its note on the
+   virtualization trade-off.)
+9. **Landmarks, headings & title.** New pages render under `<main>`, start with one
+   `<h1>` (via `PageHeader`) and don't skip levels (`SectionHeader` is `<h2>`). Name each
+   nav landmark (`aria-label`). Set the document title via `useDocumentTitle`.
+10. **Honor preferences.** Motion respects `prefers-reduced-motion` (handled globally in
+    `index.css`); size in `rem` so zoom works; verify in light **and** dark themes.
+
+**Verify before done:** `make lint` + `make test` pass; Tab through the feature with no
+mouse (reach/operate everything, focus visible, focus returns after closing overlays);
+spot-check one flow with VoiceOver (`⌘F5`); toggle OS "reduce motion" and confirm nothing
+loops or large-slides.
+
+**Reference field pattern** — the canonical labelled control with error wiring:
+
+```tsx
+<div>
+  <Label htmlFor={id}>Domain</Label>
+  <Input
+    id={id}
+    required
+    aria-invalid={!!error || undefined}
+    aria-describedby={error ? `${id}-err` : undefined}
+  />
+  {error && <ErrorText id={`${id}-err`}>{error}</ErrorText>}
+</div>
+```
+
 ## Adding a feature end-to-end (typical path)
 
 1. **Migration** in `store/` (goose) if there's new persisted state.

@@ -1,0 +1,45 @@
+# Upcoming — future direction (stubs)
+
+Brief, expand-later stubs captured 2026-06-01 from a direction review (see
+`docs/reviews/2026-06-01-direction-vs-mvp.md`). The MVP is functionally complete;
+these are the next horizons. Each file is a *seed* — goal, why-it-matters (tied to
+the Strategic Direction), rough shape, effort — not a finished plan. Flesh them out
+before building.
+
+Guiding lens (from the strategy): the moat is **simplicity + UX + reliability +
+trust**, not feature count. Order by "does this make the deploy loop feel more
+trustworthy and effortless," not by what's technically interesting.
+
+## Plans
+
+| # | File | Tier | Scope | Effort |
+|---|------|------|-------|--------|
+| 01 | [01-push-to-deploy.md](01-push-to-deploy.md) | Close the loop | Git webhook auto-deploy + trigger model (branch / tag / manual) | L |
+| 02 | [02-rollback.md](02-rollback.md) | Close the loop | One-click redeploy of a previous deployment | S–M |
+| 03 | [03-cert-expiry-notification.md](03-cert-expiry-notification.md) | Close the loop | Finish deferred D7 notification | S |
+| 04 | [04-onboarding-wizard.md](04-onboarding-wizard.md) | Close the loop | Guided connect-repo → first-deploy flow | M |
+| 05 | [05-zero-downtime-deploys.md](05-zero-downtime-deploys.md) | Reliability moat | Rolling deploy: up new → health → swap Caddy upstream → drain old | L |
+| 06 | [06-resource-guardrails.md](06-resource-guardrails.md) | Reliability moat | Per-app RAM limits + box-level budget UI + OOM protection | M |
+| 07 | [07-ram-benchmark-harness.md](07-ram-benchmark-harness.md) | Reliability moat | Repeatable, CI-enforced idle-RAM measurement | S–M |
+| 08 | [08-managed-backups.md](08-managed-backups.md) | Monetization seed | User-defined backup commands → schedule → S3/B2 | M |
+| 09 | [09-managed-databases.md](09-managed-databases.md) | Monetization seed | One-click Postgres/Redis on the shared instance | L |
+| 10 | [10-managed-vac-provisioning.md](10-managed-vac-provisioning.md) | Monetization seed | One-click VPS provisioning (Managed VAC) + managed-updates stepping stone | XL |
+
+## Suggested order
+
+1. **01 push-to-deploy** — highest leverage; turns VAC from a tool into a platform.
+2. **02 rollback** — nearly free given the data model; the safety net that makes
+   aggressive deploys (incl. 05) emotionally safe. Do alongside 01.
+3. **03 cert-expiry** + **07 ram-benchmark** — cheap, finish-the-promise items.
+4. **04 onboarding** — first-run trust.
+5. **06 resource guardrails** — the small-VPS reliability story.
+6. **05 zero-downtime** — hardest; do once 01/02 are solid.
+7. **08 → 09 → 10** — the Managed VAC arc, in that order, furthest out.
+
+## Deliberately NOT doing (guard the moat)
+
+- No buildpack / framework-coverage arms race — keep build adapters small.
+- No multi-node, no teams/RBAC yet — single operator, single box.
+- No preview environments yet — Tier-1-distracting complexity for the solo-dev target.
+- No multi-cloud abstraction *in the product* — provider logic only ever lives in
+  the separate Managed VAC orchestrator (see 10), never in `vac-api`.

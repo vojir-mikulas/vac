@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError } from '@/lib/api/client'
+import { useDocumentTitle } from '@/lib/use-document-title'
 import { authApi } from '@/lib/api/auth'
 import { setupApi } from '@/lib/api/setup'
 import { queryKeys } from '@/lib/query/keys'
@@ -28,7 +29,9 @@ export const Route = createFileRoute('/login')({
 function LoginPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const errId = useId()
   const [stage, setStage] = useState<'credentials' | 'totp'>('credentials')
+  useDocumentTitle(stage === 'totp' ? 'Two-factor code' : 'Sign in')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(true)
@@ -74,13 +77,16 @@ function LoginPage() {
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   autoFocus
+                  required
+                  aria-invalid={!!totp.error || undefined}
+                  aria-describedby={totp.error ? errId : undefined}
                   placeholder="123456"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   className="text-center font-mono tracking-widest"
                 />
               </div>
-              {totp.error ? <ErrorText error={totp.error} /> : null}
+              {totp.error ? <ErrorText id={errId} error={totp.error} /> : null}
               <Button type="submit" variant="brand" disabled={totp.isPending}>
                 Verify
               </Button>
@@ -116,6 +122,9 @@ function LoginPage() {
                 id="username"
                 autoComplete="username"
                 autoFocus
+                required
+                aria-invalid={!!login.error || undefined}
+                aria-describedby={login.error ? errId : undefined}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
@@ -126,6 +135,9 @@ function LoginPage() {
                 id="password"
                 type="password"
                 autoComplete="current-password"
+                required
+                aria-invalid={!!login.error || undefined}
+                aria-describedby={login.error ? errId : undefined}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -139,7 +151,7 @@ function LoginPage() {
               />
               Remember this device
             </label>
-            {login.error ? <ErrorText error={login.error} /> : null}
+            {login.error ? <ErrorText id={errId} error={login.error} /> : null}
             <Button type="submit" variant="brand" disabled={login.isPending}>
               Sign in
             </Button>
@@ -150,7 +162,11 @@ function LoginPage() {
   )
 }
 
-function ErrorText({ error }: { error: unknown }) {
+function ErrorText({ id, error }: { id?: string; error: unknown }) {
   const message = error instanceof ApiError ? error.message : 'Something went wrong'
-  return <p className="text-sm text-err-foreground">{message}</p>
+  return (
+    <p id={id} role="alert" className="text-sm text-err-foreground">
+      {message}
+    </p>
+  )
 }

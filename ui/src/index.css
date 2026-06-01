@@ -219,6 +219,20 @@
   }
 }
 
+/* Honor the OS "reduce motion" preference: collapse transitions/animations to
+   an instant so state still changes but nothing slides, zooms, or loops. Looping
+   indicators (status pulse, spinners) are also made static below. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Pulsing dot for "building" status (matches prototype vacPulse) */
 @keyframes vac-pulse {
   0%,

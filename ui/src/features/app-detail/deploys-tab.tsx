@@ -110,5 +110,12 @@ function BuildLogs({ appId, did }: { appId: string; did: string }) {
   const { lines } = useDeploymentLogs(did, true, () => {
     qc.invalidateQueries({ queryKey: queryKeys.apps.deployments(appId) })
   })
-  return <LogViewer lines={lines} className="h-80" emptyLabel="No build output." />
+  return (
+    <LogViewer
+      lines={lines}
+      className="h-80"
+      emptyLabel="No build output."
+      label="Deployment logs"
+    />
+  )
 }

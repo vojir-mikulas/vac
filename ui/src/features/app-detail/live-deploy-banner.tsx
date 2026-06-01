@@ -47,7 +47,12 @@ function ActiveDeploy({ appId, deployment }: { appId: string; deployment: Deploy
 
       <DeploySteps status={deployment.status} />
 
-      <LogViewer lines={lines} className="h-64" emptyLabel="Waiting for build output…" />
+      <LogViewer
+        lines={lines}
+        className="h-64"
+        emptyLabel="Waiting for build output…"
+        label="Deployment logs"
+      />
     </Card>
   )
 }

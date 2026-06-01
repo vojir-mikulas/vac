@@ -118,7 +118,7 @@ export function LogPanel({
         </div>
       </div>
 
-      <LogViewer lines={filtered} autoScroll={autoScroll} />
+      <LogViewer lines={filtered} autoScroll={autoScroll} label="Runtime logs" />
     </div>
   )
 }

@@ -37,14 +37,14 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       <HostIdentity />
 
-      <nav className="flex flex-1 flex-col gap-px px-2 py-2.5">
+      <nav aria-label="Primary" className="flex flex-1 flex-col gap-px px-2 py-2.5">
         {NAV.map((item) => (
           <Link
             key={item.to}
             to={item.to}
             onClick={onNavigate}
             className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-normal text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground data-[status=active]:bg-surface-2 data-[status=active]:font-medium data-[status=active]:text-foreground"
-            activeProps={{ 'data-status': 'active' }}
+            activeProps={{ 'data-status': 'active', 'aria-current': 'page' }}
           >
             <item.icon className="size-4" />
             <span>{item.label}</span>
@@ -119,7 +119,7 @@ function VitalRow({ label, value, pct }: { label: string; value: string; pct: nu
         <span className="text-muted-foreground">{label}</span>
         <span className="tabular-nums">{value}</span>
       </div>
-      <Meter pct={pct} className="h-0.5" />
+      <Meter pct={pct} className="h-0.5" label={`${label} usage`} />
     </div>
   )
 }

@@ -11,9 +11,9 @@ export function SectionHeader({
 }) {
   return (
     <div className={cn('mb-2.5 flex items-center justify-between pl-0.5', className)}>
-      <h3 className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+      <h2 className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         {children}
-      </h3>
+      </h2>
       {action}
     </div>
   )

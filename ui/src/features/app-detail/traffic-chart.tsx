@@ -34,7 +34,7 @@ export function TrafficChart({ appId }: { appId: string }) {
   return (
     <div className="rounded-xl border p-5">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-medium">Request traffic</h3>
+        <h2 className="text-sm font-medium">Request traffic</h2>
         <div className="flex gap-1">
           {RANGES.map((r) => (
             <button
@@ -61,45 +61,69 @@ export function TrafficChart({ appId }: { appId: string }) {
           No traffic recorded in this range.
         </div>
       ) : (
-        <ChartContainer config={chartConfig} className="h-56 w-full">
-          <AreaChart data={data} margin={{ left: 4, right: 4, top: 4 }}>
-            <defs>
-              <linearGradient id="fillRequests" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="var(--color-requests)" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="var(--color-requests)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid vertical={false} strokeDasharray="3 3" />
-            <XAxis
-              dataKey="ts"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              minTickGap={32}
-              tickFormatter={formatTick}
-            />
-            <YAxis tickLine={false} axisLine={false} width={32} />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent labelFormatter={(_, p) => formatTick(p?.[0]?.payload?.ts)} />
-              }
-            />
-            <Area
-              dataKey="requests"
-              type="monotone"
-              stroke="var(--color-requests)"
-              fill="url(#fillRequests)"
-              strokeWidth={2}
-            />
-            <Area
-              dataKey="errors"
-              type="monotone"
-              stroke="var(--color-errors)"
-              fill="transparent"
-              strokeWidth={2}
-            />
-          </AreaChart>
-        </ChartContainer>
+        <figure className="m-0">
+          {/* The SVG is decorative for assistive tech; the sr-only table below
+              is the text equivalent (charts are deferred — this is the graceful
+              degrade). */}
+          <ChartContainer config={chartConfig} className="h-56 w-full" aria-hidden="true">
+            <AreaChart data={data} margin={{ left: 4, right: 4, top: 4 }}>
+              <defs>
+                <linearGradient id="fillRequests" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--color-requests)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--color-requests)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis
+                dataKey="ts"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={32}
+                tickFormatter={formatTick}
+              />
+              <YAxis tickLine={false} axisLine={false} width={32} />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent labelFormatter={(_, p) => formatTick(p?.[0]?.payload?.ts)} />
+                }
+              />
+              <Area
+                dataKey="requests"
+                type="monotone"
+                stroke="var(--color-requests)"
+                fill="url(#fillRequests)"
+                strokeWidth={2}
+              />
+              <Area
+                dataKey="errors"
+                type="monotone"
+                stroke="var(--color-errors)"
+                fill="transparent"
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </ChartContainer>
+          <table className="sr-only">
+            <caption>Request traffic over the selected range</caption>
+            <thead>
+              <tr>
+                <th scope="col">Time</th>
+                <th scope="col">Requests</th>
+                <th scope="col">Errors</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((d) => (
+                <tr key={d.ts}>
+                  <td>{formatTick(d.ts)}</td>
+                  <td>{d.requests}</td>
+                  <td>{d.errors}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </figure>
       )}
     </div>
   )

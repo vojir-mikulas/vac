@@ -82,19 +82,19 @@ function AppDetailLayout() {
 
       <LiveDeployBanner appId={appId} />
 
-      <div className="mb-6 flex gap-1 overflow-x-auto border-b">
+      <nav aria-label="App sections" className="mb-6 flex gap-1 overflow-x-auto border-b">
         {TABS.map((tab) => (
           <Link
             key={tab.to}
             to={`/apps/$appId/${tab.to}`}
             params={{ appId }}
             className="-mb-px shrink-0 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground data-[status=active]:border-foreground data-[status=active]:text-foreground"
-            activeProps={{ 'data-status': 'active' }}
+            activeProps={{ 'data-status': 'active', 'aria-current': 'page' }}
           >
             {tab.label}
           </Link>
         ))}
-      </div>
+      </nav>
 
       <AppStatsProvider appId={appId}>
         <Outlet />

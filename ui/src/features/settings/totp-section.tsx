@@ -117,6 +117,7 @@ function EnableFlow() {
               <Input
                 id="totp-code"
                 inputMode="numeric"
+                required
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 className="text-center font-mono tracking-widest"
@@ -173,6 +174,7 @@ function DisableDialog() {
           <Input
             id="pw"
             type="password"
+            required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />

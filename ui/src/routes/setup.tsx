@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError } from '@/lib/api/client'
+import { useDocumentTitle } from '@/lib/use-document-title'
 import { setupApi } from '@/lib/api/setup'
 import { queryKeys } from '@/lib/query/keys'
 
@@ -38,6 +39,9 @@ function SetupPage() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [token, setToken] = useState(tokenFromUrl ?? '')
+  const pwErrId = useId()
+  const confirmErrId = useId()
+  useDocumentTitle('Set up')
 
   const mismatch = confirm.length > 0 && password !== confirm
   const tooShort = password.length > 0 && password.length < MIN_PASSWORD
@@ -77,6 +81,7 @@ function SetupPage() {
                 id="username"
                 autoComplete="username"
                 autoFocus
+                required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
@@ -87,11 +92,14 @@ function SetupPage() {
                 id="password"
                 type="password"
                 autoComplete="new-password"
+                required
+                aria-invalid={tooShort || undefined}
+                aria-describedby={tooShort ? pwErrId : undefined}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
               {tooShort ? (
-                <p className="text-2xs text-muted-foreground">
+                <p id={pwErrId} className="text-2xs text-muted-foreground">
                   At least {MIN_PASSWORD} characters.
                 </p>
               ) : null}
@@ -102,11 +110,16 @@ function SetupPage() {
                 id="confirm"
                 type="password"
                 autoComplete="new-password"
+                required
+                aria-invalid={mismatch || undefined}
+                aria-describedby={mismatch ? confirmErrId : undefined}
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
               />
               {mismatch ? (
-                <p className="text-2xs text-err-foreground">Passwords don't match.</p>
+                <p id={confirmErrId} role="alert" className="text-2xs text-err-foreground">
+                  Passwords don't match.
+                </p>
               ) : null}
             </div>
             <div className="grid gap-2">
@@ -114,6 +127,7 @@ function SetupPage() {
               <Input
                 id="setup-token"
                 autoComplete="off"
+                required
                 spellCheck={false}
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
@@ -125,7 +139,7 @@ function SetupPage() {
               </p>
             </div>
             {create.error ? (
-              <p className="text-sm text-err-foreground">
+              <p role="alert" className="text-sm text-err-foreground">
                 {create.error instanceof ApiError ? create.error.message : 'Something went wrong'}
               </p>
             ) : null}

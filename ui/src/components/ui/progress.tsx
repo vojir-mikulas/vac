@@ -3,6 +3,10 @@ import { Progress as ProgressPrimitive } from 'radix-ui'
 
 import { cn } from '@/lib/utils'
 
+// Radix Progress.Root already exposes role="progressbar" and
+// aria-valuenow/min/max. It has no visible label of its own, so callers MUST
+// pass an accessible name (aria-label or aria-labelledby) — otherwise it reads
+// as an anonymous progressbar to screen readers.
 function Progress({
   className,
   value,

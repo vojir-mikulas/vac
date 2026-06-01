@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
@@ -121,10 +121,13 @@ function ChannelField({
   value: string
   onChange: (v: string) => void
 }) {
+  const id = useId()
   return (
     <div className="grid gap-2">
-      <Label>{label}</Label>
+      <Label htmlFor={id}>{label}</Label>
       <Input
+        id={id}
+        type="url"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={configured ? `Configured (${hint}) — leave blank to keep` : 'https://…'}

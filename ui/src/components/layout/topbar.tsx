@@ -15,6 +15,7 @@ import { SidebarContent } from '@/components/layout/sidebar'
 import { ThemeToggle } from '@/components/theme/theme-toggle'
 import { useApps } from '@/lib/api/apps'
 import { useLogout, useMe } from '@/lib/api/auth'
+import { useDocumentTitle } from '@/lib/use-document-title'
 
 const STATIC_LABELS: Record<string, string> = {
   apps: 'Apps',
@@ -40,6 +41,15 @@ export function Topbar({ onOpenSearch }: { onOpenSearch: () => void }) {
   const [navOpen, setNavOpen] = useState(false)
   const current = crumbs[crumbs.length - 1]
 
+  // Leaf-first trail, e.g. "Overview — myapp — Apps", so each route gets a
+  // distinct, informative tab title.
+  useDocumentTitle(
+    crumbs
+      .map((c) => c.label)
+      .reverse()
+      .join(' — '),
+  )
+
   return (
     <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur md:gap-4 md:px-6">
       <Sheet open={navOpen} onOpenChange={setNavOpen}>
@@ -63,7 +73,10 @@ export function Topbar({ onOpenSearch }: { onOpenSearch: () => void }) {
       </Sheet>
 
       {/* Desktop: full breadcrumb trail. */}
-      <nav className="hidden min-w-0 flex-1 items-center gap-2 text-sm md:flex">
+      <nav
+        aria-label="Breadcrumb"
+        className="hidden min-w-0 flex-1 items-center gap-2 text-sm md:flex"
+      >
         {crumbs.map((c, i) => {
           const last = i === crumbs.length - 1
           return (
@@ -78,6 +91,7 @@ export function Topbar({ onOpenSearch }: { onOpenSearch: () => void }) {
                 </Link>
               ) : (
                 <span
+                  aria-current={last ? 'page' : undefined}
                   className={`${last ? 'font-medium text-foreground' : 'text-muted-foreground'} ${c.mono ? 'font-mono' : ''}`}
                 >
                   {c.label}
@@ -98,7 +112,7 @@ export function Topbar({ onOpenSearch }: { onOpenSearch: () => void }) {
       <button
         type="button"
         onClick={onOpenSearch}
-        aria-label="Search"
+        aria-label="Search — ⌘K"
         className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border bg-surface-1 text-muted-foreground transition-colors hover:border-border-strong md:w-72 md:justify-start md:gap-2 md:px-3"
       >
         <Search className="size-3.5" />
@@ -124,6 +138,7 @@ function UserMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
+          aria-label="Account menu"
           className="grid size-8 cursor-pointer place-items-center rounded-full border bg-brand/15 font-sans text-xs font-semibold text-brand"
         >
           {initials}

@@ -10,14 +10,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-svh bg-background text-foreground">
+      <SkipToContent />
       <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
+      {/* tabIndex={-1} lets the skip link move focus here programmatically
+          without adding <main> to the normal tab order. */}
+      <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
         <InsecureHTTPBanner />
         <Topbar onOpenSearch={() => setCmdOpen(true)} />
         <div className="flex-1">{children}</div>
       </main>
       <CommandMenu open={cmdOpen} onOpenChange={setCmdOpen} />
     </div>
+  )
+}
+
+// First focusable element on every page: visually hidden until focused, then it
+// reveals and jumps keyboard/SR users past the sidebar straight to <main>.
+function SkipToContent() {
+  return (
+    <a
+      href="#main"
+      className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:left-4 focus-visible:top-4 focus-visible:z-50 focus-visible:rounded-md focus-visible:border focus-visible:bg-surface-1 focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
+    >
+      Skip to content
+    </a>
   )
 }
 

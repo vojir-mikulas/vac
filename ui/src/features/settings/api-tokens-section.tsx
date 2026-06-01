@@ -130,6 +130,7 @@ function CreateTokenDialog() {
               <Input
                 id="token-name"
                 autoFocus
+                required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="CI pipeline"
