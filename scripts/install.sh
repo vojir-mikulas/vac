@@ -15,6 +15,12 @@ VAC_REGISTRY="${VAC_REGISTRY:-ghcr.io/vojir-mikulas}"
 VAC_ASSET_BASE="${VAC_ASSET_BASE:-https://get.vac.vojir.io}"
 VAC_HOST_PORT="${VAC_HOST_PORT:-3000}"
 VAC_DOMAIN="${VAC_DOMAIN:-}"
+# When installed via sudo, also let the invoking user run `vac` without sudo:
+# add them to the `docker` group and give them the install dir (which holds the
+# root-only .env). Set VAC_GRANT_ACCESS=0 to skip. Note: docker-group
+# membership is root-equivalent on this host — opt out if that isn't acceptable.
+VAC_GRANT_ACCESS="${VAC_GRANT_ACCESS:-1}"
+RELOGIN=0
 
 COMPOSE_FILE="$VAC_INSTALL_DIR/compose.prod.yaml"
 ENV_FILE="$VAC_INSTALL_DIR/.env"
@@ -141,6 +147,33 @@ VACEOF
   chmod +x /usr/local/bin/vac
 }
 
+grant_user_access() {
+  # Optionally let the user who invoked `sudo` manage VAC without sudo: add
+  # them to the `docker` group (so docker/compose calls don't need root) and
+  # hand them the install dir (so the `vac` CLI can read the root-only .env).
+  # No-op when run as a real root login (no $SUDO_USER) or when disabled.
+  [ "$VAC_GRANT_ACCESS" = "1" ] || return 0
+  TARGET_USER="${SUDO_USER:-}"
+  [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ] || return 0
+  command -v usermod >/dev/null 2>&1 || return 0
+
+  if getent group docker >/dev/null 2>&1; then
+    if id -nG "$TARGET_USER" 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
+      : # already a member
+    else
+      info "Adding ${B}${TARGET_USER}${N} to the 'docker' group (root-equivalent; VAC_GRANT_ACCESS=0 to skip)…"
+      if usermod -aG docker "$TARGET_USER"; then
+        RELOGIN=1
+      else
+        warn "  could not add $TARGET_USER to the docker group"
+      fi
+    fi
+  fi
+
+  info "Giving ${B}${TARGET_USER}${N} ownership of ${VAC_INSTALL_DIR} (so 'vac' reads .env without sudo)…"
+  chown -R "$TARGET_USER" "$VAC_INSTALL_DIR" || warn "  could not chown $VAC_INSTALL_DIR"
+}
+
 # ── Docker ────────────────────────────────────────────────────────────────--
 if ! command -v docker >/dev/null 2>&1; then
   info "Docker not found — installing via get.docker.com…"
@@ -220,6 +253,9 @@ docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
 info "Installing the 'vac' command…"
 write_vac_cli
 
+# Hand sudo-free access to the invoking user (opt-out via VAC_GRANT_ACCESS=0).
+grant_user_access
+
 # ── Done ──────────────────────────────────────────────────────────────────--
 IP="$(curl -fsS https://api.ipify.org 2>/dev/null || true)"
 [ -n "$IP" ] || IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -260,4 +296,9 @@ if [ -n "$SETUP_TOKEN" ]; then
 else
   printf '\n  Open the dashboard to create your admin account.\n'
 fi
-printf '  Manage:  %svac status | vac logs | vac upgrade | vac down%s\n\n' "$B" "$N"
+printf '  Manage:  %svac status | vac logs | vac upgrade | vac down%s\n' "$B" "$N"
+if [ "${RELOGIN:-0}" = "1" ]; then
+  printf '\n  %sLog out and back in%s (or run %snewgrp docker%s) so %s%s%s can run\n' "$B" "$N" "$B" "$N" "$B" "${SUDO_USER:-your user}" "$N"
+  printf '  %svac%s commands without sudo.\n' "$B" "$N"
+fi
+printf '\n'
