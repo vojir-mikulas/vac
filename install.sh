@@ -177,8 +177,10 @@ fi
 
 # ── Generate .env (only on first install — secrets are preserved on re-run) ──
 if [ -f "$ENV_FILE" ]; then
+  FRESH=0
   info "Existing config found — keeping secrets, upgrading images."
 else
+  FRESH=1
   info "Generating secrets…"
   MASTER_KEY="$(rand_hex 32)"
   DB_PASSWORD="$(rand_hex 24)"          # hex → URL-safe inside the Postgres DSN
@@ -223,6 +225,23 @@ IP="$(curl -fsS https://api.ipify.org 2>/dev/null || true)"
 [ -n "$IP" ] || IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 [ -n "$IP" ] || IP="<server-ip>"
 
+# On a fresh install, vac-api writes a one-time setup token into its work dir.
+# Read it back through the container so we can hand the operator a ready-to-click
+# link with the token baked in — no log-digging required. The token lives on a
+# named volume, so the host can't read the file directly. Upgrades have no token
+# (the admin already exists), so we only bother when FRESH=1.
+SETUP_TOKEN=""
+if [ "${FRESH:-0}" = "1" ]; then
+  info "Waiting for VAC to come up…"
+  i=0
+  while [ "$i" -lt 60 ]; do
+    SETUP_TOKEN="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" \
+      exec -T vac-api cat /var/lib/vac/repos/setup.token 2>/dev/null | tr -d '\r\n' || true)"
+    [ -n "$SETUP_TOKEN" ] && break
+    i=$((i + 1)); sleep 1
+  done
+fi
+
 printf '\n%s VAC is up.%s\n\n' "$B$G" "$N"
 if [ -n "$VAC_DOMAIN" ]; then
   printf '  Dashboard:  %shttps://vac.%s%s   (once DNS + TLS settle)\n' "$B" "$VAC_DOMAIN" "$N"
@@ -234,5 +253,11 @@ else
   printf '  automatic app subdomains:\n'
   printf '    %svac set-domain example.com%s\n' "$B" "$N"
 fi
-printf '\n  Open the dashboard to create your admin account.\n'
+if [ -n "$SETUP_TOKEN" ]; then
+  printf '\n  %sCreate your admin account — open this link (token included):%s\n' "$B" "$N"
+  printf '    %s%shttp://%s:%s/setup?token=%s%s\n' "$B" "$G" "$IP" "$VAC_HOST_PORT" "$SETUP_TOKEN" "$N"
+  printf '\n  This one-time token is consumed once the account is created.\n'
+else
+  printf '\n  Open the dashboard to create your admin account.\n'
+fi
 printf '  Manage:  %svac status | vac logs | vac upgrade | vac down%s\n\n' "$B" "$N"
