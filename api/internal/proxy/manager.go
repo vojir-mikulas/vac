@@ -13,16 +13,14 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
-// Store is the slice of *store.Store the manager reads and writes.
+// Store is the slice of *store.Store the manager reads.
 type Store interface {
 	GetApp(ctx context.Context, id string) (store.App, error)
+	ListApps(ctx context.Context) ([]store.App, error)
 	ListDomainsByApp(ctx context.Context, appID string) ([]store.Domain, error)
 	ListAllDomains(ctx context.Context) ([]store.Domain, error)
-	GetDomainByHostname(ctx context.Context, hostname string) (store.Domain, error)
-	CreateDomain(ctx context.Context, appID, serviceName, hostname, typ string) (store.Domain, error)
 	GetService(ctx context.Context, appID, name string) (store.Service, error)
 	ListServicesForApp(ctx context.Context, appID string) ([]store.Service, error)
-	SetCertStatus(ctx context.Context, id, status string) error
 }
 
 // CaddyClient is the slice of *caddy.Client the manager drives.
@@ -40,6 +38,16 @@ type NetworkController interface {
 	NetworkCreate(ctx context.Context, name string) error
 	NetworkConnect(ctx context.Context, network, container, alias string) error
 	NetworkDisconnect(ctx context.Context, network, container string) error
+}
+
+// StatusEngine receives route-push outcomes so the DNS/cert status projection
+// (internal/domainstatus, plan 09 F3) can surface `error` for a host whose route
+// failed to push, and clear it once the push succeeds. Optional — nil disables
+// the signal. Only the manager produces `error`; DNS/cert truth never overwrites
+// it (and vice-versa).
+type StatusEngine interface {
+	SetError(host, detail string)
+	ClearError(host string)
 }
 
 // Config carries the proxy-layer settings.
@@ -62,6 +70,7 @@ type Manager struct {
 	cfg        Config
 	logger     *slog.Logger
 	baseConfig *caddy.Config // re-pushed to self-heal a Caddy restart; nil disables
+	engine     StatusEngine  // route-push outcome sink; nil disables
 
 	mu                 sync.RWMutex
 	baseDomainOverride string // runtime override from instance_settings; "" = use cfg.BaseDomain
@@ -78,9 +87,10 @@ func (m *Manager) SetBaseDomain(domain string) {
 	m.hasOverride = true
 }
 
-// baseDomain returns the effective base domain: the runtime override when set,
-// otherwise the startup config value.
-func (m *Manager) baseDomain() string {
+// BaseDomain returns the effective base domain: the runtime override when set,
+// otherwise the startup config value. Exported so the status engine and
+// handlers can render the same value the router uses.
+func (m *Manager) BaseDomain() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.hasOverride {
@@ -108,6 +118,10 @@ func New(s Store, c CaddyClient, net NetworkController, cfg Config, logger *slog
 	}
 	return &Manager{store: s, caddy: c, net: net, cfg: cfg, logger: logger}
 }
+
+// SetStatusEngine wires the DNS/cert status projection so route-push failures
+// surface as `error` on the affected host. Called once at startup; nil-safe.
+func (m *Manager) SetStatusEngine(e StatusEngine) { m.engine = e }
 
 // SetBaseConfig records the base Caddy config so the manager can self-heal a
 // proxy restart (see ensureBaseConfig). Called once at startup; safe to leave
@@ -151,17 +165,142 @@ func (m *Manager) Ping(ctx context.Context) error {
 	return m.caddy.Ping(ctx)
 }
 
-// routeFor builds the Caddy route for one domain. The upstream dials the
-// service's vac-edge alias on its container port; an active health check lets
-// Caddy (and, via the upstreams endpoint, WaitHealthy) track liveness.
-func (m *Manager) routeFor(d store.Domain, svc store.Service, slug string) caddy.Route {
+// AutoHost is a derived automatic subdomain: a pure function of an app's slug,
+// its HTTP services, and the current base domain — never a stored row (plan 09
+// F1). The status engine and CaddyAsk enumerate these the same way reconcile
+// does so a derived host gets a status and can pre-issue a cert.
+type AutoHost struct {
+	Hostname    string
+	AppID       string
+	AppSlug     string
+	ServiceName string
+	Service     store.Service
+}
+
+// autoHostsForApp derives the automatic hostnames for one app under the current
+// base domain. Empty base domain (auto-subdomains disabled) yields none.
+func (m *Manager) autoHostsForApp(app store.App, services []store.Service) []AutoHost {
+	base := m.BaseDomain()
+	if base == "" {
+		return nil
+	}
+	var httpServices []store.Service
+	for _, s := range services {
+		if s.InternalPort != nil {
+			httpServices = append(httpServices, s)
+		}
+	}
+	multi := len(httpServices) > 1
+	out := make([]AutoHost, 0, len(httpServices))
+	for _, s := range httpServices {
+		host := AutoSubdomain(app.Slug, s.ServiceName, base, multi)
+		if host == "" {
+			continue
+		}
+		out = append(out, AutoHost{
+			Hostname:    host,
+			AppID:       app.ID,
+			AppSlug:     app.Slug,
+			ServiceName: s.ServiceName,
+			Service:     s,
+		})
+	}
+	return out
+}
+
+// AutoHosts derives every app's automatic subdomains under the current base
+// domain. Used by the orphan prune, CaddyAsk, and the status engine so they all
+// agree on the derived host set without a stored row.
+func (m *Manager) AutoHosts(ctx context.Context) ([]AutoHost, error) {
+	apps, err := m.store.ListApps(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []AutoHost
+	for _, app := range apps {
+		services, err := m.store.ListServicesForApp(ctx, app.ID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m.autoHostsForApp(app, services)...)
+	}
+	return out, nil
+}
+
+// IsAutoHost reports whether host is one of the currently-derived automatic
+// subdomains. Backs CaddyAsk so on-demand TLS issuance is allowed for a derived
+// host that has no domain row.
+func (m *Manager) IsAutoHost(ctx context.Context, host string) (bool, error) {
+	host = strings.ToLower(host)
+	hosts, err := m.AutoHosts(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, h := range hosts {
+		if strings.EqualFold(h.Hostname, host) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// routeSpec is one desired Caddy route for an app: a Caddy @id, the hostname it
+// matches, and either the service it proxies to or (Phase 3) a redirect target.
+type routeSpec struct {
+	id         string
+	hostname   string
+	service    string
+	redirectTo string // when set, a 308 redirect route to this host (no upstream)
+}
+
+// desiredRoutes is the full set of routes an app should have: one per assigned
+// custom domain (a proxy route, or a redirect route when redirect_to is set)
+// plus one per derived auto host. Unassigned custom domains (no service) emit no
+// route.
+func (m *Manager) desiredRoutes(app store.App, domains []store.Domain, services []store.Service) []routeSpec {
+	specs := make([]routeSpec, 0, len(domains))
+	for _, d := range domains {
+		if !d.Assigned() {
+			continue
+		}
+		if d.RedirectTo != "" {
+			specs = append(specs, routeSpec{id: routeID(d.ID), hostname: d.Hostname, redirectTo: d.RedirectTo})
+			continue
+		}
+		specs = append(specs, routeSpec{id: routeID(d.ID), hostname: d.Hostname, service: d.ServiceName})
+	}
+	for _, ah := range m.autoHostsForApp(app, services) {
+		specs = append(specs, routeSpec{id: autoRouteID(app.ID, ah.ServiceName), hostname: ah.Hostname, service: ah.ServiceName})
+	}
+	return specs
+}
+
+// redirectRoute builds a 308 redirect from hostname to target, preserving the
+// request path/query via Caddy's {http.request.uri} placeholder. It dials no
+// upstream, so it serves regardless of whether any app container is up.
+func (m *Manager) redirectRoute(id, hostname, target string) caddy.Route {
+	return caddy.Route{
+		ID:    id,
+		Match: []caddy.Match{{Host: []string{hostname}}},
+		Handle: []caddy.Handler{{
+			Handler:    "static_response",
+			StatusCode: 308,
+			Headers:    map[string][]string{"Location": {"https://" + target + "{http.request.uri}"}},
+		}},
+	}
+}
+
+// route builds the Caddy route for one hostname → service. The upstream dials
+// the service's vac-edge alias on its container port; an active health check
+// lets Caddy (and, via the upstreams endpoint, WaitHealthy) track liveness.
+func (m *Manager) route(id, hostname string, svc store.Service, slug string) caddy.Route {
 	path := "/"
 	if svc.HealthPath != nil && *svc.HealthPath != "" {
 		path = *svc.HealthPath
 	}
 	return caddy.Route{
-		ID:    routeID(d.ID),
-		Match: []caddy.Match{{Host: []string{d.Hostname}}},
+		ID:    id,
+		Match: []caddy.Match{{Host: []string{hostname}}},
 		Handle: []caddy.Handler{{
 			Handler:   "reverse_proxy",
 			Upstreams: []caddy.Upstream{{Dial: m.dial(slug, svc)}},
@@ -172,6 +311,12 @@ func (m *Manager) routeFor(d store.Domain, svc store.Service, slug string) caddy
 			}},
 		}},
 	}
+}
+
+// routeFor builds the Caddy route for one custom domain (thin wrapper over
+// route, kept for the domain-centric call sites).
+func (m *Manager) routeFor(d store.Domain, svc store.Service, slug string) caddy.Route {
+	return m.route(routeID(d.ID), d.Hostname, svc, slug)
 }
 
 func (m *Manager) dial(slug string, svc store.Service) string {
@@ -186,7 +331,8 @@ func portOr(p *int) int {
 }
 
 // Sync pushes the desired routes for one app (attaching its HTTP containers to
-// vac-edge) and prunes any Caddy routes no longer backed by a domain row.
+// vac-edge) and prunes any Caddy routes no longer backed by a domain row or a
+// derived auto host.
 func (m *Manager) Sync(ctx context.Context, appID string) error {
 	if err := m.EnsureNetwork(ctx); err != nil {
 		m.logger.Warn("proxy: ensure network", "err", err)
@@ -198,9 +344,9 @@ func (m *Manager) Sync(ctx context.Context, appID string) error {
 	return errors.Join(errApply, errControl, errPrune)
 }
 
-// applyApp attaches the app's routable containers to vac-edge and pushes a
-// route per domain. Domains whose service has no container / internal port yet
-// have their route removed (nothing to route to).
+// applyApp attaches the app's routable containers to vac-edge and pushes a route
+// per assigned custom domain and per derived auto host. A route whose service
+// has no container / internal port yet is removed (nothing to route to).
 func (m *Manager) applyApp(ctx context.Context, appID string) error {
 	app, err := m.store.GetApp(ctx, appID)
 	if err != nil {
@@ -221,13 +367,26 @@ func (m *Manager) applyApp(ctx context.Context, appID string) error {
 
 	attached := make(map[string]bool)
 	var errs []error
-	for _, d := range domains {
-		svc, ok := byName[d.ServiceName]
+	for _, spec := range m.desiredRoutes(app, domains, services) {
+		// A redirect domain (Phase 3) serves a 308 with no upstream — push it
+		// unconditionally (it doesn't depend on a container being up).
+		if spec.redirectTo != "" {
+			if err := m.caddy.PutRoute(ctx, spec.id, m.redirectRoute(spec.id, spec.hostname, spec.redirectTo)); err != nil {
+				errs = append(errs, fmt.Errorf("redirect %s: %w", spec.hostname, err))
+				if m.engine != nil {
+					m.engine.SetError(spec.hostname, err.Error())
+				}
+			} else if m.engine != nil {
+				m.engine.ClearError(spec.hostname)
+			}
+			continue
+		}
+		svc, ok := byName[spec.service]
 		routable := ok && svc.ContainerID != nil && *svc.ContainerID != "" && svc.InternalPort != nil
 		if !routable {
 			// Not deployed yet (or portless) — make sure no stale route lingers.
-			if err := m.caddy.DeleteRoute(ctx, routeID(d.ID)); err != nil {
-				m.logger.Debug("proxy: delete stale route", "domain", d.Hostname, "err", err)
+			if err := m.caddy.DeleteRoute(ctx, spec.id); err != nil {
+				m.logger.Debug("proxy: delete stale route", "host", spec.hostname, "err", err)
 			}
 			continue
 		}
@@ -238,17 +397,24 @@ func (m *Manager) applyApp(ctx context.Context, appID string) error {
 			}
 			attached[*svc.ContainerID] = true
 		}
-		if err := m.caddy.PutRoute(ctx, routeID(d.ID), m.routeFor(d, svc, app.Slug)); err != nil {
-			errs = append(errs, fmt.Errorf("route %s: %w", d.Hostname, err))
-			_ = m.store.SetCertStatus(ctx, d.ID, store.CertStatusError)
+		if err := m.caddy.PutRoute(ctx, spec.id, m.route(spec.id, spec.hostname, svc, app.Slug)); err != nil {
+			errs = append(errs, fmt.Errorf("route %s: %w", spec.hostname, err))
+			if m.engine != nil {
+				m.engine.SetError(spec.hostname, err.Error())
+			}
+		} else if m.engine != nil {
+			// A successful push clears any prior push-error so it self-heals.
+			m.engine.ClearError(spec.hostname)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// pruneOrphans deletes any vac-route-* route in Caddy not backed by a current
-// domain row. Handles routes orphaned by a crash between DB delete and Caddy
-// delete, and by domain deletion (the delete handler calls Sync afterwards).
+// pruneOrphans deletes any VAC-managed route in Caddy (vac-route-* for custom
+// domains, vac-auto-* for derived auto hosts) not backed by a current domain row
+// or a currently-derived auto host. Handles routes orphaned by a crash, by
+// domain deletion, and by a base-domain change (old auto routes drop out of the
+// derived set and are pruned here — orphans become structurally impossible).
 func (m *Manager) pruneOrphans(ctx context.Context) error {
 	domains, err := m.store.ListAllDomains(ctx)
 	if err != nil {
@@ -258,16 +424,24 @@ func (m *Manager) pruneOrphans(ctx context.Context) error {
 	for _, d := range domains {
 		valid[routeID(d.ID)] = true
 	}
+	autoHosts, err := m.AutoHosts(ctx)
+	if err != nil {
+		return err
+	}
+	for _, ah := range autoHosts {
+		valid[autoRouteID(ah.AppID, ah.ServiceName)] = true
+	}
 	routes, err := m.caddy.GetRoutes(ctx)
 	if err != nil {
 		return err
 	}
 	var errs []error
 	for _, r := range routes {
-		if strings.HasPrefix(r.ID, routeIDPrefix) && !valid[r.ID] {
-			if err := m.caddy.DeleteRoute(ctx, r.ID); err != nil {
-				errs = append(errs, err)
-			}
+		if !isManagedRouteID(r.ID) || valid[r.ID] {
+			continue
+		}
+		if err := m.caddy.DeleteRoute(ctx, r.ID); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
@@ -311,23 +485,28 @@ func (m *Manager) IsControlDomain(host string) bool {
 	return m.cfg.ControlDomain != "" && strings.EqualFold(host, m.cfg.ControlDomain)
 }
 
-// Teardown removes an app's live routes and detaches its containers from
-// vac-edge, leaving the domain rows intact. Used on a temporary stop so a
-// stopped app returns a clean 502/503 instead of proxying to a dead upstream.
+// Teardown removes an app's live routes (custom + auto) and detaches its
+// containers from vac-edge, leaving the domain rows intact. Used on a temporary
+// stop so a stopped app returns a clean 502/503 instead of proxying to a dead
+// upstream.
 func (m *Manager) Teardown(ctx context.Context, appID string) error {
+	app, err := m.store.GetApp(ctx, appID)
+	if err != nil {
+		return err
+	}
 	domains, err := m.store.ListDomainsByApp(ctx, appID)
 	if err != nil {
 		return err
 	}
-	var errs []error
-	for _, d := range domains {
-		if err := m.caddy.DeleteRoute(ctx, routeID(d.ID)); err != nil {
-			m.logger.Debug("proxy: teardown route", "domain", d.Hostname, "err", err)
-		}
-	}
 	services, err := m.store.ListServicesForApp(ctx, appID)
 	if err != nil {
-		return errors.Join(append(errs, err)...)
+		return err
+	}
+	var errs []error
+	for _, spec := range m.desiredRoutes(app, domains, services) {
+		if err := m.caddy.DeleteRoute(ctx, spec.id); err != nil {
+			m.logger.Debug("proxy: teardown route", "host", spec.hostname, "err", err)
+		}
 	}
 	for _, s := range services {
 		if s.ContainerID != nil && *s.ContainerID != "" {
@@ -340,23 +519,20 @@ func (m *Manager) Teardown(ctx context.Context, appID string) error {
 }
 
 // Reconcile rebuilds the entire route set and re-attaches live containers from
-// the DB on boot, then prunes orphans. Idempotent.
+// the DB on boot, then prunes orphans. It enumerates every app (not just those
+// with custom domains) so derived auto hosts are routed too. Idempotent.
 func (m *Manager) Reconcile(ctx context.Context) error {
 	if err := m.EnsureNetwork(ctx); err != nil {
 		m.logger.Warn("proxy: reconcile ensure network", "err", err)
 	}
 	m.ensureBaseConfig(ctx)
-	domains, err := m.store.ListAllDomains(ctx)
+	apps, err := m.store.ListApps(ctx)
 	if err != nil {
 		return err
 	}
-	apps := make(map[string]bool)
-	for _, d := range domains {
-		apps[d.AppID] = true
-	}
 	var errs []error
-	for appID := range apps {
-		if err := m.applyApp(ctx, appID); err != nil {
+	for _, app := range apps {
+		if err := m.applyApp(ctx, app.ID); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -370,49 +546,6 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 		m.logger.Warn("proxy: reconcile completed with errors", "err", err)
 		return err
 	}
-	m.logger.Info("proxy: reconcile complete", "apps", len(apps), "domains", len(domains))
+	m.logger.Info("proxy: reconcile complete", "apps", len(apps))
 	return nil
-}
-
-// AssignAutoDomains creates an `auto` domain for each HTTP-exposing service of
-// an app that doesn't already have one, when a base domain is configured.
-// Idempotent — an existing hostname is skipped.
-func (m *Manager) AssignAutoDomains(ctx context.Context, appID string) error {
-	baseDomain := m.baseDomain()
-	if baseDomain == "" {
-		return nil
-	}
-	app, err := m.store.GetApp(ctx, appID)
-	if err != nil {
-		return err
-	}
-	services, err := m.store.ListServicesForApp(ctx, appID)
-	if err != nil {
-		return err
-	}
-	var httpServices []store.Service
-	for _, s := range services {
-		if s.InternalPort != nil {
-			httpServices = append(httpServices, s)
-		}
-	}
-	multi := len(httpServices) > 1
-
-	var errs []error
-	for _, s := range httpServices {
-		host := AutoSubdomain(app.Slug, s.ServiceName, baseDomain, multi)
-		if host == "" {
-			continue
-		}
-		if _, err := m.store.GetDomainByHostname(ctx, host); err == nil {
-			continue // already assigned
-		} else if !errors.Is(err, store.ErrNotFound) {
-			errs = append(errs, err)
-			continue
-		}
-		if _, err := m.store.CreateDomain(ctx, appID, s.ServiceName, host, store.DomainTypeAuto); err != nil && !errors.Is(err, store.ErrConflict) {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
 }

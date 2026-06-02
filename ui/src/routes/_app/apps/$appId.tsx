@@ -66,7 +66,7 @@ function AppDetailLayout() {
               </span>
               {primaryDomain ? (
                 <span className="flex items-center gap-1.5">
-                  {primaryDomain.cert_status === 'active' ? (
+                  {primaryDomain.status === 'active' ? (
                     <Lock className="size-3 text-ok" />
                   ) : (
                     <Globe className="size-3" />

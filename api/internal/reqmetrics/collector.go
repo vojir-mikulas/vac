@@ -145,6 +145,11 @@ func (c *Collector) refreshHosts(ctx context.Context) {
 	}
 	next := make(map[string]svcRef, len(domains))
 	for _, d := range domains {
+		// Unassigned domains (added but not yet bound to a service) route
+		// nowhere, so they carry no request metrics.
+		if !d.Assigned() {
+			continue
+		}
 		next[strings.ToLower(d.Hostname)] = svcRef{appID: d.AppID, service: d.ServiceName}
 	}
 	c.mu.Lock()

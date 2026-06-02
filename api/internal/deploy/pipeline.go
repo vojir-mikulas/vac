@@ -42,7 +42,6 @@ type DockerClient interface {
 // health via Caddy (Phase 3). When nil — tests, or a deploy on a host without
 // the proxy wired — the pipeline falls back to its Phase 2 loopback probe.
 type Router interface {
-	AssignAutoDomains(ctx context.Context, appID string) error
 	Sync(ctx context.Context, appID string) error
 	WaitHealthy(ctx context.Context, appID string) error
 }
@@ -323,9 +322,8 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 	// health-check it. Routing pushes are eventual/best-effort; a health
 	// failure is a real outcome (app → degraded, deploy → error).
 	if p.Router != nil {
-		if err := p.Router.AssignAutoDomains(ctx, app.ID); err != nil {
-			_ = p.logSystem(ctx, deploymentID, "warning: auto-domain assignment failed: "+err.Error())
-		}
+		// Auto-subdomains are derived from the app's services + base domain at
+		// sync time (plan 09 F1) — no explicit assignment step needed.
 		if err := p.Router.Sync(ctx, app.ID); err != nil {
 			_ = p.logSystem(ctx, deploymentID, "warning: route sync failed (will reconcile): "+err.Error())
 		}

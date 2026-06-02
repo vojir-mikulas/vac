@@ -2,52 +2,69 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
-// Domain types and cert-status values. Kept here so handlers and the proxy
-// manager share one source of truth.
+// Domain types. Kept here so handlers and the proxy manager share one source of
+// truth. Automatic subdomains are no longer stored (plan 09 F1 — they are
+// derived at reconcile time); every row is now a custom domain, but the type is
+// retained for forward-compatibility and the type CHECK still admits both.
 const (
 	DomainTypeAuto   = "auto"
 	DomainTypeCustom = "custom"
-
-	CertStatusPending = "pending"
-	CertStatusActive  = "active"
-	CertStatusError   = "error"
 )
 
-// Domain is one hostname routed to a service. hostname is globally unique.
+// Domain is one custom hostname routed to a service. hostname is globally
+// unique. AppID and ServiceName are empty when the domain is added but not yet
+// assigned to a service (plan 09 Phase 1) — they are always both-set or
+// both-empty (enforced by a CHECK).
 type Domain struct {
 	ID          string
 	AppID       string
 	ServiceName string
 	Hostname    string
 	Type        string
-	CertStatus  string
+	RedirectTo  string // when set, emits a 308 redirect route to this host (Phase 3)
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
 
-const domainColumns = `id, app_id, service_name, hostname, type, cert_status, created_at, updated_at`
+// Assigned reports whether the domain is bound to an app/service (and so emits
+// a route). An unassigned domain is DNS-verifiable but routes nowhere.
+func (d Domain) Assigned() bool { return d.AppID != "" && d.ServiceName != "" }
+
+const domainColumns = `id, app_id, service_name, hostname, type, redirect_to, created_at, updated_at`
 
 func scanDomain(row pgx.Row) (Domain, error) {
 	var d Domain
-	err := row.Scan(&d.ID, &d.AppID, &d.ServiceName, &d.Hostname, &d.Type, &d.CertStatus, &d.CreatedAt, &d.UpdatedAt)
+	var appID, serviceName, redirectTo sql.NullString
+	err := row.Scan(&d.ID, &appID, &serviceName, &d.Hostname, &d.Type, &redirectTo, &d.CreatedAt, &d.UpdatedAt)
+	d.AppID = appID.String
+	d.ServiceName = serviceName.String
+	d.RedirectTo = redirectTo.String
 	return d, err
 }
 
-// CreateDomain inserts a hostname for a service. A duplicate hostname (the
-// global UNIQUE) returns ErrConflict. A missing service (the composite FK)
-// surfaces the raw FK error to the caller.
+// nullStr maps an empty string to a SQL NULL so an unassigned domain stores
+// NULL (satisfying the both-or-neither CHECK) rather than "".
+func nullStr(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: s != ""}
+}
+
+// CreateDomain inserts a hostname. appID/serviceName may be empty to create an
+// unassigned domain (plan 09 Phase 1); when set they must reference an existing
+// service (the composite FK) or the raw FK error surfaces. A duplicate hostname
+// (the global UNIQUE) returns ErrConflict.
 func (s *Store) CreateDomain(ctx context.Context, appID, serviceName, hostname, typ string) (Domain, error) {
 	d, err := scanDomain(s.pool.QueryRow(ctx, `
 		INSERT INTO domains (app_id, service_name, hostname, type)
 		VALUES ($1, $2, $3, $4)
 		RETURNING `+domainColumns,
-		appID, serviceName, hostname, typ))
+		nullStr(appID), nullStr(serviceName), hostname, typ))
 	if isUniqueViolation(err) {
 		return Domain{}, ErrConflict
 	}
@@ -63,10 +80,10 @@ func (s *Store) ListDomainsByService(ctx context.Context, appID, serviceName str
 	return s.queryDomains(ctx, `SELECT `+domainColumns+` FROM domains WHERE app_id = $1 AND service_name = $2 ORDER BY hostname`, appID, serviceName)
 }
 
-// ListAllDomains returns every domain across all apps — used by the proxy
-// reconcile on boot.
+// ListAllDomains returns every (custom) domain across all apps — used by the
+// proxy reconcile, the status engine, and the Domains hub.
 func (s *Store) ListAllDomains(ctx context.Context) ([]Domain, error) {
-	return s.queryDomains(ctx, `SELECT `+domainColumns+` FROM domains ORDER BY app_id, hostname`)
+	return s.queryDomains(ctx, `SELECT `+domainColumns+` FROM domains ORDER BY hostname`)
 }
 
 func (s *Store) queryDomains(ctx context.Context, sql string, args ...any) ([]Domain, error) {
@@ -96,6 +113,16 @@ func (s *Store) GetDomainByHostname(ctx context.Context, hostname string) (Domai
 	return d, err
 }
 
+// GetDomainByID fetches a domain by id alone — used by the Domains hub, where a
+// row may be unassigned (no owning app to scope by).
+func (s *Store) GetDomainByID(ctx context.Context, id string) (Domain, error) {
+	d, err := scanDomain(s.pool.QueryRow(ctx, `SELECT `+domainColumns+` FROM domains WHERE id = $1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Domain{}, ErrNotFound
+	}
+	return d, err
+}
+
 // GetDomain fetches by id, scoped to an app so one app can't address another's
 // domain.
 func (s *Store) GetDomain(ctx context.Context, appID, id string) (Domain, error) {
@@ -104,6 +131,40 @@ func (s *Store) GetDomain(ctx context.Context, appID, id string) (Domain, error)
 		return Domain{}, ErrNotFound
 	}
 	return d, err
+}
+
+// UpdateDomain changes a domain's assignment (service binding / owning app),
+// hostname (plan 09 Phase 2), and redirect target (Phase 3), returning the
+// updated row. Passing empty appID/serviceName unassigns it; empty redirectTo
+// makes it a normal proxy domain. A duplicate hostname returns ErrConflict; a
+// missing row returns ErrNotFound.
+func (s *Store) UpdateDomain(ctx context.Context, id, appID, serviceName, hostname, redirectTo string) (Domain, error) {
+	d, err := scanDomain(s.pool.QueryRow(ctx, `
+		UPDATE domains
+		SET app_id = $2, service_name = $3, hostname = $4, redirect_to = $5, updated_at = NOW()
+		WHERE id = $1
+		RETURNING `+domainColumns,
+		id, nullStr(appID), nullStr(serviceName), hostname, nullStr(redirectTo)))
+	if isUniqueViolation(err) {
+		return Domain{}, ErrConflict
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Domain{}, ErrNotFound
+	}
+	return d, err
+}
+
+// DeleteDomainByID removes a domain by id alone — used by the Domains hub where
+// a row may be unassigned. Custom domains only (auto hosts aren't rows).
+func (s *Store) DeleteDomainByID(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM domains WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteDomain removes a domain by id, scoped to its app.
@@ -116,13 +177,6 @@ func (s *Store) DeleteDomain(ctx context.Context, appID, id string) error {
 		return ErrNotFound
 	}
 	return nil
-}
-
-// SetCertStatus updates the advisory cert_status for a domain (best-effort,
-// polled from Caddy). A missing row is not an error.
-func (s *Store) SetCertStatus(ctx context.Context, id, status string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE domains SET cert_status = $2, updated_at = NOW() WHERE id = $1`, id, status)
-	return err
 }
 
 // DomainCert is the slim per-host cert state the expiry checker (plan 03) works

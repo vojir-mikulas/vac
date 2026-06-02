@@ -245,17 +245,101 @@ export function createDomain(app: AppRecord, service: string, hostname: string):
     service_name: service,
     hostname,
     type: 'custom',
-    cert_status: 'provisioning',
+    managed: false,
+    status: 'issuing',
     created_at: nowISO(),
     updated_at: nowISO(),
   }
   app.domains.push(d)
-  // Certs "issue" shortly after creation.
+  // DNS/cert "settles" shortly after creation.
   setTimeout(() => {
-    d.cert_status = 'active'
+    d.status = 'active'
     d.updated_at = nowISO()
   }, 4_000)
   return d
+}
+
+// Domains added in the hub without an app binding live here (the real backend
+// stores them with NULL app_id/service_name).
+let unassignedDomains: Domain[] = []
+
+export function listAllDomains(): Domain[] {
+  return [...state.apps.flatMap((a) => a.domains), ...unassignedDomains]
+}
+
+export function addDomainHub(hostname: string, appId?: string, service?: string): Domain {
+  if (appId && service) {
+    const app = findApp(appId)
+    if (app) return createDomain(app, service, hostname)
+  }
+  const d: Domain = {
+    id: uid('dom'),
+    app_id: '',
+    service_name: '',
+    hostname,
+    type: 'custom',
+    managed: false,
+    status: 'awaiting_dns',
+    created_at: nowISO(),
+    updated_at: nowISO(),
+  }
+  unassignedDomains.push(d)
+  return d
+}
+
+function findDomainEverywhere(id: string): Domain | undefined {
+  for (const app of state.apps) {
+    const d = app.domains.find((x) => x.id === id)
+    if (d) return d
+  }
+  return unassignedDomains.find((x) => x.id === id)
+}
+
+export function updateDomainHub(
+  id: string,
+  body: { hostname?: string; app_id?: string; service_name?: string; redirect_to?: string },
+): Domain | undefined {
+  const d = findDomainEverywhere(id)
+  if (!d) return undefined
+  if (body.hostname) d.hostname = body.hostname
+  d.redirect_to = body.redirect_to || undefined
+  // Move between assigned/unassigned buckets.
+  const fromApp = state.apps.find((a) => a.domains.includes(d))
+  if (fromApp) fromApp.domains = fromApp.domains.filter((x) => x !== d)
+  else unassignedDomains = unassignedDomains.filter((x) => x !== d)
+  d.app_id = body.app_id ?? ''
+  d.service_name = body.service_name ?? ''
+  if (d.app_id && d.service_name) {
+    const app = findApp(d.app_id)
+    if (app) app.domains.push(d)
+  } else {
+    unassignedDomains.push(d)
+  }
+  d.updated_at = nowISO()
+  return d
+}
+
+export function deleteDomainById(id: string): boolean {
+  const before = unassignedDomains.length
+  unassignedDomains = unassignedDomains.filter((x) => x.id !== id)
+  if (unassignedDomains.length < before) return true
+  for (const app of state.apps) {
+    const i = app.domains.findIndex((x) => x.id === id)
+    if (i >= 0) {
+      app.domains.splice(i, 1)
+      return true
+    }
+  }
+  return false
+}
+
+export function refreshDomainStatus(hostname: string): { state: string } | undefined {
+  const d = listAllDomains().find((x) => x.hostname === hostname)
+  if (!d) return undefined
+  // Pretend a refresh nudges a settling domain toward active.
+  if (d.status && d.status !== 'active')
+    d.status = d.status === 'awaiting_dns' ? 'issuing' : 'active'
+  return { state: d.status ?? 'checking' }
 }
 
 export function deleteDomain(app: AppRecord, domainId: string): boolean {

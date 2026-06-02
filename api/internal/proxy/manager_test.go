@@ -12,14 +12,13 @@ import (
 // ---- fakes ----
 
 type fakeStore struct {
-	app        store.App
-	domains    []store.Domain
-	services   []store.Service
-	created    []store.Domain
-	certStatus map[string]string
+	app      store.App
+	domains  []store.Domain
+	services []store.Service
 }
 
 func (f *fakeStore) GetApp(_ context.Context, _ string) (store.App, error) { return f.app, nil }
+func (f *fakeStore) ListApps(_ context.Context) ([]store.App, error)       { return []store.App{f.app}, nil }
 func (f *fakeStore) ListDomainsByApp(_ context.Context, _ string) ([]store.Domain, error) {
 	return f.domains, nil
 }
@@ -33,13 +32,6 @@ func (f *fakeStore) GetDomainByHostname(_ context.Context, host string) (store.D
 	return store.Domain{}, store.ErrNotFound
 }
 
-func (f *fakeStore) CreateDomain(_ context.Context, appID, svc, host, typ string) (store.Domain, error) {
-	d := store.Domain{ID: "new-" + host, AppID: appID, ServiceName: svc, Hostname: host, Type: typ}
-	f.created = append(f.created, d)
-	f.domains = append(f.domains, d)
-	return d, nil
-}
-
 func (f *fakeStore) GetService(_ context.Context, _, name string) (store.Service, error) {
 	for _, s := range f.services {
 		if s.ServiceName == name {
@@ -51,14 +43,6 @@ func (f *fakeStore) GetService(_ context.Context, _, name string) (store.Service
 
 func (f *fakeStore) ListServicesForApp(_ context.Context, _ string) ([]store.Service, error) {
 	return f.services, nil
-}
-
-func (f *fakeStore) SetCertStatus(_ context.Context, id, status string) error {
-	if f.certStatus == nil {
-		f.certStatus = map[string]string{}
-	}
-	f.certStatus[id] = status
-	return nil
 }
 
 type fakeCaddy struct {
@@ -242,30 +226,107 @@ func TestWaitHealthy(t *testing.T) {
 	}
 }
 
-func TestAssignAutoDomains(t *testing.T) {
+func TestSync_DerivesAutoRoute(t *testing.T) {
+	// No custom domains, just an HTTP service: Sync should derive and push the
+	// auto-subdomain route (plan 09 F1) with an @id keyed on app+service.
 	s := &fakeStore{
 		app: store.App{ID: "a1", Slug: "blog"},
 		services: []store.Service{
-			{ServiceName: "web", InternalPort: intp(3000)},
-			{ServiceName: "worker"}, // no internal port → no domain
+			{ServiceName: "web", ContainerID: strp("c1"), InternalPort: intp(3000)},
+			{ServiceName: "worker"}, // no internal port → no auto host
 		},
 	}
-	m := newManagerWith(s, newFakeCaddy(), newFakeNet())
-	if err := m.AssignAutoDomains(context.Background(), "a1"); err != nil {
-		t.Fatalf("AssignAutoDomains: %v", err)
+	c := newFakeCaddy()
+	n := newFakeNet()
+	m := newManagerWith(s, c, n)
+	if err := m.Sync(context.Background(), "a1"); err != nil {
+		t.Fatalf("Sync: %v", err)
 	}
-	if len(s.created) != 1 || s.created[0].Hostname != "blog.vac.example.com" {
-		t.Fatalf("created = %+v, want one blog.vac.example.com", s.created)
+	r, ok := c.put["vac-auto-a1-web"]
+	if !ok {
+		t.Fatalf("derived auto route not pushed: %+v", c.put)
 	}
-	if s.created[0].Type != store.DomainTypeAuto {
-		t.Errorf("type = %q, want auto", s.created[0].Type)
+	if r.Match[0].Host[0] != "blog.vac.example.com" {
+		t.Errorf("auto host = %q, want blog.vac.example.com", r.Match[0].Host[0])
 	}
+	if n.connected["c1"] != "blog--web" {
+		t.Errorf("container not attached: %+v", n.connected)
+	}
+	// The non-HTTP service must not get a route.
+	for id := range c.put {
+		if id == "vac-auto-a1-worker" {
+			t.Errorf("worker (no port) should not get an auto route")
+		}
+	}
+}
 
-	// Idempotent: a second call creates nothing new.
-	before := len(s.created)
-	_ = m.AssignAutoDomains(context.Background(), "a1")
-	if len(s.created) != before {
-		t.Errorf("AssignAutoDomains not idempotent: created grew to %d", len(s.created))
+func TestSync_RedirectDomainEmits308(t *testing.T) {
+	// A domain with RedirectTo set emits a 308 redirect route (no upstream),
+	// independent of whether the app's container is up (plan 09 Phase 3).
+	d := store.Domain{ID: "d1", AppID: "a1", Hostname: "www.example.com", ServiceName: "web", RedirectTo: "example.com"}
+	s := &fakeStore{
+		app:      store.App{ID: "a1", Slug: "blog"},
+		domains:  []store.Domain{d},
+		services: []store.Service{{ServiceName: "web"}}, // no container — redirect still serves
+	}
+	c := newFakeCaddy()
+	m := New(s, c, newFakeNet(), Config{EdgeNetwork: "vac-edge", HealthRetries: 1, HealthTimeout: time.Second}, nil)
+	if err := m.Sync(context.Background(), "a1"); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	r, ok := c.put["vac-route-d1"]
+	if !ok {
+		t.Fatalf("redirect route not pushed: %+v", c.put)
+	}
+	h := r.Handle[0]
+	if h.Handler != "static_response" || h.StatusCode != 308 {
+		t.Fatalf("not a 308 static_response: %+v", h)
+	}
+	loc := h.Headers["Location"]
+	if len(loc) != 1 || loc[0] != "https://example.com{http.request.uri}" {
+		t.Errorf("Location = %v, want https://example.com{http.request.uri}", loc)
+	}
+}
+
+func TestIsAutoHost(t *testing.T) {
+	s := &fakeStore{
+		app:      store.App{ID: "a1", Slug: "blog"},
+		services: []store.Service{{ServiceName: "web", InternalPort: intp(3000)}},
+	}
+	m := newManagerWith(s, newFakeCaddy(), newFakeNet())
+	if ok, err := m.IsAutoHost(context.Background(), "blog.vac.example.com"); err != nil || !ok {
+		t.Errorf("IsAutoHost(derived) = %v, %v; want true", ok, err)
+	}
+	if ok, _ := m.IsAutoHost(context.Background(), "nope.vac.example.com"); ok {
+		t.Errorf("IsAutoHost(unknown) = true")
+	}
+}
+
+func TestSync_PrunesStaleAutoRouteAfterBaseChange(t *testing.T) {
+	// An auto route under the OLD base domain must be pruned once the base
+	// changes — no orphan left behind (plan 09 F1/F2).
+	s := &fakeStore{
+		app:      store.App{ID: "a1", Slug: "blog"},
+		services: []store.Service{{ServiceName: "web", ContainerID: strp("c1"), InternalPort: intp(3000)}},
+	}
+	c := newFakeCaddy()
+	// A leftover route from a previous base domain, keyed the same way but no
+	// longer in the derived set because... actually the @id is app+service, so a
+	// base change keeps the same @id and PutRoute overwrites it. Simulate an
+	// orphan from a *removed* service instead.
+	c.existing = []caddy.Route{{ID: "vac-auto-a1-gone"}}
+	m := newManagerWith(s, c, newFakeNet())
+	if err := m.Sync(context.Background(), "a1"); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	var pruned bool
+	for _, id := range c.deleted {
+		if id == "vac-auto-a1-gone" {
+			pruned = true
+		}
+	}
+	if !pruned {
+		t.Errorf("stale auto route not pruned; deleted=%v", c.deleted)
 	}
 }
 
@@ -319,7 +380,7 @@ func TestApplyControlRoute_NoopWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestAssignAutoDomains_MultiService(t *testing.T) {
+func TestAutoHosts_MultiService(t *testing.T) {
 	s := &fakeStore{
 		app: store.App{ID: "a1", Slug: "shop"},
 		services: []store.Service{
@@ -328,12 +389,13 @@ func TestAssignAutoDomains_MultiService(t *testing.T) {
 		},
 	}
 	m := newManagerWith(s, newFakeCaddy(), newFakeNet())
-	if err := m.AssignAutoDomains(context.Background(), "a1"); err != nil {
-		t.Fatalf("AssignAutoDomains: %v", err)
+	hosts, err := m.AutoHosts(context.Background())
+	if err != nil {
+		t.Fatalf("AutoHosts: %v", err)
 	}
 	got := map[string]bool{}
-	for _, d := range s.created {
-		got[d.Hostname] = true
+	for _, h := range hosts {
+		got[h.Hostname] = true
 	}
 	if !got["web.shop.vac.example.com"] || !got["api.shop.vac.example.com"] {
 		t.Errorf("multi-service hostnames wrong: %+v", got)

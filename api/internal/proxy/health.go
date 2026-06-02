@@ -37,11 +37,12 @@ func (m *Manager) WaitHealthy(ctx context.Context, appID string) error {
 		byName[s.ServiceName] = s
 	}
 
-	// Desired dial addresses: one per service that has a domain + container +
-	// internal port. Dedup so multi-domain services are checked once.
+	// Desired dial addresses: one per service backing a desired route (assigned
+	// custom domain or derived auto host) that has a container + internal port.
+	// Dedup so a multi-route service is checked once.
 	want := make(map[string]bool)
-	for _, d := range domains {
-		svc, ok := byName[d.ServiceName]
+	for _, spec := range m.desiredRoutes(app, domains, services) {
+		svc, ok := byName[spec.service]
 		if ok && svc.ContainerID != nil && *svc.ContainerID != "" && svc.InternalPort != nil {
 			want[m.dial(app.Slug, svc)] = true
 		}

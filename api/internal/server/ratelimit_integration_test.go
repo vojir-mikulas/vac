@@ -22,7 +22,7 @@ func TestLoginIsRateLimited(t *testing.T) {
 	cfg.LoginRateLimit = 5
 	cfg.LoginRateWindow = 15 * time.Minute
 	cfg.WorkDir = t.TempDir()
-	srv, err := server.New(t.Context(), cfg, s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	srv, err := server.New(t.Context(), cfg, s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("server.New: %v", err)
 	}

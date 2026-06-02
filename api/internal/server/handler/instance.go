@@ -40,10 +40,24 @@ type AppStackController interface {
 	Down(ctx context.Context, projectName string, removeVolumes bool) error
 }
 
+// dnsResolver is the subset of *net.Resolver the DNS-check handler needs.
+// Matches domainstatus.Resolver so both share one resolver instance.
+type dnsResolver interface {
+	LookupHost(ctx context.Context, host string) ([]string, error)
+}
+
 // BaseDomainSetter applies a runtime base-domain override to the live proxy.
 // *proxy.Manager satisfies it. May be nil when the proxy isn't wired.
 type BaseDomainSetter interface {
 	SetBaseDomain(domain string)
+}
+
+// RouteReconciler rebuilds the entire route set from the DB. *proxy.Manager
+// satisfies it. Used after a base-domain change so every app's derived auto URL
+// regenerates and old routes are pruned immediately (plan 09 F2) — orphans
+// become structurally impossible (plan 09 F1).
+type RouteReconciler interface {
+	Reconcile(ctx context.Context) error
 }
 
 // selfTerminate asks the current process to begin graceful shutdown so the
@@ -105,7 +119,7 @@ type baseDomainRequest struct {
 // clears the override (falling back to config).
 //
 // PUT /api/instance/base-domain
-func PutBaseDomain(s *store.Store, cfg config.Config, pm BaseDomainSetter) http.HandlerFunc {
+func PutBaseDomain(s *store.Store, cfg config.Config, pm BaseDomainSetter, rec RouteReconciler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req baseDomainRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -133,6 +147,19 @@ func PutBaseDomain(s *store.Store, cfg config.Config, pm BaseDomainSetter) http.
 		}
 		if pm != nil {
 			pm.SetBaseDomain(host)
+		}
+		// Regenerate every app's derived auto routes under the new base and prune
+		// the old ones. Best-effort and detached — a slow/unreachable proxy must
+		// not block the settings save; the boot reconcile (or next deploy)
+		// converges. The UI confirms the affected apps before calling this.
+		if rec != nil {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if err := rec.Reconcile(ctx); err != nil {
+					slog.Warn("instance: reconcile after base-domain change failed", "err", err)
+				}
+			}()
 		}
 		effective := host
 		if effective == "" {
@@ -185,7 +212,15 @@ func DismissOnboarding(s *store.Store) http.HandlerFunc {
 // points at this VPS — the in-app answer to "is my domain pointed here yet?".
 //
 // GET /api/instance/dns-check?host=app.example.com
-func DNSCheck(hostIP string) http.HandlerFunc {
+//
+// resolver is the same injectable resolver the status engine uses (plan 09 F3
+// §2) — a public recursive resolver by default — so the one-shot button and the
+// background engine agree instead of the button reading a stale local cache. A
+// nil resolver falls back to the system resolver.
+func DNSCheck(hostIP string, resolver dnsResolver) http.HandlerFunc {
+	if resolver == nil {
+		resolver = net.DefaultResolver
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		host, err := proxy.NormalizeHostname(r.URL.Query().Get("host"))
 		if err != nil {
@@ -194,7 +229,7 @@ func DNSCheck(hostIP string) http.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
 		defer cancel()
-		addrs, lookupErr := net.DefaultResolver.LookupHost(ctx, host)
+		addrs, lookupErr := resolver.LookupHost(ctx, host)
 
 		resolved := make([]string, 0, len(addrs))
 		pointsHere := false
