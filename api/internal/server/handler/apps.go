@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -378,9 +379,26 @@ type AppDBDeprovisioner interface {
 	DeprovisionApp(ctx context.Context, appID string)
 }
 
-func DeleteApp(s *store.Store, pm ProxyManager, dbDeprov AppDBDeprovisioner) http.HandlerFunc {
+func DeleteApp(s *store.Store, pm ProxyManager, dbDeprov AppDBDeprovisioner, ctrl AppStackController) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
+		app, err := s.GetApp(r.Context(), id)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				WriteError(w, http.StatusNotFound, "app not found")
+				return
+			}
+			WriteError(w, http.StatusInternalServerError, "could not load app")
+			return
+		}
+		// Stop and remove the app's containers + named volumes. Deleting an app is
+		// permanent, so its data goes with it (e.g. an add-on's data volume).
+		// Best-effort: a stuck stack must not block the delete.
+		if ctrl != nil {
+			if err := ctrl.Down(r.Context(), "vac-"+app.Slug, true); err != nil {
+				slog.Warn("delete: could not down stack", "app", app.ID, "err", err)
+			}
+		}
 		// Drop managed-database engine-side objects (DBs/roles inside the shared
 		// instances) before the cascade removes the rows that point at them.
 		if dbDeprov != nil {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { Download } from 'lucide-react'
+import { Blocks, Download } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -38,6 +38,10 @@ export function SettingsTab({ appId }: { appId: string }) {
 
 function SettingsForm({ app }: { app: App }) {
   const appId = app.id
+  // Add-on apps have no git source / build config of their own — they ship a
+  // materialized template. Hide the repo/branch/build/autodeploy controls and
+  // show a read-only "Installed from {template}" panel instead.
+  const isAddon = app.source === 'template'
   const update = useUpdateApp(appId)
   const remove = useDeleteApp()
   const exportApp = useExportApp()
@@ -137,62 +141,82 @@ function SettingsForm({ app }: { app: App }) {
         </Card>
       </section>
 
-      <section>
-        <SectionHeader>Source</SectionHeader>
-        <Card className="gap-4 p-5">
-          <div className="grid gap-2">
-            <Label htmlFor="git">Repository URL</Label>
-            <Input
-              id="git"
-              value={gitUrl}
-              onChange={(e) => setGitUrl(e.target.value)}
-              className="font-mono text-xs"
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="branch">Branch</Label>
-              <Input
-                id="branch"
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-                className="font-mono text-xs"
-              />
+      {isAddon ? (
+        <section>
+          <SectionHeader>Source</SectionHeader>
+          <Card className="gap-3 p-5">
+            <div className="flex items-center gap-2">
+              <Blocks className="size-4 text-muted-foreground" />
+              <span className="text-sm font-medium">
+                Installed from {app.template_name ?? 'an add-on'}
+              </span>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="compose">Compose file</Label>
-              <Input
-                id="compose"
-                value={composeFile}
-                onChange={(e) => setComposeFile(e.target.value)}
-                className="font-mono text-xs"
-              />
+            <p className="text-xs text-muted-foreground">
+              This app was deployed from a curated add-on template. Its repository, build, and
+              auto-deploy settings are managed by the template and can't be edited here.
+            </p>
+          </Card>
+        </section>
+      ) : (
+        <>
+          <section>
+            <SectionHeader>Source</SectionHeader>
+            <Card className="gap-4 p-5">
+              <div className="grid gap-2">
+                <Label htmlFor="git">Repository URL</Label>
+                <Input
+                  id="git"
+                  value={gitUrl}
+                  onChange={(e) => setGitUrl(e.target.value)}
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="branch">Branch</Label>
+                  <Input
+                    id="branch"
+                    value={branch}
+                    onChange={(e) => setBranch(e.target.value)}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="compose">Compose file</Label>
+                  <Input
+                    id="compose"
+                    value={composeFile}
+                    onChange={(e) => setComposeFile(e.target.value)}
+                    className="font-mono text-xs"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveSource}>
+                  Save
+                </Button>
+              </div>
+            </Card>
+            <div className="mt-4">
+              <DeployKeyCard appId={appId} gitUrl={app.git_url} />
             </div>
-          </div>
-          <div className="flex justify-end">
-            <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveSource}>
-              Save
-            </Button>
-          </div>
-        </Card>
-        <div className="mt-4">
-          <DeployKeyCard appId={appId} gitUrl={app.git_url} />
-        </div>
-      </section>
+          </section>
 
-      <AutoDeploySection appId={appId} defaultBranch={app.git_branch} />
+          <AutoDeploySection appId={appId} defaultBranch={app.git_branch} />
 
-      <section>
-        <SectionHeader>Build</SectionHeader>
-        <Card className="gap-5 p-5">
-          <BuildSourcePicker value={build} onChange={setBuild} />
-          <div className="flex justify-end">
-            <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveBuild}>
-              Save
-            </Button>
-          </div>
-        </Card>
-      </section>
+          <section>
+            <SectionHeader>Build</SectionHeader>
+            <Card className="gap-5 p-5">
+              <BuildSourcePicker value={build} onChange={setBuild} />
+              <div className="flex justify-end">
+                <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveBuild}>
+                  Save
+                </Button>
+              </div>
+            </Card>
+          </section>
+        </>
+      )}
 
       <section>
         <SectionHeader>Runtime</SectionHeader>
@@ -246,23 +270,28 @@ function SettingsForm({ app }: { app: App }) {
         <Card className="gap-0 border-err-border p-0">
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
             <div>
-              <div className="text-sm font-medium">Delete this app</div>
+              <div className="text-sm font-medium">
+                {isAddon ? 'Uninstall this add-on' : 'Delete this app'}
+              </div>
               <p className="text-xs text-muted-foreground">
-                Stops all services and removes the app permanently.
+                Stops all services and permanently removes the app, its containers, and data
+                volumes.
               </p>
             </div>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="danger" size="sm">
-                  Delete app
+                  {isAddon ? 'Uninstall' : 'Delete app'}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete {app.name}?</AlertDialogTitle>
+                  <AlertDialogTitle>
+                    {isAddon ? `Uninstall ${app.name}?` : `Delete ${app.name}?`}
+                  </AlertDialogTitle>
                   <AlertDialogDescription>
-                    This permanently removes the app, its services, and configuration. This action
-                    cannot be undone.
+                    This permanently removes the app, its services, configuration, and data volumes
+                    — plus any managed database it owns. This action cannot be undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

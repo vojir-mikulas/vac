@@ -1,5 +1,5 @@
 import { Link, Outlet, createFileRoute } from '@tanstack/react-router'
-import { GitBranch, Globe, Lock, RotateCw } from 'lucide-react'
+import { Blocks, GitBranch, Globe, Lock, RotateCw } from 'lucide-react'
 
 import { PageContainer } from '@/components/layout/app-shell'
 import { AppStatsProvider } from '@/features/app-detail/stats-context'
@@ -8,6 +8,7 @@ import { StatusPill } from '@/components/common/status-pill'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useApp } from '@/lib/api/apps'
+import { useDatabases } from '@/lib/api/databases'
 import { useTriggerDeploy } from '@/lib/api/deployments'
 import { useDomains } from '@/lib/api/domains'
 import { useInstanceInfo } from '@/lib/api/instance'
@@ -37,14 +38,18 @@ function AppDetailLayout() {
   const { data: app, isLoading } = useApp(appId)
   const { data: domains } = useDomains(appId)
   const { data: instance } = useInstanceInfo()
+  const { data: databases } = useDatabases(appId, !!instance?.managed_services)
   const deploy = useTriggerDeploy(appId)
 
   const primaryDomain = domains?.[0]
+  const isAddon = app?.source === 'template'
+  const hasManagedDB = (databases?.length ?? 0) > 0
 
-  // Slot the managed-services tabs in before Settings when the gate is open.
-  const tabs = instance?.managed_services
-    ? [...TABS.slice(0, 5), ...MANAGED_TABS, ...TABS.slice(5)]
-    : TABS
+  // Slot the managed-services tabs (Databases/Backups) in before Settings when
+  // the gate is open — but hide them for an add-on app that owns no managed DB:
+  // they'd only show empty inputs for a stack the operator doesn't manage here.
+  const showManagedTabs = !!instance?.managed_services && (!isAddon || hasManagedDB)
+  const tabs = showManagedTabs ? [...TABS.slice(0, 5), ...MANAGED_TABS, ...TABS.slice(5)] : TABS
 
   return (
     <PageContainer>
@@ -60,10 +65,17 @@ function AppDetailLayout() {
           )}
           {app ? (
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <GitBranch className="size-3" />
-                {app.git_url} : {app.git_branch}
-              </span>
+              {isAddon ? (
+                <span className="flex items-center gap-1.5">
+                  <Blocks className="size-3" />
+                  Installed from {app.template_name ?? 'add-on'}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <GitBranch className="size-3" />
+                  {app.git_url} : {app.git_branch}
+                </span>
+              )}
               {primaryDomain ? (
                 <span className="flex items-center gap-1.5">
                   {primaryDomain.status === 'active' ? (

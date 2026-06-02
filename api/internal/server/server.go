@@ -242,7 +242,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/{id}", handler.GetApp(s, addonCatalog))
 				r.Get("/{id}/export", handler.ExportApp(s, box))
 				r.Patch("/{id}", handler.UpdateApp(s, addonCatalog))
-				r.Delete("/{id}", handler.DeleteApp(s, proxyMgr, dbDeprov))
+				r.Delete("/{id}", handler.DeleteApp(s, proxyMgr, dbDeprov, docker))
 
 				r.Get("/{id}/ssh-key", handler.GetAppSSHKey(s, keys))
 				r.Post("/{id}/ssh-key/regenerate", handler.RegenerateAppSSHKey(s, keys))

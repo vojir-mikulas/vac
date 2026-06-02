@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, Blocks, Database, Download } from 'lucide-react'
+import { AlertTriangle, Blocks, Database, Download, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
@@ -10,6 +10,17 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -18,10 +29,21 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { useAddons, useInstallAddon } from '@/lib/api/addons'
-import type { Addon } from '@/types/api'
+import { useApps, useDeleteApp } from '@/lib/api/apps'
+import type { Addon, App } from '@/types/api'
 
 export function AddonsPage() {
   const { data: addons, isLoading } = useAddons()
+  const { data: apps } = useApps()
+
+  // Map template_id → the installed app so the catalog can offer Open instead of
+  // Install for add-ons already running on this box.
+  const installed = new Map<string, App>()
+  for (const app of apps ?? []) {
+    if (app.source === 'template' && app.template_id && !installed.has(app.template_id)) {
+      installed.set(app.template_id, app)
+    }
+  }
 
   return (
     <PageContainer>
@@ -38,7 +60,7 @@ export function AddonsPage() {
       ) : addons && addons.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {addons.map((a) => (
-            <AddonCard key={a.id} addon={a} />
+            <AddonCard key={a.id} addon={a} installedApp={installed.get(a.id)} />
           ))}
         </div>
       ) : (
@@ -48,7 +70,7 @@ export function AddonsPage() {
   )
 }
 
-function AddonCard({ addon }: { addon: Addon }) {
+function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }) {
   return (
     <Card className="flex flex-col gap-3 p-5">
       <div className="flex items-start justify-between gap-2">
@@ -56,9 +78,15 @@ function AddonCard({ addon }: { addon: Addon }) {
           <Blocks className="size-4 text-muted-foreground" />
           <span className="text-sm font-semibold">{addon.name}</span>
         </div>
-        <span className="rounded-full border bg-surface-2 px-2 py-0.5 text-2xs text-muted-foreground">
-          ~{addon.footprint_mb} MB
-        </span>
+        {installedApp ? (
+          <span className="rounded-full border border-ok-border bg-ok-bg px-2 py-0.5 text-2xs text-ok-foreground">
+            Installed
+          </span>
+        ) : (
+          <span className="rounded-full border bg-surface-2 px-2 py-0.5 text-2xs text-muted-foreground">
+            ~{addon.footprint_mb} MB
+          </span>
+        )}
       </div>
       <p className="flex-1 text-sm text-muted-foreground">{addon.description}</p>
       {addon.depends_on_db ? (
@@ -67,8 +95,64 @@ function AddonCard({ addon }: { addon: Addon }) {
           Provisions a managed {addon.depends_on_db} database
         </div>
       ) : null}
-      <InstallDialog addon={addon} />
+      {installedApp ? (
+        <InstalledActions addon={addon} app={installedApp} />
+      ) : (
+        <InstallDialog addon={addon} />
+      )}
     </Card>
+  )
+}
+
+// InstalledActions shows Open + Uninstall for an add-on already running on this
+// box. Uninstall is the generic app delete behind an add-on-aware confirm — the
+// backend stops the stack, removes its volumes, and deprovisions any managed DB.
+function InstalledActions({ addon, app }: { addon: Addon; app: App }) {
+  const navigate = useNavigate()
+  const remove = useDeleteApp()
+  const uninstall = () =>
+    remove.mutate(app.id, {
+      onSuccess: () => toast.success(`Uninstalled ${addon.name}`),
+      onError: (e) => toast.error(e.message),
+    })
+
+  return (
+    <div className="flex gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        className="flex-1"
+        onClick={() => navigate({ to: '/apps/$appId/overview', params: { appId: app.id } })}
+      >
+        Open
+      </Button>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button variant="outline" size="sm" aria-label={`Uninstall ${addon.name}`}>
+            <Trash2 className="size-3.5" />
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Uninstall {addon.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the app and permanently deletes its data — its containers and volumes
+              {addon.depends_on_db ? `, plus its managed ${addon.depends_on_db} database` : ''}.
+              This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={uninstall}
+              className="bg-err text-err-foreground hover:bg-err/90"
+            >
+              Uninstall
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   )
 }
 
