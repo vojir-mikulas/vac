@@ -37,11 +37,25 @@ at the **Caddy edge**:
 5. It **holds / retries** the original request through to the now-live upstream; past a
    timeout it serves a lightweight **"starting…" holding page** (auto-refresh).
 
-The [Sablier](https://github.com/acouvreur/sablier) project implements exactly this and ships
-a **Caddy plugin** — evaluate adopting it before building the interceptor from scratch. Either
-way the wake trigger flows Caddy → vac-api (start container), the inverse of the normal
-"vac-api can't reach app containers" rule, which is fine because it's a control action, not
-app traffic.
+**Decision: build a custom in-house wake handler, not the [Sablier](https://github.com/acouvreur/sablier)
+Caddy plugin.** Sablier ships a plugin that does roughly this, but for VAC the custom route wins:
+
+- **No custom Caddy build.** A third-party plugin means an `xcaddy` build pipeline and pinning
+  the plugin to our Caddy version forever. VAC ships its own `proxy/` Caddy container with a
+  tight dependency surface — keep it stock.
+- **Reuse our own health gate.** We already poll `/reverse_proxy/upstreams`; the plugin would
+  duplicate that logic out-of-process instead of sharing our deploy-gating code.
+- **Tighter state integration.** The wake path needs to drive vac-api's app state model
+  (`sleeping`), per-app settings, the stampede start-lock, and notifications — all of which
+  live in `vac-api`. A custom handler talks to those directly; the plugin would need a
+  side-channel.
+- **No external release-cadence coupling.** We own the upgrade/Caddy-compat story.
+
+Shape of the custom handler: Caddy routes the upstream-miss for a `sleeping` service to a
+small wake endpoint (in `vac-api`, or a tiny sidecar on `vac-edge` that proxies to it). The
+wake trigger flows Caddy → vac-api (start container) — the inverse of the normal "vac-api
+can't reach app containers" rule, which is fine because it's a control action, not app
+traffic. (Sablier stays the reference implementation to crib request-holding behavior from.)
 
 ## Eligibility — flag stateful, never sleep it
 
@@ -73,17 +87,20 @@ Sleeping breaks anything doing work between requests. Gate on it:
   guard (refuse to enable for flagged-stateful / ineligible services).
 - **Idle reaper** in `vac-api`: consume the per-app request counters; when an eligible app
   has zero traffic for `idle_timeout`, `docker stop` it and mark state `sleeping`.
-- **Wake path** at the Caddy edge (Sablier plugin or a small custom handler) → vac-api start
-  endpoint → reuse upstream-health gating → release held request / holding page.
+- **Wake path** at the Caddy edge: custom handler → vac-api start endpoint → reuse
+  upstream-health gating → release held request / holding page.
 - **State + UI**: a `sleeping` app state distinct from `stopped`/`error`, shown on the
   dashboard; surface "slept N apps, reclaimed ~X MB" as a density win.
 
 ## Open questions
 
-- Adopt **Sablier** (Caddy plugin, batteries included) vs. build a minimal in-house wake
-  handler? Sablier is the fast path; in-house keeps the dependency surface small and reuses
-  our own health-gate code. Lean Sablier for v1, revisit.
-- Where the wake-start control endpoint lives and how it's authenticated (Caddy → vac-api).
+- Where the wake handler runs: a route on `vac-api` reached via a tiny `vac-edge` shim, vs. a
+  minimal sidecar on `vac-edge`. Whichever keeps the Caddy → vac-api start call simplest to
+  authenticate without putting `vac-api` itself on `vac-edge`.
+- How the wake-start control endpoint is authenticated (Caddy → vac-api) and how Caddy is
+  configured to route an upstream-miss for a `sleeping` service to it (handle/route ordering).
+- Request-holding mechanics — hold the connection and retry internally vs. holding page +
+  auto-refresh. (Sablier is the reference for the held-connection approach.)
 - How idle detection coexists with WebSocket/SSE long-lived connections (probably: any such
   service is ineligible).
 - Interaction with **resource guardrails (06)** and **zero-downtime deploys (05)** — a
