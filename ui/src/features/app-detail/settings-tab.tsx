@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
+import { Download } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -22,6 +23,8 @@ import { AutoDeploySection } from '@/features/app-detail/auto-deploy-section'
 import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
 import { BuildSourcePicker, type BuildSourceValue } from '@/features/apps/build-source'
 import { useApp, useDeleteApp, useUpdateApp } from '@/lib/api/apps'
+import { useExportApp } from '@/lib/api/portability'
+import { downloadFile } from '@/lib/log-export'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { App } from '@/types/api'
 
@@ -37,6 +40,7 @@ function SettingsForm({ app }: { app: App }) {
   const appId = app.id
   const update = useUpdateApp(appId)
   const remove = useDeleteApp()
+  const exportApp = useExportApp()
   const navigate = useNavigate()
 
   const [name, setName] = useState(app.name)
@@ -92,6 +96,15 @@ function SettingsForm({ app }: { app: App }) {
         onError: (e) => toast.error(e.message),
       },
     )
+
+  const exportSpec = () =>
+    exportApp.mutate(appId, {
+      onSuccess: (yaml) => {
+        downloadFile(`${app.slug}.vac.app.yaml`, yaml, 'application/yaml')
+        toast.success('Exported app spec')
+      },
+      onError: (e) => toast.error(e.message),
+    })
 
   const deleteApp = () =>
     remove.mutate(appId, {
@@ -202,6 +215,27 @@ function SettingsForm({ app }: { app: App }) {
           <div className="flex justify-end">
             <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveRuntime}>
               Save
+            </Button>
+          </div>
+        </Card>
+      </section>
+
+      <section>
+        <SectionHeader>Portability</SectionHeader>
+        <Card className="gap-0 p-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <div className="max-w-xl">
+              <div className="text-sm font-medium">Export app spec</div>
+              <p className="text-xs text-muted-foreground">
+                Download this app as a portable <span className="font-mono">vac.app.yaml</span> —
+                build config, services, domains, triggers, and env keys. Nothing here is
+                proprietary: re-import it on another VAC, or keep it in version control for disaster
+                recovery. Sensitive secret values are omitted — you re-enter them on the far side.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" disabled={exportApp.isPending} onClick={exportSpec}>
+              <Download className="size-4" />
+              Export spec
             </Button>
           </div>
         </Card>

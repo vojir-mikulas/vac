@@ -55,6 +55,20 @@ export interface UpdateAppInput {
   mem_limit_mb?: number
 }
 
+// Result of importing a portable spec (plan 18). Mirrors
+// portability.ImportResult. secrets_needed lists sensitive env keys imported
+// without a value — the operator re-enters them after.
+export interface ImportResult {
+  app_id: string
+  slug: string
+  created: boolean
+  services: number
+  domains: number
+  triggers: number
+  env_vars: number
+  secrets_needed?: string[]
+}
+
 export type ServiceStatus = 'running' | 'stopped' | 'crashed' | 'building' | string
 
 export interface Service {

@@ -66,6 +66,18 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "export":
+			if err := admin.Export(os.Args[2:], os.Stdout, os.Stderr); err != nil {
+				fmt.Fprintln(os.Stderr, "export:", err)
+				os.Exit(1)
+			}
+			return
+		case "apply":
+			if err := admin.Apply(os.Args[2:], os.Stdin, os.Stdout, os.Stderr); err != nil {
+				fmt.Fprintln(os.Stderr, "apply:", err)
+				os.Exit(1)
+			}
+			return
 		case "version", "--version", "-v":
 			fmt.Printf("vac-api %s\n", version)
 			fmt.Printf("  commit: %s\n", commit)

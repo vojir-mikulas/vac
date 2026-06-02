@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Boxes, GitBranch, MoreHorizontal, Plus, Search } from 'lucide-react'
+import { Boxes, Download, GitBranch, MoreHorizontal, Plus, Search } from 'lucide-react'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { SectionHeader } from '@/components/common/section-header'
@@ -24,6 +24,7 @@ import { useApps } from '@/lib/api/apps'
 import { useBoxBudget, useHostStats } from '@/lib/api/metrics'
 import { formatBytes, formatPercent, relativeTime } from '@/lib/format'
 import { countByFilter, matchesFilter, type AppFilter } from '@/features/apps/status-filter'
+import { ImportAppDialog } from '@/features/apps/import-app-dialog'
 import { OnboardingChecklist } from '@/features/onboarding/onboarding-checklist'
 import type { App } from '@/types/api'
 
@@ -33,6 +34,7 @@ export function AppsDashboard() {
   const { data: budget } = useBoxBudget()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<AppFilter>('all')
+  const [importOpen, setImportOpen] = useState(false)
   const deferredQuery = useDeferredValue(query)
 
   const list = useMemo(() => apps ?? [], [apps])
@@ -53,14 +55,22 @@ export function AppsDashboard() {
         title="Apps"
         description={`${counts.all} application${counts.all === 1 ? '' : 's'} · ${counts.running} running`}
         actions={
-          <Button variant="brand" asChild>
-            <Link to="/apps/new">
-              <Plus className="size-4" />
-              New App
-            </Link>
-          </Button>
+          <>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Download className="size-4" />
+              Import
+            </Button>
+            <Button variant="brand" asChild>
+              <Link to="/apps/new">
+                <Plus className="size-4" />
+                New App
+              </Link>
+            </Button>
+          </>
         }
       />
+
+      <ImportAppDialog open={importOpen} onOpenChange={setImportOpen} />
 
       <OnboardingChecklist />
 
@@ -137,14 +147,20 @@ export function AppsDashboard() {
             <EmptyState
               icon={Boxes}
               title="No apps yet"
-              description="Connect a repository to deploy your first app."
+              description="Connect a repository to deploy your first app, or import an existing vac.app.yaml spec."
               action={
-                <Button variant="brand" asChild>
-                  <Link to="/apps/new">
-                    <Plus className="size-4" />
-                    New App
-                  </Link>
-                </Button>
+                <>
+                  <Button variant="brand" asChild>
+                    <Link to="/apps/new">
+                      <Plus className="size-4" />
+                      New App
+                    </Link>
+                  </Button>
+                  <Button variant="outline" onClick={() => setImportOpen(true)}>
+                    <Download className="size-4" />
+                    Import
+                  </Button>
+                </>
               }
             />
           ) : (

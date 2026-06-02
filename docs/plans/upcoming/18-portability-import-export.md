@@ -1,6 +1,20 @@
 # 18 — Portability: import on-ramp & export exit-ramp (no lock-in)
 
-**Tier:** Trust moat · **Effort:** L (small track — see phasing) · **Status:** stub
+**Tier:** Trust moat · **Effort:** L (small track — see phasing) · **Status:** phases 1–2 landed (backend)
+
+> **Progress (phases 1–2, backend):** the `appspec` core (`vac/v1` types, `FromApp`/`ToApp`,
+> round-trip tests) and the spec on-ramp/exit-ramp are implemented:
+> `api/internal/appspec/` (pure types + translation) and `api/internal/portability/`
+> (store/crypto orchestration). Wired as `GET /api/apps/{id}/export` (format=spec),
+> `POST /api/apps/import` (idempotent on slug), and CLI `vac-api export <slug>` /
+> `vac-api apply -f`. Decisions worth noting: services are **pre-created** on import so
+> domains can bind and operator config (internal port, health path) survives; the spec's
+> single `build.composePath` folds to the `compose_file` column (deploy's existing
+> override→column fallback keeps it functionally identical); sensitive env values are omitted
+> on export and re-pasted on import (reported via `secrets_needed`). **Not yet:** UI
+> (Import paste box / Export action), and **backups + managed databases are deliberately out of
+> the v1 spec** — documented as a gap (they're stateful, not pure config; revisit as additive
+> `vac/v1` fields). Phases 3–5 (sealed instance→instance, compose, k8s) remain.
 
 ## Goal
 

@@ -40,6 +40,13 @@ function readCookie(name: string): string | null {
 interface RequestOptions {
   method?: string
   body?: unknown
+  // rawBody sends a string verbatim (with contentType) instead of JSON-encoding
+  // `body` — used for the portability specs, which travel as YAML text.
+  rawBody?: string
+  contentType?: string
+  // responseType 'text' returns the raw response body unparsed (e.g. an exported
+  // YAML spec); the default parses JSON.
+  responseType?: 'json' | 'text'
   signal?: AbortSignal
   // `path` is relative to /api unless it starts with '/', in which case it's
   // treated as an absolute server path (used for non-/api routes).
@@ -52,7 +59,10 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {}
   let body: BodyInit | undefined
 
-  if (opts.body !== undefined) {
+  if (opts.rawBody !== undefined) {
+    headers['Content-Type'] = opts.contentType ?? 'text/plain'
+    body = opts.rawBody
+  } else if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json'
     body = JSON.stringify(opts.body)
   }
@@ -85,6 +95,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 
   if (res.status === 204) return undefined as T
   const text = await res.text()
+  if (opts.responseType === 'text') return text as T
   if (!text) return undefined as T
   return JSON.parse(text) as T
 }
@@ -95,4 +106,8 @@ export const api = {
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body }),
   del: <T>(path: string, body?: unknown) => request<T>(path, { method: 'DELETE', body }),
+  getText: (path: string, signal?: AbortSignal) =>
+    request<string>(path, { responseType: 'text', signal }),
+  postRaw: <T>(path: string, rawBody: string, contentType: string) =>
+    request<T>(path, { method: 'POST', rawBody, contentType }),
 }
