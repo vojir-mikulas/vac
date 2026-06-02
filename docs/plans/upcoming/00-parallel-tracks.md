@@ -109,6 +109,9 @@ before opening overlapping work here.
 tab. The two items are file-disjoint (compose/pipeline vs. security-pkg/UI), so **unlike a
 normal track they can be split across two agents** — they're listed in priority order, not
 because they share files.
+**Detailed execution plan:** [`E-trust-safety-execution.md`](E-trust-safety-execution.md)
+(migration range `00050`–`00059` reserved; gate slot, escape-hatch split, and the reqmetrics
+observer-hook reuse all locked).
 
 | Order | Item | Effort | Status | Note |
 |---|---|---|---|---|
