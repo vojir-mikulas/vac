@@ -85,6 +85,11 @@ untouched. Document in `docs/deviations.md`.
 
 ### F3 — One honest status (the DNS-detection engine)
 
+> Designed in detail in [09·F3 — The DNS + cert status engine](09-f3-dns-status-engine.md).
+> That sub-plan settles the two open questions below: status is an **in-memory projection,
+> not a stored column** (so it works after F1 removes the auto rows), and the engine resolves
+> via a **public recursive resolver** to dodge the local DNS cache. Read it before building F3.
+
 This is the core of the Vercel feel. Replace the overloaded advisory `cert_status`
 (`store/domains.go`, set to `error` only on route-push failure, never reliably `active`)
 with a single **derived domain status** the UI shows without the operator guessing:
@@ -125,10 +130,19 @@ The Settings → Domains tab becomes the Vercel-style hub.
     "Refresh" for impatience.
   - On `active`: green "Valid Configuration ✓" and the record table collapses.
   - On `misconfigured`: "Resolves to X — expected this server," with the right record shown.
-- **Assign to app + service:** a domain row carries its `app_id` + `service_name`
-  (existing composite FK). The add flow lets you pick the target; the row shows
-  `{app} · {service}`. A domain may be added *unassigned* and assigned later (decide:
-  nullable assignment vs. assign-on-add; nullable is more Vercel-like).
+- **Assign to app + service (nullable):** a domain row carries an *optional* `app_id` +
+  `service_name`. **Decision: nullable assignment, not assign-on-add** — a domain can be
+  added, DNS-verified, and assigned later; the add flow lets you pick a target or leave it
+  unassigned, and the row shows `{app} · {service}` once bound.
+  - **Schema:** relax `app_id`/`service_name` to nullable + a `CHECK` that they are *both
+    null or both set*, and relax the composite FK accordingly (still guarded — a non-null
+    pair must reference an existing app/service).
+  - **An unassigned domain emits no route** — this is a degenerate case of the existing
+    "service not routable yet" skip in `applyApp` (`proxy/manager.go:226`), so it needs no
+    new routing branch; it just shows live F3 status with no upstream.
+  - **Note (don't "fix" later):** an unassigned-but-pointed domain still passes `CaddyAsk`
+    (it's a known custom domain), so Caddy may pre-issue a cert for a host not yet serving.
+    That is intended cert pre-warming, not a leak — the operator explicitly added it.
 - **List shows everything** across apps: hostname, app/service, status, type
   (custom vs. managed/auto), actions. Auto hosts are shown **read-only/managed** — you
   change them by changing the slug or base domain, never by hand.
