@@ -3,13 +3,15 @@ name: Bench RAM
 # Guards the headline "<200 MB idle RAM (excl. database)" claim (plan 07).
 # Kept off the PR hot path: it boots a Docker stack and waits SETTLE_SECONDS,
 # so it runs on main + nightly + on demand, not on every PR.
+# Temporarily disabled: automatic triggers removed so this does not run.
+# Re-enable by uncommenting the push/schedule triggers below.
 on:
-  push:
-    branches: ["main"]
-    paths-ignore: ["docs/**", "**/*.md"]
-  schedule:
-    - cron: "0 3 * * *"
   workflow_dispatch: {}
+  # push:
+  #   branches: ["main"]
+  #   paths-ignore: ["docs/**", "**/*.md"]
+  # schedule:
+  #   - cron: "0 3 * * *"
 
 concurrency:
   group: bench-ram-${{ github.ref }}
