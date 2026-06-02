@@ -1,5 +1,14 @@
 import { Link } from '@tanstack/react-router'
-import { Activity, Blocks, Boxes, Database, Rocket, Server, Settings } from 'lucide-react'
+import {
+  Activity,
+  Blocks,
+  Boxes,
+  Database,
+  Rocket,
+  Server,
+  Settings,
+  ShieldCheck,
+} from 'lucide-react'
 
 import { Meter } from '@/components/common/meter'
 import { useHostStats } from '@/lib/api/metrics'
@@ -10,6 +19,7 @@ const NAV = [
   { to: '/apps', label: 'Apps', icon: Boxes },
   { to: '/deployments', label: 'Deployments', icon: Rocket },
   { to: '/activity', label: 'Activity', icon: Activity },
+  { to: '/security', label: 'Security', icon: ShieldCheck },
   { to: '/database', label: 'Database', icon: Database },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const

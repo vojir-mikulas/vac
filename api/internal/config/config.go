@@ -94,6 +94,19 @@ type Config struct {
 	ManagedServices   bool `yaml:"managed_services"`
 	ManagedDBIsolated bool `yaml:"managed_db_isolated"`
 
+	// Track E / E2 (security dashboard). SecurityMonitor gates the always-on
+	// traffic-anomaly detector that rides the existing Caddy access-log tail
+	// (default on — it holds only bounded in-memory counters, near-zero cost).
+	// The thresholds tune anomaly detection so a busy small app doesn't
+	// false-positive: an IP must exceed SecurityRPSThreshold requests in the
+	// sliding window, or a single IP must exceed SecurityErrThreshold 4xx/5xx
+	// responses, to trip an alert; SecurityCooldown debounces repeat alerts.
+	SecurityMonitor      bool          `yaml:"security_monitor"`
+	SecurityRPSThreshold int           `yaml:"security_rps_threshold"`
+	SecurityErrThreshold int           `yaml:"security_err_threshold"`
+	SecurityWindow       time.Duration `yaml:"security_window"`
+	SecurityCooldown     time.Duration `yaml:"security_cooldown"`
+
 	// Build metadata injected by main() from ldflags vars; surfaced by the
 	// instance-info endpoint. Not read from env/yaml.
 	Version   string `yaml:"-"`
@@ -137,6 +150,12 @@ func Default() Config {
 		StatsPollInterval:       2 * time.Second,
 		RequestMetricsRetention: 24 * time.Hour,
 		CertExpiryDays:          14,
+
+		SecurityMonitor:      true,
+		SecurityRPSThreshold: 300, // requests from one IP within the window
+		SecurityErrThreshold: 100, // 4xx/5xx from one IP within the window
+		SecurityWindow:       time.Minute,
+		SecurityCooldown:     10 * time.Minute,
 	}
 }
 
@@ -320,6 +339,30 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("VAC_MANAGED_DB_ISOLATED"); v != "" {
 		cfg.ManagedDBIsolated = v == "true" || v == "1"
+	}
+
+	if v := os.Getenv("VAC_SECURITY_MONITOR"); v != "" {
+		cfg.SecurityMonitor = v == "true" || v == "1"
+	}
+	if v := os.Getenv("VAC_SECURITY_RPS_THRESHOLD"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.SecurityRPSThreshold = n
+		}
+	}
+	if v := os.Getenv("VAC_SECURITY_ERR_THRESHOLD"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.SecurityErrThreshold = n
+		}
+	}
+	if v := os.Getenv("VAC_SECURITY_WINDOW"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.SecurityWindow = d
+		}
+	}
+	if v := os.Getenv("VAC_SECURITY_COOLDOWN"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.SecurityCooldown = d
+		}
 	}
 }
 

@@ -252,6 +252,37 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		_ = p.logSystem(ctx, deploymentID, warn)
 	}
 
+	// ---- Compose preflight (plan 16 / Track E) ----
+	// Lint the *resolved* compose for VAC-incompatible constructs before the
+	// expensive build/up. Hard findings block here with the same transparent-
+	// failure shape as a health-check failure (running stack keeps serving);
+	// warnings are logged and the deploy proceeds. allow_unsafe_compose
+	// downgrades the edge-conflict class (the operator's call) but never the
+	// host-escape class.
+	if findings, perr := compose.Preflight(composeFile); perr != nil {
+		_ = p.logSystem(ctx, deploymentID, "compose preflight skipped: "+perr.Error())
+	} else {
+		var blocking []compose.Finding
+		for _, f := range findings {
+			_ = p.logSystem(ctx, deploymentID, f.Format())
+			if f.Severity == compose.SeverityError && (!cfg.AllowUnsafeCompose || f.IsHostEscape()) {
+				blocking = append(blocking, f)
+			}
+		}
+		if len(blocking) > 0 {
+			msg := "compose preflight failed:\n" + compose.JoinFindings(blocking)
+			_ = p.logSystem(ctx, deploymentID, msg)
+			_ = p.Store.MarkDeploymentFinished(ctx, deploymentID, DeploymentStatusError, &msg)
+			_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusDegraded)
+			markHTTPServicesDegraded(ctx, p.Store, app.ID)
+			logger.Warn("pipeline: blocked by compose preflight")
+			if p.Notifier != nil {
+				p.Notifier.DeployFailed(app.Name, app.ID, msg, time.Since(runStart))
+			}
+			return nil
+		}
+	}
+
 	// ---- Env file ----
 	envFile := filepath.Join(repoDir, ".env")
 	if p.Box != nil {

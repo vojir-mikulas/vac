@@ -34,7 +34,7 @@ import (
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine) (*http.Server, error) {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost) (*http.Server, error) {
 	// Convert the concrete (possibly-nil) manager into nil-able interface
 	// values so handlers' `== nil` guards behave (a typed-nil pointer in an
 	// interface is not nil).
@@ -341,6 +341,19 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			// Box RAM budget: allocated-vs-total for the dashboard panel.
 			if statsProv != nil {
 				r.Get("/host/budget", handler.HostBudget(statsProv, s))
+			}
+
+			// Security dashboard (plan 15 / E2). Read-only: posture checklist,
+			// live traffic snapshot, and capability-detected fail2ban/firewall
+			// state. No mutation paths, so the audit middleware logs the GETs and
+			// nothing more.
+			if secPosture != nil {
+				r.Get("/security/posture", handler.SecurityPostureHandler(secPosture))
+			}
+			r.Get("/security/traffic", handler.SecurityTrafficHandler(secTraffic))
+			if secHost != nil {
+				r.Get("/security/fail2ban", handler.SecurityFail2banHandler(secHost))
+				r.Get("/security/firewall", handler.SecurityFirewallHandler(secHost))
 			}
 		})
 

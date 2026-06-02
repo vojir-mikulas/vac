@@ -1,0 +1,213 @@
+package security
+
+import (
+	"bufio"
+	"context"
+	"os/exec"
+	"strings"
+	"time"
+)
+
+// hostExecTimeout bounds each read-only host command so a hung binary can't
+// block a dashboard request.
+const hostExecTimeout = 3 * time.Second
+
+// Fail2banState is the read-only fail2ban view. Detected=false means the tool
+// isn't present/readable on this host — the panel renders "not detected" rather
+// than an error.
+type Fail2banState struct {
+	Detected bool           `json:"detected"`
+	Jails    []Fail2banJail `json:"jails"`
+}
+
+// Fail2banJail is one jail's banned-IP summary.
+type Fail2banJail struct {
+	Name            string   `json:"name"`
+	CurrentlyBanned int      `json:"currently_banned"`
+	TotalBanned     int      `json:"total_banned"`
+	BannedIPs       []string `json:"banned_ips"`
+}
+
+// FirewallState is the read-only firewall view. Backend names the tool the rules
+// came from ("ufw" | "nftables" | ""); Detected=false → "not detected".
+type FirewallState struct {
+	Detected bool     `json:"detected"`
+	Backend  string   `json:"backend"`
+	Active   bool     `json:"active"`
+	Rules    []string `json:"rules"`
+}
+
+// Host runs capability-detected, read-only host inspections. It NEVER mutates
+// host state — only `status`/list subcommands are invoked. The runner is
+// injectable so tests can stub command output without touching the real host.
+type Host struct {
+	// run executes argv and returns combined stdout (and an error on non-zero
+	// exit / missing binary). Defaults to a real, env-stripped exec.
+	run func(ctx context.Context, name string, args ...string) (string, error)
+	// look reports whether a binary is on PATH. Defaults to exec.LookPath.
+	look func(name string) bool
+}
+
+// NewHost returns a Host bound to real read-only exec.
+func NewHost() *Host {
+	return &Host{run: runReadOnly, look: binaryPresent}
+}
+
+// runReadOnly executes a read-only command with a bounded timeout and a minimal
+// env (never inheriting os.Environ, which would leak VAC_MASTER_KEY).
+func runReadOnly(ctx context.Context, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, hostExecTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // fixed read-only argv, no user input
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+	out, err := cmd.Output()
+	return string(out), err
+}
+
+func binaryPresent(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+// Fail2ban returns the current jail/ban state, or Detected:false when
+// fail2ban-client is absent or unreadable. Never errors on a missing tool.
+func (h *Host) Fail2ban(ctx context.Context) Fail2banState {
+	if !h.look("fail2ban-client") {
+		return Fail2banState{Detected: false}
+	}
+	statusOut, err := h.run(ctx, "fail2ban-client", "status")
+	if err != nil {
+		// Present but unreadable (e.g. needs root / socket down) — degrade
+		// gracefully rather than surfacing an error to the dashboard.
+		return Fail2banState{Detected: false}
+	}
+	jailNames := parseFail2banJailList(statusOut)
+	state := Fail2banState{Detected: true}
+	for _, name := range jailNames {
+		jailOut, err := h.run(ctx, "fail2ban-client", "status", name)
+		if err != nil {
+			continue
+		}
+		state.Jails = append(state.Jails, parseFail2banJail(name, jailOut))
+	}
+	return state
+}
+
+// parseFail2banJailList extracts jail names from `fail2ban-client status`, whose
+// "Jail list:" line is a comma-separated list.
+func parseFail2banJailList(out string) []string {
+	for _, line := range strings.Split(out, "\n") {
+		// The line is decorated, e.g. "`- Jail list:\tsshd, caddy" — match on the
+		// label rather than a fixed prefix.
+		i := strings.Index(line, "Jail list:")
+		if i < 0 {
+			continue
+		}
+		rest := strings.TrimSpace(line[i+len("Jail list:"):])
+		if rest == "" {
+			return nil
+		}
+		var names []string
+		for _, n := range strings.Split(rest, ",") {
+			if n = strings.TrimSpace(n); n != "" {
+				names = append(names, n)
+			}
+		}
+		return names
+	}
+	return nil
+}
+
+// parseFail2banJail parses `fail2ban-client status <jail>` (currently/total
+// banned counts + the banned IP list).
+func parseFail2banJail(name, out string) Fail2banJail {
+	jail := Fail2banJail{Name: name}
+	// Lines are tree-decorated, e.g. "   |- Currently banned: 2" — match on the
+	// label and read what follows.
+	for _, line := range strings.Split(out, "\n") {
+		switch {
+		case strings.Contains(line, "Currently banned:"):
+			jail.CurrentlyBanned = atoiSafe(after(line, "Currently banned:"))
+		case strings.Contains(line, "Total banned:"):
+			jail.TotalBanned = atoiSafe(after(line, "Total banned:"))
+		case strings.Contains(line, "Banned IP list:"):
+			jail.BannedIPs = strings.Fields(after(line, "Banned IP list:"))
+		}
+	}
+	return jail
+}
+
+// Firewall returns the host firewall rules, preferring ufw then nftables, or
+// Detected:false when neither tool is present/readable. Never errors on a
+// missing tool.
+func (h *Host) Firewall(ctx context.Context) FirewallState {
+	if h.look("ufw") {
+		if out, err := h.run(ctx, "ufw", "status", "verbose"); err == nil {
+			return parseUFW(out)
+		}
+	}
+	if h.look("nft") {
+		if out, err := h.run(ctx, "nft", "list", "ruleset"); err == nil {
+			return parseNFT(out)
+		}
+	}
+	return FirewallState{Detected: false}
+}
+
+// parseUFW reads `ufw status verbose` — the "Status: active" header plus the
+// rule lines.
+func parseUFW(out string) FirewallState {
+	state := FirewallState{Detected: true, Backend: "ufw"}
+	sc := bufio.NewScanner(strings.NewReader(out))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "Status:") {
+			state.Active = strings.Contains(line, "active")
+			continue
+		}
+		// Skip the column header / decoration lines; keep actual rules.
+		if strings.HasPrefix(line, "To ") || strings.HasPrefix(line, "--") ||
+			strings.HasPrefix(line, "Default:") || strings.HasPrefix(line, "Logging:") ||
+			strings.HasPrefix(line, "New profiles:") {
+			continue
+		}
+		state.Rules = append(state.Rules, line)
+	}
+	return state
+}
+
+// parseNFT keeps the non-empty lines of `nft list ruleset` verbatim — the raw
+// ruleset is the read-only display.
+func parseNFT(out string) FirewallState {
+	state := FirewallState{Detected: true, Backend: "nftables", Active: strings.TrimSpace(out) != ""}
+	sc := bufio.NewScanner(strings.NewReader(out))
+	for sc.Scan() {
+		if line := strings.TrimSpace(sc.Text()); line != "" {
+			state.Rules = append(state.Rules, line)
+		}
+	}
+	return state
+}
+
+// after returns the text following label in line (trimmed), or "" if absent.
+func after(line, label string) string {
+	i := strings.Index(line, label)
+	if i < 0 {
+		return ""
+	}
+	return strings.TrimSpace(line[i+len(label):])
+}
+
+func atoiSafe(s string) int {
+	n := 0
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return n
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n
+}

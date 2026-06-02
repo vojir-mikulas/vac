@@ -68,6 +68,33 @@ func TestCollector_HandleLine(t *testing.T) {
 	}
 }
 
+func TestCollector_ObserverHook(t *testing.T) {
+	s := &fakeStore{domains: []store.Domain{{AppID: "a1", ServiceName: "web", Hostname: "blog.example.com"}}}
+	c := New(s, "/nonexistent.log", time.Minute, nil)
+	c.refreshHosts(context.Background())
+
+	var observed []AccessLine
+	c.SetObserver(func(l AccessLine) { observed = append(observed, l) })
+
+	c.handleLine([]byte(`{"request":{"host":"blog.example.com","client_ip":"1.2.3.4","uri":"/x","headers":{"User-Agent":["curl/8"]}},"status":200,"size":42}`))
+	c.handleLine([]byte(`not json`))                // ignored, no observe
+	c.handleLine([]byte(`{"request":{"host":""}}`)) // no host, no observe
+
+	// The hook fires once for the valid line and sees the enriched fields.
+	if len(observed) != 1 {
+		t.Fatalf("observed = %d, want 1", len(observed))
+	}
+	if observed[0].IP() != "1.2.3.4" || observed[0].UserAgent() != "curl/8" || observed[0].Request.URI != "/x" {
+		t.Errorf("observed line missing enriched fields: %+v", observed[0])
+	}
+
+	// Aggregation is unchanged by the hook.
+	c.flush(context.Background())
+	if len(s.flushed) != 1 || s.flushed[0].Requests != 1 || s.flushed[0].BytesOut != 42 {
+		t.Errorf("aggregation altered by observer: %+v", s.flushed)
+	}
+}
+
 func TestSumCounter(t *testing.T) {
 	const body = `# HELP caddy_http_requests_total Counter
 # TYPE caddy_http_requests_total counter

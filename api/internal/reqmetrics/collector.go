@@ -42,6 +42,12 @@ type Collector struct {
 	logger    *slog.Logger
 	now       func() time.Time
 
+	// observe, when set, is called with every parsed access line alongside the
+	// bucket aggregation. It lets a second consumer (the security monitor) see
+	// each request without opening a second tail on the same file. Default nil;
+	// set once at wiring time via SetObserver, so no lock is needed.
+	observe func(AccessLine)
+
 	mu      sync.Mutex
 	hosts   map[string]svcRef
 	buckets map[bucketKey]*store.RequestBucket
@@ -66,13 +72,38 @@ func New(s Store, logPath string, flushInterval time.Duration, logger *slog.Logg
 	}
 }
 
-// accessLine is the subset of a Caddy JSON access-log line we read.
-type accessLine struct {
+// AccessLine is the subset of a Caddy JSON access-log line we read. Host +
+// Status + Size feed the bucket aggregation; ClientIP/RemoteIP/URI/UserAgent are
+// additive fields the security monitor reads via the observer hook (Caddy's
+// default JSON access-log encoder already emits all of them). Exported so the
+// security package can receive it through the hook.
+type AccessLine struct {
 	Request struct {
-		Host string `json:"host"`
+		Host     string              `json:"host"`
+		ClientIP string              `json:"client_ip"`
+		RemoteIP string              `json:"remote_ip"`
+		URI      string              `json:"uri"`
+		Headers  map[string][]string `json:"headers"`
 	} `json:"request"`
 	Status int   `json:"status"`
 	Size   int64 `json:"size"`
+}
+
+// IP returns the best client address for the line: client_ip (Caddy's
+// trusted-proxy-resolved client) when present, else remote_ip.
+func (l AccessLine) IP() string {
+	if l.Request.ClientIP != "" {
+		return l.Request.ClientIP
+	}
+	return l.Request.RemoteIP
+}
+
+// UserAgent returns the first User-Agent header value, or "".
+func (l AccessLine) UserAgent() string {
+	if ua := l.Request.Headers["User-Agent"]; len(ua) > 0 {
+		return ua[0]
+	}
+	return ""
 }
 
 // Run refreshes the host map, starts the tailer, and flushes on a ticker until
@@ -99,13 +130,21 @@ func (c *Collector) Run(ctx context.Context) {
 	}
 }
 
+// SetObserver registers a hook called with every parsed access line. Set once
+// before Run; it is invoked alongside the existing bucket aggregation and must
+// not block (the security monitor only updates in-memory counters).
+func (c *Collector) SetObserver(fn func(AccessLine)) { c.observe = fn }
+
 func (c *Collector) handleLine(line []byte) {
-	var l accessLine
+	var l AccessLine
 	if err := json.Unmarshal(line, &l); err != nil {
 		return // skip non-JSON / partial lines
 	}
 	if l.Request.Host == "" {
 		return
+	}
+	if c.observe != nil {
+		c.observe(l)
 	}
 	c.record(l.Request.Host, l.Status, l.Size)
 }

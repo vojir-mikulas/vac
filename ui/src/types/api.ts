@@ -396,3 +396,58 @@ export interface ServiceStatsData {
   net_tx_bytes: number
   uptime_seconds: number
 }
+
+// ── Security dashboard (plan 15 / E2) ────────────────────────────────────────
+export type SecuritySeverity = 'ok' | 'warn' | 'error'
+
+export interface PostureFinding {
+  severity: SecuritySeverity
+  code: string
+  title: string
+  message: string
+  app?: string
+  service?: string
+}
+
+export interface TopTalker {
+  ip: string
+  requests: number
+  errors: number
+  user_agent: string
+  last_seen: string
+}
+
+export interface TrafficAnomaly {
+  at: string
+  ip: string
+  kind: string
+  detail: string
+}
+
+export interface TrafficSnapshot {
+  window_seconds: number
+  tracked_ips: number
+  total_requests: number
+  total_errors: number
+  top_talkers: TopTalker[]
+  recent_anomalies: TrafficAnomaly[]
+}
+
+export interface Fail2banJail {
+  name: string
+  currently_banned: number
+  total_banned: number
+  banned_ips: string[] | null
+}
+
+export interface Fail2banState {
+  detected: boolean
+  jails: Fail2banJail[] | null
+}
+
+export interface FirewallState {
+  detected: boolean
+  backend: string
+  active: boolean
+  rules: string[] | null
+}
