@@ -162,3 +162,73 @@ list. The missing-key check (Phase B) gates completeness.
 - Switching language in Settings is wired (only `en` selectable until a second locale
   ships) and persists across reload.
 - Adding a locale is a documented, mechanical drop-in folder + switcher entry.
+
+---
+
+## 7. Backend & notification translation (future — out of scope for the scaffold)
+
+Backend-generated text splits into **two delivery paths** that need opposite strategies,
+because one has a browser in the loop and one does not. Neither is built now; this
+section records the design and the cheap prep worth doing early.
+
+### Path 1 — API responses → translated in the UI, backend stays English
+
+`WriteError` already emits `{"error": msg, "code": <derived>}`
+([`api/internal/server/handler/json.go:43`](../../api/internal/server/handler/json.go)).
+**The `code` is the translation key.**
+
+- The UI keeps an `errors` namespace mapping `code → message` (e.g.
+  `invalid_credentials → "Wrong code"`). It renders by `code`; `msg` is only a
+  dev/fallback string.
+- **Backend does zero i18n work** on this path — the browser knows the locale and does
+  the translating. No Go i18n runtime, ever.
+- **Prep (cheap, worth doing during migration):** dynamic errors must carry **structured
+  params**, not values baked into `msg`. `"port 8080 in use"` can't be translated from a
+  string — it needs `code: "port_in_use"` + `params: { port: 8080 }`, with the UI
+  interpolating. Audit which error codes are dynamic and add a `params`/`details` field
+  to those responses.
+
+### Path 2 — Discord/Slack notifications → rendered server-side
+
+Notifications are **fire-and-forget server push** (`notify` dispatcher): async, no
+request, no browser, **no locale in scope**. The server must pick a language and render
+the text itself.
+
+`notify.Event`
+([`api/internal/notify/events.go:30`](../../api/internal/notify/events.go)) is already a
+**render-neutral struct** — stable `Type` (`deploy_succeeded`, `crash_loop`, …) plus
+structured fields (`AppName`, `Commit`, `Duration`, `OK`). That is the right shape for
+i18n. The blocker is that `Title`/`Message` are **pre-rendered English** baked in at the
+event-creation sites.
+
+To make it translatable:
+1. **Stop pre-rendering.** Producers pass only `Type` + structured fields (drop or
+   demote `Title`/`Message` to fallback). Rendering moves *down* into the
+   dispatch/channel layer (`discord.go`/`slack.go`), which selects a template by `Type`
+   and fills in the fields.
+2. **Server-side catalog.** Embed locale files into the Go binary (`go:embed`) and render
+   via a `EventType`→template map, or `golang.org/x/text/message` for proper plural rules.
+   Keys align 1:1 with `notify.EventType`.
+3. **Language source:** there is no per-request locale, so add **one instance-level
+   "notification language" setting** (operator picks it in Settings; stored in DB/config).
+   This fits VAC's one-operator/one-box model; per-channel language would be
+   over-engineering.
+
+### Single source of truth for keys
+
+The UI is already embedded into the Go binary via `go:embed`, so the natural design is a
+**single `locales/` tree** consumed by both: the UI imports the JSON at build, Go
+`go:embed`s the same files for the notification namespace. To prevent drift, reuse the
+missing-key check (Phase B) in CI to assert every backend notification key exists in
+every locale.
+
+### Sequencing
+
+- **Now (scaffold):** backend stays English. The only worthwhile prep is ensuring error
+  responses carry **stable codes + structured params**, so the UI can own Path 1 later
+  with zero backend runtime.
+- **When cs/de land:**
+  - API errors → fully handled UI-side via the `code` map; no Go changes.
+  - Notifications → a self-contained backend PR: add the instance notification-language
+    setting, move rendering into the dispatch layer, embed the Go catalog. Independent of
+    the UI feature-migration PRs.
