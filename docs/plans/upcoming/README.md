@@ -49,6 +49,7 @@ trustworthy and effortless," not by what's technically interesting.
 | 14 | [14-ci-workflow-cleanup.md](14-ci-workflow-cleanup.md) | Dev-experience | Trim CI hot path (bench-ram off PRs), DRY setup, consolidate tag workflows | S |
 | 15 | [15-security-dashboard.md](15-security-dashboard.md) | Trust moat | Read-only Security tab: posture checklist, traffic-anomaly/DDoS signals, fail2ban/firewall view | M |
 | 16 | [16-compose-preflight-validation.md](16-compose-preflight-validation.md) | Trust & UX | Preflight lint of user compose: hard-error/warn on edge-port/bundled-proxy/docker.sock/host-ports | M |
+| 18 | [18-portability-import-export.md](18-portability-import-export.md) | Trust moat | Portable app spec: import on-ramp (spec/compose/instance) + export exit-ramp (k8s/standalone compose) — no lock-in | L |
 
 ## Suggested order
 
@@ -71,7 +72,9 @@ trustworthy and effortless," not by what's technically interesting.
 ## Deliberately NOT doing (guard the moat)
 
 - No buildpack / framework-coverage arms race — keep build adapters small.
-- No multi-node, no teams/RBAC yet — single operator, single box.
+- No multi-node, no teams/RBAC yet — single operator, single box. *(18's k8s/multi-node
+  story is an **export exit-ramp** — generating artifacts for other platforms — not multi-node
+  inside `vac-api`. It reinforces this non-goal rather than reversing it.)*
 - No preview environments yet — Tier-1-distracting complexity for the solo-dev target.
 - No multi-cloud abstraction *in the product* — provider logic only ever lives in
   the separate Managed VAC orchestrator (see 10), never in `vac-api`.
