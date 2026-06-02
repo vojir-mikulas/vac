@@ -42,4 +42,10 @@ export const queryKeys = {
     all: ['addons'] as const,
     detail: (id: string) => ['addons', id] as const,
   },
+  security: {
+    posture: ['security', 'posture'] as const,
+    traffic: ['security', 'traffic'] as const,
+    fail2ban: ['security', 'fail2ban'] as const,
+    firewall: ['security', 'firewall'] as const,
+  },
 } as const

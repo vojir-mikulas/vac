@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppSecurityRouteImport } from './routes/_app/security'
 import { Route as AppLogsRouteImport } from './routes/_app/logs'
 import { Route as AppDeploymentsRouteImport } from './routes/_app/deployments'
 import { Route as AppDatabaseRouteImport } from './routes/_app/database'
@@ -62,6 +63,11 @@ const IndexRoute = IndexRouteImport.update({
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSecurityRoute = AppSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
   getParentRoute: () => AppRoute,
 } as any)
 const AppLogsRoute = AppLogsRouteImport.update({
@@ -200,6 +206,7 @@ export interface FileRoutesByFullPath {
   '/database': typeof AppDatabaseRoute
   '/deployments': typeof AppDeploymentsRoute
   '/logs': typeof AppLogsRoute
+  '/security': typeof AppSecurityRoute
   '/settings': typeof AppSettingsRouteWithChildren
   '/apps/$appId': typeof AppAppsAppIdRouteWithChildren
   '/apps/new': typeof AppAppsNewRoute
@@ -231,6 +238,7 @@ export interface FileRoutesByTo {
   '/database': typeof AppDatabaseRoute
   '/deployments': typeof AppDeploymentsRoute
   '/logs': typeof AppLogsRoute
+  '/security': typeof AppSecurityRoute
   '/apps/new': typeof AppAppsNewRoute
   '/settings/account': typeof AppSettingsAccountRoute
   '/settings/api-tokens': typeof AppSettingsApiTokensRoute
@@ -262,6 +270,7 @@ export interface FileRoutesById {
   '/_app/database': typeof AppDatabaseRoute
   '/_app/deployments': typeof AppDeploymentsRoute
   '/_app/logs': typeof AppLogsRoute
+  '/_app/security': typeof AppSecurityRoute
   '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/apps/$appId': typeof AppAppsAppIdRouteWithChildren
   '/_app/apps/new': typeof AppAppsNewRoute
@@ -295,6 +304,7 @@ export interface FileRouteTypes {
     | '/database'
     | '/deployments'
     | '/logs'
+    | '/security'
     | '/settings'
     | '/apps/$appId'
     | '/apps/new'
@@ -326,6 +336,7 @@ export interface FileRouteTypes {
     | '/database'
     | '/deployments'
     | '/logs'
+    | '/security'
     | '/apps/new'
     | '/settings/account'
     | '/settings/api-tokens'
@@ -356,6 +367,7 @@ export interface FileRouteTypes {
     | '/_app/database'
     | '/_app/deployments'
     | '/_app/logs'
+    | '/_app/security'
     | '/_app/settings'
     | '/_app/apps/$appId'
     | '/_app/apps/new'
@@ -421,6 +433,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/security': {
+      id: '/_app/security'
+      path: '/security'
+      fullPath: '/security'
+      preLoaderRoute: typeof AppSecurityRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/logs': {
@@ -661,6 +680,7 @@ interface AppRouteChildren {
   AppDatabaseRoute: typeof AppDatabaseRoute
   AppDeploymentsRoute: typeof AppDeploymentsRoute
   AppLogsRoute: typeof AppLogsRoute
+  AppSecurityRoute: typeof AppSecurityRoute
   AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppAppsAppIdRoute: typeof AppAppsAppIdRouteWithChildren
   AppAppsNewRoute: typeof AppAppsNewRoute
@@ -673,6 +693,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDatabaseRoute: AppDatabaseRoute,
   AppDeploymentsRoute: AppDeploymentsRoute,
   AppLogsRoute: AppLogsRoute,
+  AppSecurityRoute: AppSecurityRoute,
   AppSettingsRoute: AppSettingsRouteWithChildren,
   AppAppsAppIdRoute: AppAppsAppIdRouteWithChildren,
   AppAppsNewRoute: AppAppsNewRoute,

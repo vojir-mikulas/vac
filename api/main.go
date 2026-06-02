@@ -39,7 +39,9 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
 	"github.com/vojir-mikulas/vac/api/internal/reqmetrics"
 	"github.com/vojir-mikulas/vac/api/internal/retention"
+	"github.com/vojir-mikulas/vac/api/internal/security"
 	"github.com/vojir-mikulas/vac/api/internal/server"
+	"github.com/vojir-mikulas/vac/api/internal/server/handler"
 	"github.com/vojir-mikulas/vac/api/internal/sshkey"
 	"github.com/vojir-mikulas/vac/api/internal/stats"
 	"github.com/vojir-mikulas/vac/api/internal/store"
@@ -193,9 +195,38 @@ func main() {
 		pipeline.Templates = addonRegistry
 	}
 
+	// Security dashboard (plan 15 / E2). The traffic-anomaly monitor rides the
+	// existing access-log tail via the collector's observer hook (no second
+	// tail). Always-on but cheap (bounded in-memory counters); gated by
+	// VAC_SECURITY_MONITOR (default on). Posture and host (fail2ban/firewall)
+	// readers are computed on each GET, so they start no goroutine.
+	var secTraffic handler.SecurityTraffic
+	var secMonitor *security.Monitor
+	if cfg.SecurityMonitor {
+		secMonitor = security.NewMonitor(security.Config{
+			Window:       cfg.SecurityWindow,
+			RPSThreshold: cfg.SecurityRPSThreshold,
+			ErrThreshold: cfg.SecurityErrThreshold,
+			Cooldown:     cfg.SecurityCooldown,
+		}, notifier, slog.Default())
+		secTraffic = secMonitor
+	}
+	secPosture := security.NewPosture(st, security.PostureConfig{
+		Exposure:         cfg.Exposure,
+		MasterKeyPresent: len(cfg.MasterKey) > 0,
+		MetricsTokenSet:  cfg.MetricsToken != "",
+		BaseDomainSet:    cfg.BaseDomain != "",
+	})
+	secHost := security.NewHost()
+
 	// Request-rate metrics: tail Caddy's JSON access log and aggregate per
-	// service into the rolling window.
+	// service into the rolling window. When the security monitor is on, it
+	// observes each parsed line through the same tail.
 	collector := reqmetrics.New(st, cfg.CaddyAccessLog, cfg.CaddyMetricsInterval, slog.Default())
+	if secMonitor != nil {
+		collector.SetObserver(secMonitor.Observe)
+		go secMonitor.Run(ctx)
+	}
 	go collector.Run(ctx)
 
 	// Real-time stats: per-service collectors (subscriber-gated via the hub's
@@ -297,7 +328,7 @@ func main() {
 	proxyMgr.SetStatusEngine(statusEngine)
 	go statusEngine.Run(ctx)
 
-	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, dbProvisioner, addonRegistry, addonInstaller, statusEngine)
+	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost)
 	if err != nil {
 		slog.Error("server init failed", "err", err)
 		os.Exit(1)

@@ -277,6 +277,22 @@ func (d *Dispatcher) CrashLoop(appName, appID, service string, restarts int, exi
 	})
 }
 
+// TrafficAnomaly fires the traffic-anomaly event (plan 15 / E2). kind names the
+// breach class (e.g. "error surge", "request spike") and detail carries the
+// specific figures (top talker IP, rate). appName/appID are empty for box-level
+// anomalies that aren't attributable to one app.
+func (d *Dispatcher) TrafficAnomaly(appName, appID, kind, detail string) {
+	title := "Traffic anomaly: " + kind
+	if appName != "" {
+		title = "Traffic anomaly on " + appName + ": " + kind
+	}
+	d.dispatch(Event{
+		Type: EventTrafficAnomaly, OK: false,
+		Title:   title,
+		AppName: appName, AppID: appID, Message: detail,
+	})
+}
+
 // OOMKilled fires the out-of-memory event. Distinct from CrashLoop: it means a
 // container hit its memory limit and was killed by the kernel, which a RAM-limit
 // bump usually fixes — so the message points at that rather than at the code.
