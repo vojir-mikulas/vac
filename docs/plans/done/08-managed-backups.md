@@ -1,6 +1,6 @@
 # 08 — Managed backups
 
-**Tier:** Monetization seed · **Effort:** M · **Status:** stub
+**Tier:** Monetization seed · **Effort:** M · **Status:** ✅ shipped (Track D1 — `api/internal/backup`, migration `00040`)
 
 ## Goal
 

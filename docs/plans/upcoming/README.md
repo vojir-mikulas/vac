@@ -13,9 +13,10 @@ trustworthy and effortless," not by what's technically interesting.
 > **Executing in parallel?** See [`00-parallel-tracks.md`](00-parallel-tracks.md) — it groups
 > these stubs into concurrent tracks by subsystem ownership (Deploy Core / Observability /
 > Trust / Managed Services / Trust & Safety / Dev-Experience), with the sequencing and collision
-> points worked out. Current live tracks: **D** (managed services, in progress), **E** (trust &
-> safety — `16`+`15`, new), **F** (dev-experience — `14`, new). Track A's `05` is deferred; the
-> old Managed-VAC track (`10`) is dropped for now.
+> points worked out. **Tracks B, C, D, and F have shipped** (moved to [`../done/`](../done/)).
+> The remaining live track is **E** (trust & safety — `16` compose-preflight + `15` security
+> dashboard), plus standalone **`18`** (portability). Track A's `05` is deferred; the old
+> Managed-VAC track (`10`) is dropped for now.
 
 ## Plans
 
@@ -30,6 +31,14 @@ trustworthy and effortless," not by what's technically interesting.
 > **04 onboarding** are implemented. Audit log is exposed as an Activity feed with curated revert
 > (`internal/revert`); cert-expiry runs via `internal/certcheck` (resolves deviation D7); onboarding
 > is a dismissible first-run checklist on the apps dashboard.
+>
+> **Track D shipped** (Managed Services, behind `VAC_MANAGED_SERVICES`): **08 backups**
+> (`internal/backup`), **09 managed DBs** (`internal/dbprovision` — Postgres + MariaDB live;
+> Mongo/Redis still to add), and **12 add-on catalog** (`internal/addon`, Grafana flagship).
+>
+> **Track F shipped** (Dev-Experience): **14 CI cleanup** (bench-ram off PRs, composite setup
+> action, consolidated `release.yml`). Also shipped: **17 installer overhaul** (guided wizard +
+> `vac managed-services on|off`).
 
 | # | File | Tier | Scope | Effort |
 |---|------|------|-------|--------|
@@ -40,15 +49,16 @@ trustworthy and effortless," not by what's technically interesting.
 | 05 | [05-zero-downtime-deploys.md](05-zero-downtime-deploys.md) · ⏸ deferred, [detailed design](A3-zero-downtime-detail.md) | Reliability moat | Rolling deploy: up new → health → swap Caddy upstream → drain old | L |
 | 06 | ✅ [../done/06-resource-guardrails.md](../done/06-resource-guardrails.md) | Reliability moat | Per-app RAM limits + box-level budget UI + OOM protection | M |
 | 07 | ✅ [../done/07-ram-benchmark-harness.md](../done/07-ram-benchmark-harness.md) | Reliability moat | Repeatable, CI-enforced idle-RAM measurement | S–M |
-| 08 | [08-managed-backups.md](08-managed-backups.md) | Monetization seed | User-defined backup commands → schedule → S3/B2 | M |
-| 09 | [09-managed-databases.md](09-managed-databases.md) | Monetization seed | Multi-engine managed DBs (PG/MariaDB/Mongo/Redis), one process per engine | L |
-| 10 | [10-managed-vac-provisioning.md](10-managed-vac-provisioning.md) | Monetization seed | One-click VPS provisioning (Managed VAC) + managed-updates stepping stone | XL |
+| 08 | ✅ [../done/08-managed-backups.md](../done/08-managed-backups.md) | Monetization seed | User-defined backup commands → schedule → S3/B2 | M |
+| 09 | ✅ [../done/09-managed-databases.md](../done/09-managed-databases.md) | Monetization seed | Multi-engine managed DBs — **Postgres + MariaDB live; Mongo/Redis to add** | L |
+| 10 | [10-managed-vac-provisioning.md](10-managed-vac-provisioning.md) · ⨯ dropped for now | Monetization seed | One-click VPS provisioning (Managed VAC) + managed-updates stepping stone | XL |
 | 11 | ✅ [../done/11-audit-log-and-revert.md](../done/11-audit-log-and-revert.md) | Close the loop / moat | Audit log (who did what) + curated revert of safely-invertible actions | M |
-| 12 | [12-addon-templates-catalog.md](12-addon-templates-catalog.md) | Monetization seed | One-click add-on templates catalog; Grafana flagship | M |
+| 12 | ✅ [../done/12-addon-templates-catalog.md](../done/12-addon-templates-catalog.md) | Monetization seed | One-click add-on templates catalog; Grafana flagship | M |
 | 13 | ✅ [../done/13-prometheus-metrics-exposition.md](../done/13-prometheus-metrics-exposition.md) | Reliability / observability | Expose VAC metrics on a Prometheus `/metrics` endpoint | S–M |
-| 14 | [14-ci-workflow-cleanup.md](14-ci-workflow-cleanup.md) | Dev-experience | Trim CI hot path (bench-ram off PRs), DRY setup, consolidate tag workflows | S |
+| 14 | ✅ [../done/14-ci-workflow-cleanup.md](../done/14-ci-workflow-cleanup.md) | Dev-experience | Trim CI hot path (bench-ram off PRs), DRY setup, consolidate tag workflows | S |
 | 15 | [15-security-dashboard.md](15-security-dashboard.md) | Trust moat | Read-only Security tab: posture checklist, traffic-anomaly/DDoS signals, fail2ban/firewall view | M |
 | 16 | [16-compose-preflight-validation.md](16-compose-preflight-validation.md) | Trust & UX | Preflight lint of user compose: hard-error/warn on edge-port/bundled-proxy/docker.sock/host-ports | M |
+| 17 | ✅ [../done/17-installer-overhaul.md](../done/17-installer-overhaul.md) | Trust & UX | Guided installer wizard + readable `main()` + `vac managed-services on\|off` | M |
 | 18 | [18-portability-import-export.md](18-portability-import-export.md) | Trust moat | Portable app spec: import on-ramp (spec/compose/instance) + export exit-ramp (k8s/standalone compose) — no lock-in | L |
 
 ## Suggested order

@@ -1,6 +1,6 @@
 # 12 — One-click add-on templates (catalog) — Grafana flagship
 
-**Tier:** Monetization seed · **Effort:** catalog M · Grafana template M · **Status:** stub
+**Tier:** Monetization seed · **Effort:** catalog M · Grafana template M · **Status:** ✅ shipped (Track D3 — `api/internal/addon`, migration `00042`, Grafana template)
 
 ## Goal
 

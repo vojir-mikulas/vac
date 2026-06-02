@@ -1,6 +1,6 @@
 # 09 — Managed databases (multi-engine, for user apps)
 
-**Tier:** Monetization seed · **Effort:** L (Postgres path M; +per engine) · **Status:** stub
+**Tier:** Monetization seed · **Effort:** L (Postgres path M; +per engine) · **Status:** ✅ shipped (Track D2 — `api/internal/dbprovision`, migration `00041`; **Postgres + MariaDB live, Mongo/Redis still to add**)
 
 ## Goal
 

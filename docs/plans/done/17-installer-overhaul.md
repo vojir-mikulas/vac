@@ -1,6 +1,6 @@
 # 17 — Installer overhaul (guided walkthrough + showcase-quality script)
 
-**Tier:** Trust & UX · **Effort:** M · **Status:** stub
+**Tier:** Trust & UX · **Effort:** M · **Status:** ✅ shipped (guided wizard + `main()` restructure + `vac managed-services on|off`)
 
 ## Goal
 

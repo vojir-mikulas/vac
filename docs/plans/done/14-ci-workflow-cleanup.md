@@ -1,6 +1,6 @@
 # 14 — CI / GitHub Actions workflow cleanup
 
-**Tier:** Dev-experience · **Effort:** S · **Status:** stub
+**Tier:** Dev-experience · **Effort:** S · **Status:** ✅ shipped (Track F1 — bench-ram off PRs, `.github/actions/setup`, consolidated `release.yml`)
 
 ## Goal
 

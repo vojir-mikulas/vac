@@ -17,22 +17,22 @@ hell. Everything else is arranged to stay out of that path.
   (S0) ───┤
           ├─ Track C: TRUST & LIFECYCLE ─────── ✅11 → ✅03 → ✅04    (complete)
           │
-  active  ├─ Track D: MANAGED SERVICES ──────── 🟡08 → 09 → 12       (in progress — parallel agent)
+  done    ├─ Track D: MANAGED SERVICES ──────── ✅08 → ✅09 → ✅12     (shipped; Mongo/Redis to add)
           │
-   new    ├─ Track E: TRUST & SAFETY ────────── 16 ‖ 15              (new)
+ active   ├─ Track E: TRUST & SAFETY ────────── 16 ‖ 15              (active)
           │
-   done   └─ Track F: DEV-EXPERIENCE ────────── ✅14                  (re-enabled)
+   done   └─ Track F: DEV-EXPERIENCE ────────── ✅14                  (shipped)
 
  dropped    Track ⨯: MANAGED VAC (separate repo) ─ 10                (dropped for now)
 ```
 
-> **Status (2026-06-02):** Stage 0 + **Tracks B and C complete**. **Track A** shipped A1+A2
-> (rollback + push-to-deploy); **A3 zero-downtime is deferred/paused** (design in
-> [`A3-zero-downtime-detail.md`](A3-zero-downtime-detail.md)). **Track D** (managed services) is
-> **in progress under a parallel agent**. Two **new tracks** carry the recently-captured stubs:
-> **Track E — Trust & Safety** (`16` compose-preflight, `15` security dashboard) and **Track F —
-> Dev-Experience** (`14` CI cleanup). **The old Track E (Managed VAC, `10`) is dropped for now** —
-> see the tombstone below.
+> **Status (2026-06-02):** Stage 0 + **Tracks B, C, D, and F complete** (all moved to
+> [`../done/`](../done/)). **Track A** shipped A1+A2 (rollback + push-to-deploy); **A3
+> zero-downtime is deferred/paused** (design in [`A3-zero-downtime-detail.md`](A3-zero-downtime-detail.md)).
+> **Track D** (managed services) shipped `08`/`09`/`12` behind `VAC_MANAGED_SERVICES` — managed DBs
+> currently cover **Postgres + MariaDB** (Mongo/Redis still to add). The remaining active track is
+> **Track E — Trust & Safety** (`16` compose-preflight, `15` security dashboard), plus standalone
+> `18` (portability). **The Managed-VAC track (`10`) is dropped for now** — see the tombstone below.
 
 ---
 
@@ -84,23 +84,21 @@ dashboard meters UI.
 | C2 | `03` Cert-expiry notification | S | ✅ done |
 | C3 | `04` Onboarding wizard | M | ✅ done |
 
-## Track D — Managed Services *(parallel, greenfield)* — 🟡 in progress (parallel agent)
+## Track D — Managed Services *(parallel, greenfield)* — ✅ shipped (behind `VAC_MANAGED_SERVICES`)
 
 **Owns:** new packages (backup scheduler, DB provisioning, add-on template registry) + their
 UI. **Greenfield → lowest collision with existing code.** Internally sequenced by dependency.
-**Detailed execution plan:** [`D-managed-services-execution.md`](D-managed-services-execution.md)
+**Detailed execution plan:** [`../done/D-managed-services-execution.md`](../done/D-managed-services-execution.md)
 (migration range `00040`–`00049`, scheduler/destination/engine decisions locked).
-**Actively being built by another agent** — coordinate migration numbers (see sync points)
-before opening overlapping work here.
 
-| Order | Item | Effort | Note |
-|---|---|---|---|
-| D1 | `08` Managed backups | M | engine-agnostic dump primitive; foundation for D2/D3 |
-| D2 | `09` Managed DBs | L | one shared instance per engine, lazy start (see stub) |
-| D3 | `12` Add-on catalog (Grafana) | M | depends on D2 (DB dashboards) + benefits from B2 (`13`) |
+| Order | Item | Effort | Status | Note |
+|---|---|---|---|---|
+| D1 | `08` Managed backups | M | ✅ done | `internal/backup`, migration `00040` |
+| D2 | `09` Managed DBs | L | ✅ done | `internal/dbprovision`, migration `00041` — **Postgres + MariaDB live; Mongo/Redis to add** |
+| D3 | `12` Add-on catalog (Grafana) | M | ✅ done | `internal/addon`, migration `00042`, Grafana template |
 
-> Strategy gate: D is the monetization arc — don't *ship* it until Tracks A/B are trustworthy
-> (you're selling reliability). It can be *built* in parallel since it barely touches the core.
+> Strategy gate (as built): D shipped **gated off by default** (`VAC_MANAGED_SERVICES`), keeping
+> the `<200 MB` control-plane claim honest — none of D's background goroutines start when it's off.
 
 ## Track E — Trust & Safety *(new, parallel)*
 
@@ -120,12 +118,12 @@ because they share files.
 > VAC's two best vantage points — into a "your box at a glance" security view. Neither mutates
 > host state (E2 is read-only by design), keeping the control plane sandboxed.
 
-## Track F — Dev-Experience *(new, parallel, isolated)*
+## Track F — Dev-Experience *(parallel, isolated)* — ✅ shipped
 
 **Owns:** `.github/` only (`workflows/`, a new composite action). **Zero overlap with any other
 track's source.** Safe to land any time.
 
-**Detailed execution plan:** [`F-dev-experience-execution.md`](F-dev-experience-execution.md).
+**Detailed execution plan:** [`../done/F-dev-experience-execution.md`](../done/F-dev-experience-execution.md).
 The four cleanups landed in `8e41215`, were disabled in `4893ec5`, and are **re-enabled** in
 this track after a local green pass — see the execution plan for the activation gate (the
 `schedule`/`push:main` triggers only fire from the file once it's on `main`).
@@ -147,9 +145,8 @@ completeness; revisit only once the product moat (A/B/C/E) is proven.
 ## Cross-track sync points
 
 - **Schema migrations** are the main collision risk — they share one numbered sequence.
-  **Track D is live**, so any migration added by Track E must pick a number that doesn't clash
-  with D's in-flight work (assign ranges per track, or rebase at merge). This is the one place
-  parallel work bites.
+  **Track D landed `00040`–`00042`**, so any migration added by Track E must start at `00043`+
+  to avoid clashing. This is the one place parallel work bites.
 - **`16` (Track E) ↔ `05`/A3 (Track A):** `16` inserts a single *additive* gate into
   `deploy/pipeline.go` (right after `Prepare` resolves the compose, before Build) — it does
   **not** rewrite the up→health→swap path that A3 changes, so they don't conflict today. A3 is
@@ -161,16 +158,16 @@ completeness; revisit only once the product moat (A/B/C/E) is proven.
 
 ## Staffing guide
 
-- **1 person:** A3 is parked, so pick the highest-leverage *new* item: `16` (deploy-path safety)
-  or `14` (cheap CI win), then `15`. Ignore the track structure — it's for parallelism you don't
-  have yet.
-- **2 people:** one on Track E (`16` → `15`) ‖ one continuing Track D. Pull `14` in between.
-- **3+ people / parallel agents:** D (active) ‖ E1 `16` ‖ E2 `15` ‖ F `14` all run concurrently.
-  Watch migration numbering against Track D.
+With Tracks B/C/D/F shipped and A3 parked, the remaining work is **Track E** (`16` → `15`) and
+standalone `18` (portability).
+
+- **1 person:** pick the highest-leverage item: `16` (deploy-path safety) first, then `15`, then
+  `18`. Ignore the track structure — it's for parallelism you don't have yet.
+- **2+ people / parallel agents:** E1 `16` ‖ E2 `15` ‖ `18` run concurrently (file-disjoint).
+  Start any new migration at `00043`+.
 
 ## The critical path
 
-With A1+A2 shipped and A3 parked, the spine is mostly built. The live priorities are **Track E**
-(`16` then `15`) for the trust moat and **Track D** for monetization. `14` (Track F) is a
-near-free dev-experience win that can slot in any time. If a track must slip, slip D before E
-before F — protect the trust-moat work.
+With A1+A2 shipped, A3 parked, and Tracks B/C/D/F landed, the spine is built. The live priority
+is **Track E** (`16` then `15`) for the trust moat, with `18` (portability) as the other trust
+play. If work must slip, protect the trust-moat items.
