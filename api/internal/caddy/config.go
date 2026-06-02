@@ -94,6 +94,11 @@ type Handler struct {
 	Handler      string        `json:"handler"`
 	Upstreams    []Upstream    `json:"upstreams,omitempty"`
 	HealthChecks *HealthChecks `json:"health_checks,omitempty"`
+	// static_response fields (plan 09 Phase 3 — apex/www redirects). A redirect
+	// route uses handler "static_response" with a 3xx StatusCode and a Location
+	// header (Caddy expands the {http.request.uri} placeholder to preserve path).
+	StatusCode int                 `json:"status_code,omitempty"`
+	Headers    map[string][]string `json:"headers,omitempty"`
 }
 
 type Upstream struct {

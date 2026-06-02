@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,6 +17,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
+	"github.com/vojir-mikulas/vac/api/internal/domainstatus"
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
 	"github.com/vojir-mikulas/vac/api/internal/revert"
 	"github.com/vojir-mikulas/vac/api/internal/server/handler"
@@ -30,7 +32,7 @@ import (
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender) (*http.Server, error) {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, dstatus *domainstatus.Engine) (*http.Server, error) {
 	// Convert the concrete (possibly-nil) manager into nil-able interface
 	// values so handlers' `== nil` guards behave (a typed-nil pointer in an
 	// interface is not nil).
@@ -39,6 +41,8 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		syncer   handler.RouteSyncer
 		caddyPin handler.CaddyPinger
 		ctrlChk  handler.ControlDomainChecker
+		autoChk  handler.AutoHostChecker
+		autoList handler.AutoHostLister
 		baseDom  handler.BaseDomainSetter
 	)
 	if pm != nil {
@@ -46,8 +50,24 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		syncer = pm
 		caddyPin = pm
 		ctrlChk = pm
+		autoChk = pm
+		autoList = pm
 		baseDom = pm
 	}
+	var domStatus handler.DomainStatusProvider
+	if dstatus != nil {
+		domStatus = dstatus
+	}
+	var routeRec handler.RouteReconciler
+	if pm != nil {
+		routeRec = pm
+	}
+
+	// Same resolver the status engine uses, so the one-shot DNS-check button and
+	// the background projection agree (plan 09 F3 §2): a public recursive resolver
+	// that bypasses the box's local cache. VAC_DNS_RESOLVER="" keeps the system
+	// resolver (egress-blocked fallback).
+	dnsResolver := domainstatus.PublicResolver(dnsResolverAddr())
 
 	// VPS public address for the DNS-setup guidance and sidebar host row.
 	hostIP := cfg.PublicIPAddr()
@@ -96,7 +116,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 
 	// On-demand-TLS ask hook for Caddy. Unauthenticated by design (Caddy can't
 	// present a session); reachable only on the internal compose network.
-	r.Get("/internal/caddy/ask", handler.CaddyAsk(s, cfg.CaddyAskToken, ctrlChk))
+	r.Get("/internal/caddy/ask", handler.CaddyAsk(s, cfg.CaddyAskToken, ctrlChk, autoChk))
 
 	// Token-gated runtime introspection for the RAM benchmark (plan 07).
 	// Default-closed: with VAC_METRICS_TOKEN unset these 404. Sits outside the
@@ -165,8 +185,8 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			r.Route("/instance", func(r chi.Router) {
 				r.Get("/info", handler.InstanceInfo(cfg))
 				r.Get("/base-domain", handler.GetBaseDomain(s, cfg))
-				r.Put("/base-domain", handler.PutBaseDomain(s, cfg, baseDom))
-				r.Get("/dns-check", handler.DNSCheck(hostIP))
+				r.Put("/base-domain", handler.PutBaseDomain(s, cfg, baseDom, routeRec))
+				r.Get("/dns-check", handler.DNSCheck(hostIP, dnsResolver))
 				// First-run onboarding checklist (plan 04).
 				r.Get("/onboarding", handler.GetOnboarding(s))
 				r.Post("/onboarding/dismiss", handler.DismissOnboarding(s))
@@ -175,6 +195,16 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Post("/stop-all-apps", handler.StopAllApps(s, docker, proxyMgr))
 					r.Post("/reset", handler.ResetInstance(s, docker, proxyMgr))
 				}
+			})
+
+			// Domains hub (plan 09): add/verify/assign/edit/delete every domain
+			// in one place, with the live DNS/cert status engine behind it.
+			r.Route("/domains", func(r chi.Router) {
+				r.Get("/", handler.ListDomainsHub(s, domStatus, autoList))
+				r.Post("/", handler.AddDomainHub(s, syncer, domStatus))
+				r.Post("/refresh", handler.RefreshDomainStatus(domStatus))
+				r.Patch("/{id}", handler.UpdateDomainHub(s, syncer, domStatus))
+				r.Delete("/{id}", handler.DeleteDomainHub(s, syncer))
 			})
 
 			r.Route("/apps", func(r chi.Router) {
@@ -215,8 +245,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/{id}/services", handler.ListAppServices(s))
 				r.Patch("/{id}/services/{name}", handler.PatchAppService(s))
 
-				// Domains (Phase 3).
-				r.Get("/{id}/domains", handler.ListAppDomains(s))
+				// Domains: per-app view (custom + derived auto hosts, with live
+				// DNS/cert status). The Settings → Domains hub uses /api/domains.
+				r.Get("/{id}/domains", handler.ListAppDomains(s, domStatus, autoList))
 				r.Post("/{id}/services/{name}/domains", handler.AddCustomDomain(s, syncer))
 				r.Delete("/{id}/domains/{domainId}", handler.DeleteAppDomain(s, syncer))
 
@@ -271,6 +302,16 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 	}, nil
+}
+
+// dnsResolverAddr is the public recursive resolver the DNS-check button and the
+// status engine share. Default 1.1.1.1:53; VAC_DNS_RESOLVER overrides it (and an
+// explicit empty value falls back to the system resolver inside PublicResolver).
+func dnsResolverAddr() string {
+	if v, ok := os.LookupEnv("VAC_DNS_RESOLVER"); ok {
+		return v
+	}
+	return "1.1.1.1:53"
 }
 
 // wsAcceptOptions derives the WebSocket Origin policy from config. The SPA is

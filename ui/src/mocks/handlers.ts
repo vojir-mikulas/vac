@@ -6,13 +6,18 @@
 import type { CreateAppInput, UpdateAppInput } from '@/types/api'
 import type { EnvVarInput } from '@/lib/api/env'
 import {
+  addDomainHub,
   appMetrics,
   createApp,
   createDomain,
   deleteApp,
   deleteDomain,
+  deleteDomainById,
   findApp,
   getState,
+  listAllDomains,
+  refreshDomainStatus,
+  updateDomainHub,
   hostStats,
   listAudit,
   listEnv,
@@ -424,6 +429,45 @@ const routes: Route[] = [
     pattern: 'apps/:id/domains/:domainId',
     handler: (ctx) => {
       if (!deleteDomain(appOr404(ctx), ctx.params.domainId ?? '')) throw notFound('domain')
+      return ok({ status: 'deleted' })
+    },
+  },
+
+  // ── Domains hub (plan 09) ───────────────────────────────────────────────────
+  { method: 'GET', pattern: 'domains', handler: () => ok(listAllDomains()) },
+  {
+    method: 'POST',
+    pattern: 'domains',
+    handler: (ctx) => {
+      const body = (ctx.body ?? {}) as { hostname?: string; app_id?: string; service_name?: string }
+      return created(addDomainHub(body.hostname ?? '', body.app_id, body.service_name))
+    },
+  },
+  {
+    method: 'POST',
+    pattern: 'domains/refresh',
+    handler: (ctx) => {
+      const host = ctx.query.get('host') ?? ''
+      const st = refreshDomainStatus(host)
+      if (!st) throw notFound('host')
+      return ok(st)
+    },
+  },
+  {
+    method: 'PATCH',
+    pattern: 'domains/:id',
+    handler: (ctx) => {
+      const body = (ctx.body ?? {}) as { hostname?: string; app_id?: string; service_name?: string }
+      const d = updateDomainHub(ctx.params.id ?? '', body)
+      if (!d) throw notFound('domain')
+      return ok(d)
+    },
+  },
+  {
+    method: 'DELETE',
+    pattern: 'domains/:id',
+    handler: (ctx) => {
+      if (!deleteDomainById(ctx.params.id ?? '')) throw notFound('domain')
       return ok({ status: 'deleted' })
     },
   },

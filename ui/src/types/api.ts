@@ -136,13 +136,27 @@ export interface EnvVar {
   value?: string
 }
 
+/** Live DNS/cert status projection (plan 09 F3). */
+export type DomainStatusState =
+  | 'checking'
+  | 'awaiting_dns'
+  | 'misconfigured'
+  | 'issuing'
+  | 'active'
+  | 'error'
+
 export interface Domain {
-  id: string
+  id: string // "" for derived auto hosts (no backing row)
   app_id: string
   service_name: string
   hostname: string
-  type: string
-  cert_status: string
+  type: string // 'custom' | 'auto'
+  managed: boolean // derived auto host — read-only
+  redirect_to?: string // Phase 3: when set, 308-redirects to this host
+  status?: DomainStatusState
+  status_detail?: string
+  cert_not_after?: string
+  last_checked?: string
   created_at: string
   updated_at: string
 }

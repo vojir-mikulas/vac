@@ -34,7 +34,7 @@ func TestInstanceInfoReportsBuildMetadata(t *testing.T) {
 func TestDNSCheckRejectsInvalidHost(t *testing.T) {
 	t.Parallel()
 	rr := httptest.NewRecorder()
-	DNSCheck("203.0.113.10")(rr, httptest.NewRequest(http.MethodGet, "/api/instance/dns-check?host=not-a-domain", nil))
+	DNSCheck("203.0.113.10", nil)(rr, httptest.NewRequest(http.MethodGet, "/api/instance/dns-check?host=not-a-domain", nil))
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d; want 400 for a single-label host", rr.Code)
@@ -46,7 +46,7 @@ func TestDNSCheckUnresolvedHostReportsNotPointing(t *testing.T) {
 	// .invalid is reserved (RFC 6761) and never resolves, so this exercises the
 	// "not pointed yet" path without depending on live DNS.
 	rr := httptest.NewRecorder()
-	DNSCheck("203.0.113.10")(rr, httptest.NewRequest(http.MethodGet, "/api/instance/dns-check?host=nope.invalid", nil))
+	DNSCheck("203.0.113.10", nil)(rr, httptest.NewRequest(http.MethodGet, "/api/instance/dns-check?host=nope.invalid", nil))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d; want 200 (unresolved is a normal state)", rr.Code)

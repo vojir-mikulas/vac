@@ -15,6 +15,7 @@ export const queryKeys = {
   },
   notifications: ['notifications'] as const,
   activity: ['activity'] as const,
+  domains: ['domains'] as const,
   instance: {
     info: ['instance', 'info'] as const,
     baseDomain: ['instance', 'base-domain'] as const,

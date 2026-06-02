@@ -22,6 +22,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/auth"
 	"github.com/vojir-mikulas/vac/api/internal/caddy"
 	"github.com/vojir-mikulas/vac/api/internal/certcheck"
+	"github.com/vojir-mikulas/vac/api/internal/certprobe"
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/crashloop"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
@@ -29,6 +30,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 	"github.com/vojir-mikulas/vac/api/internal/dockerevents"
+	"github.com/vojir-mikulas/vac/api/internal/domainstatus"
 	"github.com/vojir-mikulas/vac/api/internal/logstream"
 	"github.com/vojir-mikulas/vac/api/internal/notify"
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
@@ -229,7 +231,25 @@ func main() {
 	}, slog.Default())
 	go certChecker.Run(ctx)
 
-	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier)
+	// DNS + cert status engine (plan 09 F3): an always-on, in-memory projection
+	// of each managed host's DNS + TLS configuration status. Resolves via a
+	// public recursive resolver (bypassing the box's local cache) and reuses the
+	// shared cert probe. The proxy manager pushes route-failure errors into it.
+	dnsResolver := os.Getenv("VAC_DNS_RESOLVER")
+	if dnsResolver == "" {
+		dnsResolver = "1.1.1.1:53"
+	}
+	statusEngine := domainstatus.New(domainstatus.Config{
+		Source:    statusHostSource{store: st, proxy: proxyMgr},
+		Resolver:  domainstatus.PublicResolver(dnsResolver),
+		CertProbe: certprobe.New(certProbeAddr(cfg), 10*time.Second),
+		VPSIP:     hostIP,
+		Logger:    slog.Default(),
+	})
+	proxyMgr.SetStatusEngine(statusEngine)
+	go statusEngine.Run(ctx)
+
+	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, statusEngine)
 	if err != nil {
 		slog.Error("server init failed", "err", err)
 		os.Exit(1)
@@ -332,6 +352,37 @@ func loadCaddyBaseConfig(parent context.Context, cfg config.Config, client *cadd
 	if err := mgr.Reconcile(parent); err != nil {
 		slog.Warn("caddy route reconcile reported errors", "err", err)
 	}
+}
+
+// statusHostSource enumerates the hosts the status engine watches: every custom
+// domain (store rows) plus every derived auto host (proxy manager). It is the
+// single place the two are combined, matching how reconcile derives routes.
+type statusHostSource struct {
+	store interface {
+		ListAllDomains(ctx context.Context) ([]store.Domain, error)
+	}
+	proxy interface {
+		AutoHosts(ctx context.Context) ([]proxy.AutoHost, error)
+	}
+}
+
+func (s statusHostSource) StatusHosts(ctx context.Context) ([]string, error) {
+	domains, err := s.store.ListAllDomains(ctx)
+	if err != nil {
+		return nil, err
+	}
+	autos, err := s.proxy.AutoHosts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(domains)+len(autos))
+	for _, d := range domains {
+		out = append(out, d.Hostname)
+	}
+	for _, a := range autos {
+		out = append(out, a.Hostname)
+	}
+	return out, nil
 }
 
 // certProbeAddr is the host:port the cert-expiry checker TLS-dials with each

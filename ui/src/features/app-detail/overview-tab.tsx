@@ -75,21 +75,18 @@ export function OverviewTab({ appId }: { appId: string }) {
               {domains && domains.length > 0 ? (
                 domains.map((d, i) => (
                   <div
-                    key={d.id}
+                    key={d.id || d.hostname}
                     className={`flex items-center justify-between gap-2 px-4 py-3 ${i > 0 ? 'border-t' : ''}`}
                   >
                     <div className="flex min-w-0 items-center gap-2">
-                      {d.cert_status === 'active' ? (
+                      {d.status === 'active' ? (
                         <Lock className="size-3.5 shrink-0 text-ok" />
                       ) : (
                         <ShieldAlert className="size-3.5 shrink-0 text-warn" />
                       )}
                       <span className="truncate font-mono text-xs">{d.hostname}</span>
                     </div>
-                    <StatusPill
-                      status={d.cert_status === 'active' ? 'success' : 'building'}
-                      size="sm"
-                    />
+                    <StatusPill status={d.status === 'active' ? 'success' : 'building'} size="sm" />
                   </div>
                 ))
               ) : (

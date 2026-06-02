@@ -57,8 +57,10 @@ deployment shows at each step is in **bold**.
   alias `{slug}--{service}` (`NetworkConnect`) and pushes a Caddy route via the `caddy` admin
   client (`PutRoute`): host-match on the domain, reverse-proxy upstream
   `{slug}--{service}:{internal_port}`, with Caddy **active health checks** configured.
-- Auto-domains (`{slug}.{VAC_BASE_DOMAIN}`) are assigned to the first routable service; stale
-  routes are pruned.
+- Auto-domains (`{slug}.{VAC_BASE_DOMAIN}`, or `{service}.{slug}.{base}` for multi-service apps)
+  are **derived at reconcile** from the app's HTTP services + base domain — not stored rows (plan
+  09 F1). They emit `vac-auto-{appID}-{service}` routes alongside custom-domain `vac-route-{id}`
+  routes; stale routes of both kinds are pruned, so a base-domain change leaves no orphans.
 
 ## 6. Health gate → terminal
 

@@ -23,11 +23,11 @@ func TestDomainsCRUD(t *testing.T) {
 		t.Fatalf("UpsertService: %v", err)
 	}
 
-	d, err := s.CreateDomain(ctx, a.ID, "web", "blog.example.com", store.DomainTypeAuto)
+	d, err := s.CreateDomain(ctx, a.ID, "web", "blog.example.com", store.DomainTypeCustom)
 	if err != nil {
 		t.Fatalf("CreateDomain: %v", err)
 	}
-	if d.Type != store.DomainTypeAuto || d.CertStatus != store.CertStatusPending {
+	if d.Type != store.DomainTypeCustom || !d.Assigned() {
 		t.Errorf("defaults wrong: %+v", d)
 	}
 
@@ -46,12 +46,24 @@ func TestDomainsCRUD(t *testing.T) {
 		t.Fatalf("ListDomainsByApp = %d, %v", len(list), err)
 	}
 
-	if err := s.SetCertStatus(ctx, d.ID, store.CertStatusActive); err != nil {
-		t.Fatalf("SetCertStatus: %v", err)
+	// An unassigned domain (added but not yet bound to a service) is allowed.
+	un, err := s.CreateDomain(ctx, "", "", "unbound.example.com", store.DomainTypeCustom)
+	if err != nil {
+		t.Fatalf("CreateDomain unassigned: %v", err)
 	}
-	got, _ = s.GetDomainByHostname(ctx, "blog.example.com")
-	if got.CertStatus != store.CertStatusActive {
-		t.Errorf("cert_status = %q", got.CertStatus)
+	if un.Assigned() {
+		t.Errorf("unassigned domain reports assigned: %+v", un)
+	}
+	// Reassign it in place to a service.
+	moved, err := s.UpdateDomain(ctx, un.ID, a.ID, "web", "unbound.example.com", "")
+	if err != nil {
+		t.Fatalf("UpdateDomain: %v", err)
+	}
+	if !moved.Assigned() || moved.ServiceName != "web" {
+		t.Errorf("reassign wrong: %+v", moved)
+	}
+	if err := s.DeleteDomainByID(ctx, un.ID); err != nil {
+		t.Fatalf("DeleteDomainByID: %v", err)
 	}
 
 	if err := s.DeleteDomain(ctx, a.ID, d.ID); err != nil {
@@ -70,7 +82,7 @@ func TestDomainsCascadeOnServiceDelete(t *testing.T) {
 	if _, err := s.UpsertService(ctx, a.ID, "web", nil, nil, &port, "running"); err != nil {
 		t.Fatalf("UpsertService: %v", err)
 	}
-	if _, err := s.CreateDomain(ctx, a.ID, "web", "cascade.example.com", store.DomainTypeAuto); err != nil {
+	if _, err := s.CreateDomain(ctx, a.ID, "web", "cascade.example.com", store.DomainTypeCustom); err != nil {
 		t.Fatalf("CreateDomain: %v", err)
 	}
 	// Removing the service cascades to its domains (composite FK).

@@ -243,6 +243,84 @@ what we do instead, why, and the trade-off (what we give up / when we'd revisit)
 
 ---
 
+## Domains lifecycle overhaul (plan 09) — Vercel-like domain management
+
+### D — "Vercel-like" domains: what we adopted and what we deliberately skipped
+
+- **Context:** plan 09 brings domains up to the Vercel bar on a single-VPS, single-operator box.
+- **Adopted:** domains are added/managed in one Settings hub then *assigned* to an app/service;
+  each shows a live DNS configuration check (exact record, real VPS IP, Valid/Invalid/Pending that
+  auto-polls); apex + www handled as a pair with a primary + 308 redirect; reassign without a
+  destructive delete-add; wildcard guidance for auto-subdomains.
+- **Deliberately skipped (single-box reality — do not "add back"):** nameserver delegation (VAC
+  only does A/CNAME, it is not a DNS provider); TXT ownership verification ("you control the DNS
+  *and* added it in VAC" plus the `CaddyAsk` on-demand-TLS gate is sufficient proof on one box);
+  multi-team / domain transfer / marketplace (one operator).
+
+### D — Automatic subdomains are derived at reconcile time, not stored as rows (F1)
+
+- **Before:** auto-subdomains were `type='auto'` rows in `domains`, created lazily at deploy via
+  `AssignAutoDomains`. A base-domain change orphaned the old rows/routes.
+- **We do instead:** auto hosts are a pure function of `(app slug, HTTP services, base domain)`,
+  computed by `proxy.Manager.AutoHosts` at reconcile. They emit Caddy routes with an `@id` of
+  `vac-auto-{appID}-{service}` (custom domains keep `vac-route-{domainID}`); both prefixes are
+  pruned by `pruneOrphans`. The `domains` table now holds **custom domains only**. Migration 00035
+  drops `type='auto'` rows; the first reconcile regenerates their routes.
+- **Why:** changing the base domain becomes a no-op beyond "reconcile" — routes regenerate from the
+  new base and the old ones are pruned, so **orphans are structurally impossible**. Removes the
+  lazy assign-at-deploy coupling. `CaddyAsk` accepts a derived auto host via `IsAutoHost`.
+- **Trade-off:** per-auto cert status loses its row — recomputed in-memory (see next). Auto hosts
+  sit under the operator's own wildcard, so the stakes are low.
+
+### D — Domain status is an in-memory projection, not a stored column (F3 §1)
+
+- **Before:** an advisory `cert_status` column, only ever set to `error` on a route-push failure
+  and never reliably to `active`.
+- **We do instead:** a new always-on `internal/domainstatus` engine computes one derived status per
+  host (`checking`/`awaiting_dns`/`misconfigured`/`issuing`/`active`/`error`) for **all** hosts —
+  custom and derived-auto alike — as a runtime projection behind a `sync.RWMutex`, never persisted.
+  Migration 00035 drops the `cert_status` column. The only durable cert state (`cert_not_after`,
+  `cert_expiry_notified_at`) stays owned by the `certcheck` expiry-notification job. The SNI cert
+  probe is extracted to a shared `internal/certprobe` package both consumers use.
+- **Why:** DNS and "is a cert served right now" are live external facts, cheap to recompute and
+  stale by nature; persisting them buys a few seconds of cold-start warmth for write amplification
+  and a second source of truth. A status column also couldn't cover the now-rowless auto hosts.
+- **Trade-off:** status is empty (`checking`) for a few seconds after boot until the first probe
+  pass; the UI renders that as a neutral spinner, not a red badge. `error` is pushed in by the
+  proxy manager on a route-push failure and cleared on the next successful push, so push-truth and
+  DNS-truth never overwrite each other.
+
+### D — Status/DNS-check resolve via a public recursive resolver, not the local stub (F3 §2)
+
+- **Context:** `net.DefaultResolver` on a VPS goes through the local stub/systemd-resolved cache,
+  which respects TTL and won't see a freshly-changed record until the old one expires — so a domain
+  the operator just pointed here reads `awaiting_dns` for minutes.
+- **We do instead:** both the status engine and `GET /api/instance/dns-check` use an injectable
+  `*net.Resolver` dialling a public recursive resolver directly (default `1.1.1.1:53`,
+  `VAC_DNS_RESOLVER` overrides; empty value falls back to the system resolver for egress-blocked
+  boxes). This still honours authoritative TTL but bypasses the box's local cache.
+- **Why:** so "I set the record" reflects in VAC as soon as the operator's DNS provider serves it,
+  not after the local cache expires. This is purely *reading* A/CNAME with fresher cache behaviour —
+  it adds no record types and does not make VAC a DNS provider.
+- **Trade-off:** we still cannot beat authoritative TTL; the config card says so ("DNS changes can
+  take up to your record's TTL to show here") so a slow flip reads as expected, not broken. New
+  dependency: `golang.org/x/net/publicsuffix` (apex vs subdomain classification, eTLD+1-aware).
+
+### D — Nullable domain assignment + Phase-3 redirects
+
+- **Schema (migration 00035/00036):** `domains.app_id`/`service_name` are nullable as a
+  both-or-neither pair (a `CHECK`), so a custom domain can be added and DNS-verified before being
+  assigned to a service; an unassigned domain emits no route. A nullable `redirect_to` makes a
+  domain emit a 308 redirect route (Caddy `static_response` with a `Location` header preserving the
+  request URI) to its target instead of a reverse-proxy route — the target is the "primary" domain,
+  no separate flag.
+- **Why:** matches the Vercel "add now, assign later" and "apex + www, pick a primary" flows on the
+  single box without a destructive delete-add (an in-place `UpdateDomain` route swap).
+- **Trade-off:** an unassigned-but-pointed domain still passes `CaddyAsk`, so Caddy may pre-issue a
+  cert for a host not yet serving — intended cert pre-warming, not a leak (the operator added it).
+
+---
+
 > Maintenance note: when a deviation is later reconciled (e.g. we adopt the mvp's original
 > approach, or update `mvp.md` to match), mark the row **Resolved** with the date and the
 > commit/PR rather than deleting it — the history is the point.

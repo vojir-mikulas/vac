@@ -11,12 +11,10 @@ package certcheck
 
 import (
 	"context"
-	"crypto/tls"
-	"errors"
 	"log/slog"
-	"net"
 	"time"
 
+	"github.com/vojir-mikulas/vac/api/internal/certprobe"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
@@ -35,12 +33,9 @@ type Notifier interface {
 
 // Probe reads the leaf certificate's NotAfter for a host. Injectable so tests
 // avoid real TLS. A probe error (host unreachable, no cert yet) is non-fatal —
-// the checker skips that host this round.
-type Probe func(ctx context.Context, host string) (time.Time, error)
-
-// errNoPeerCert is returned by the default probe when the handshake produced no
-// peer certificate (should not happen against Caddy, but guarded).
-var errNoPeerCert = errors.New("certcheck: no peer certificate presented")
+// the checker skips that host this round. Shared with domainstatus via the
+// certprobe package (plan 09 §4).
+type Probe = certprobe.Func
 
 // Config parameterises the checker.
 type Config struct {
@@ -87,7 +82,7 @@ func New(s Store, notifier Notifier, proxyAddr string, dialTimeout time.Duration
 	return &Checker{
 		store:    s,
 		notifier: notifier,
-		probe:    tlsProbe(proxyAddr, dialTimeout),
+		probe:    certprobe.New(proxyAddr, dialTimeout),
 		cfg:      cfg,
 		logger:   logger,
 		now:      time.Now,
@@ -163,34 +158,6 @@ func (c *Checker) CheckOnce(ctx context.Context) error {
 		c.logger.Info("certcheck: cert expiring soon", "host", d.Hostname, "days_left", daysLeft, "not_after", notAfter.Format(time.RFC3339))
 	}
 	return nil
-}
-
-// tlsProbe returns a Probe that TLS-dials proxyAddr with the host as SNI and
-// returns the served leaf certificate's NotAfter.
-func tlsProbe(proxyAddr string, timeout time.Duration) Probe {
-	return func(ctx context.Context, host string) (time.Time, error) {
-		dialer := &tls.Dialer{
-			NetDialer: &net.Dialer{Timeout: timeout},
-			Config: &tls.Config{
-				ServerName: host,
-				// We read NotAfter only; whether the cert chains to a trusted root
-				// is irrelevant to "when does it expire". Skipping verification also
-				// lets us read a self-signed/staging cert's expiry. #nosec G402
-				InsecureSkipVerify: true, //nolint:gosec // expiry read, not a trust decision
-				MinVersion:         tls.VersionTLS12,
-			},
-		}
-		conn, err := dialer.DialContext(ctx, "tcp", proxyAddr)
-		if err != nil {
-			return time.Time{}, err
-		}
-		defer conn.Close()
-		state := conn.(*tls.Conn).ConnectionState()
-		if len(state.PeerCertificates) == 0 {
-			return time.Time{}, errNoPeerCert
-		}
-		return state.PeerCertificates[0].NotAfter, nil
-	}
 }
 
 func timeUntilNext(now time.Time, hour int) time.Duration {
