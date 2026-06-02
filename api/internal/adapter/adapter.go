@@ -49,6 +49,10 @@ type BuildConfig struct {
 	// static
 	StaticDir   string `json:"staticDir,omitempty"`
 	SPAFallback bool   `json:"spaFallback,omitempty"`
+	// safety (plan 16 / Track E): downgrade the "VAC owns the edge" preflight
+	// hard errors (edge-port conflict, bundled reverse proxy) to logged
+	// warnings. Never downgrades host-escape findings (docker.sock, privileged).
+	AllowUnsafeCompose bool `json:"allow_unsafe_compose,omitempty"`
 }
 
 // ParseConfig unmarshals stored build_config JSON. Empty/nil → zero config.
