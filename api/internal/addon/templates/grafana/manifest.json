@@ -3,6 +3,7 @@
   "name": "Grafana",
   "description": "Dashboards and visualization. Deploys as a normal app on this box, pre-provisioned with a welcome dashboard. Add your managed database as a data source to chart your own data.",
   "category": "observability",
+  "icon": "grafana",
   "footprint_mb": 150,
   "depends_on_db": "",
   "compose_file": "compose.yaml",

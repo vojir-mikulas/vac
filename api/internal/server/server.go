@@ -233,15 +233,15 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			})
 
 			r.Route("/apps", func(r chi.Router) {
-				r.Get("/", handler.ListApps(s))
-				r.Post("/", handler.CreateApp(s))
+				r.Get("/", handler.ListApps(s, addonCatalog))
+				r.Post("/", handler.CreateApp(s, addonCatalog))
 				// Portability (plan 18): import an app from a vac.app.yaml spec, or
 				// export one as a spec. /import is a distinct static path; it does
 				// not collide with POST "/" or the "/{id}" routes below.
 				r.Post("/import", handler.ImportApp(s, box, syncer))
-				r.Get("/{id}", handler.GetApp(s))
+				r.Get("/{id}", handler.GetApp(s, addonCatalog))
 				r.Get("/{id}/export", handler.ExportApp(s, box))
-				r.Patch("/{id}", handler.UpdateApp(s))
+				r.Patch("/{id}", handler.UpdateApp(s, addonCatalog))
 				r.Delete("/{id}", handler.DeleteApp(s, proxyMgr, dbDeprov))
 
 				r.Get("/{id}/ssh-key", handler.GetAppSSHKey(s, keys))

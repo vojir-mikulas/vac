@@ -17,6 +17,8 @@ function app(status: string): App {
     mem_limit_mb: null,
     created_at: '',
     updated_at: '',
+    source: 'git',
+    template_id: null,
   }
 }
 

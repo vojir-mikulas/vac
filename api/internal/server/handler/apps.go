@@ -78,14 +78,23 @@ type appDTO struct {
 	MemLimitMB  *int            `json:"mem_limit_mb"`
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
+	// Source is "git" or "template"; TemplateID/Name/Icon are populated for
+	// add-on (template-sourced) apps so the UI can render them distinctly from
+	// git apps (Stage 0 shared seam — see docs/plans/triage/00-parallel-tracks.md).
+	Source       string  `json:"source"`
+	TemplateID   *string `json:"template_id"`
+	TemplateName *string `json:"template_name,omitempty"`
+	TemplateIcon *string `json:"template_icon,omitempty"`
 }
 
-func toAppDTO(a store.App) appDTO {
+// toAppDTO maps a store row to the wire DTO. cat (nil-able) resolves an add-on
+// template's display name + icon for template-sourced apps; git apps ignore it.
+func toAppDTO(a store.App, cat AddonCatalog) appDTO {
 	bc := a.BuildConfig
 	if len(bc) == 0 {
 		bc = json.RawMessage("{}")
 	}
-	return appDTO{
+	d := appDTO{
 		ID:          a.ID,
 		Name:        a.Name,
 		Slug:        a.Slug,
@@ -98,7 +107,20 @@ func toAppDTO(a store.App) appDTO {
 		MemLimitMB:  a.MemLimitMB,
 		CreatedAt:   a.CreatedAt,
 		UpdatedAt:   a.UpdatedAt,
+		Source:      a.Source,
+		TemplateID:  a.TemplateID,
 	}
+	if a.Source == store.AppSourceTemplate && a.TemplateID != nil && cat != nil {
+		if t, ok := cat.Get(*a.TemplateID); ok {
+			name := t.Name
+			d.TemplateName = &name
+			if t.Icon != "" {
+				icon := t.Icon
+				d.TemplateIcon = &icon
+			}
+		}
+	}
+	return d
 }
 
 // validBuildKinds is the set accepted on the wire.
@@ -129,7 +151,7 @@ func normalizeBuildConfig(kind string, raw json.RawMessage) (json.RawMessage, st
 
 // CreateApp persists a new app record. Slug is derived from Name when not
 // provided; a collision returns 409.
-func CreateApp(s *store.Store) http.HandlerFunc {
+func CreateApp(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req createAppRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -196,11 +218,11 @@ func CreateApp(s *store.Store) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "could not create app")
 			return
 		}
-		WriteJSON(w, http.StatusCreated, toAppDTO(a))
+		WriteJSON(w, http.StatusCreated, toAppDTO(a, cat))
 	}
 }
 
-func ListApps(s *store.Store) http.HandlerFunc {
+func ListApps(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := s.ListApps(r.Context())
 		if err != nil {
@@ -209,13 +231,13 @@ func ListApps(s *store.Store) http.HandlerFunc {
 		}
 		out := make([]appDTO, 0, len(rows))
 		for _, a := range rows {
-			out = append(out, toAppDTO(a))
+			out = append(out, toAppDTO(a, cat))
 		}
 		WriteJSON(w, http.StatusOK, out)
 	}
 }
 
-func GetApp(s *store.Store) http.HandlerFunc {
+func GetApp(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		a, err := s.GetApp(r.Context(), id)
@@ -227,13 +249,13 @@ func GetApp(s *store.Store) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "could not load app")
 			return
 		}
-		WriteJSON(w, http.StatusOK, toAppDTO(a))
+		WriteJSON(w, http.StatusOK, toAppDTO(a, cat))
 	}
 }
 
 // UpdateApp applies a partial JSON patch. Slug is read-only here — once
 // chosen, the slug is the app's stable handle.
-func UpdateApp(s *store.Store) http.HandlerFunc {
+func UpdateApp(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
@@ -326,7 +348,7 @@ func UpdateApp(s *store.Store) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "could not update app")
 			return
 		}
-		WriteJSON(w, http.StatusOK, toAppDTO(a))
+		WriteJSON(w, http.StatusOK, toAppDTO(a, cat))
 	}
 }
 

@@ -26,6 +26,9 @@ type Template struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Category    string `json:"category"`
+	// Icon is a brand-icon key the UI maps to a glyph (e.g. "grafana"); empty
+	// falls back to a generic add-on icon.
+	Icon        string `json:"icon"`
 	FootprintMB int    `json:"footprint_mb"`
 	// DependsOnDB names a managed-DB engine to provision before first deploy
 	// (e.g. "postgres"), or "" for none.

@@ -120,6 +120,8 @@ function app(
     mem_limit_mb: partial.mem_limit_mb ?? null,
     created_at: partial.created_at ?? daysAgoISO(12),
     updated_at: partial.updated_at ?? minutesAgoISO(6),
+    source: partial.source ?? 'git',
+    template_id: partial.template_id ?? null,
     services: partial.services,
     deployments: partial.deployments,
     env: partial.env,

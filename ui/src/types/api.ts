@@ -32,6 +32,14 @@ export interface App {
   mem_limit_mb: number | null
   created_at: string
   updated_at: string
+  /** 'git' (clones a repo) or 'template' (an installed add-on). */
+  source: 'git' | 'template'
+  /** Add-on template id for template-sourced apps; null for git apps. */
+  template_id: string | null
+  /** Resolved add-on display name (template apps only). */
+  template_name?: string
+  /** Brand-icon key the UI maps to a glyph (template apps only). */
+  template_icon?: string
 }
 
 export interface CreateAppInput {
@@ -363,6 +371,8 @@ export interface Addon {
   name: string
   description: string
   category: string
+  /** Brand-icon key the UI maps to a glyph; "" falls back to a generic icon. */
+  icon: string
   footprint_mb: number
   /** Managed-DB engine to provision before first deploy, or "" for none. */
   depends_on_db: string

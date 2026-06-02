@@ -1,6 +1,56 @@
 package handler
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/vojir-mikulas/vac/api/internal/addon"
+	"github.com/vojir-mikulas/vac/api/internal/store"
+)
+
+// TestToAppDTO_TemplateResolution locks in the Stage 0 shared seam: a
+// template-sourced app resolves its add-on name + icon via the catalog, while a
+// git app exposes source="git" and leaves the template fields nil.
+func TestToAppDTO_TemplateResolution(t *testing.T) {
+	t.Parallel()
+	cat := &fakeCatalog{templates: map[string]addon.Template{
+		"grafana": {ID: "grafana", Name: "Grafana", Icon: "grafana"},
+	}}
+
+	tplID := "grafana"
+	tpl := toAppDTO(store.App{ID: "a1", Source: store.AppSourceTemplate, TemplateID: &tplID}, cat)
+	if tpl.Source != store.AppSourceTemplate {
+		t.Errorf("source = %q; want %q", tpl.Source, store.AppSourceTemplate)
+	}
+	if tpl.TemplateID == nil || *tpl.TemplateID != "grafana" {
+		t.Errorf("template_id = %v; want grafana", tpl.TemplateID)
+	}
+	if tpl.TemplateName == nil || *tpl.TemplateName != "Grafana" {
+		t.Errorf("template_name = %v; want Grafana", tpl.TemplateName)
+	}
+	if tpl.TemplateIcon == nil || *tpl.TemplateIcon != "grafana" {
+		t.Errorf("template_icon = %v; want grafana", tpl.TemplateIcon)
+	}
+
+	git := toAppDTO(store.App{ID: "a2", Source: store.AppSourceGit}, cat)
+	if git.Source != store.AppSourceGit {
+		t.Errorf("source = %q; want %q", git.Source, store.AppSourceGit)
+	}
+	if git.TemplateID != nil || git.TemplateName != nil || git.TemplateIcon != nil {
+		t.Errorf("git app should have nil template fields, got id=%v name=%v icon=%v",
+			git.TemplateID, git.TemplateName, git.TemplateIcon)
+	}
+
+	// Unknown template id (catalog miss) → name/icon stay nil, id still surfaced.
+	missID := "nope"
+	miss := toAppDTO(store.App{ID: "a3", Source: store.AppSourceTemplate, TemplateID: &missID}, cat)
+	if miss.TemplateName != nil || miss.TemplateIcon != nil {
+		t.Errorf("unknown template should leave name/icon nil, got name=%v icon=%v",
+			miss.TemplateName, miss.TemplateIcon)
+	}
+
+	// Nil catalog must not panic (template apps created while managed-services off).
+	_ = toAppDTO(store.App{ID: "a4", Source: store.AppSourceTemplate, TemplateID: &tplID}, nil)
+}
 
 func TestDeriveSlug(t *testing.T) {
 	t.Parallel()

@@ -150,6 +150,8 @@ export function createApp(input: CreateAppInput): AppRecord {
     mem_limit_mb: null,
     created_at: nowISO(),
     updated_at: nowISO(),
+    source: 'git',
+    template_id: null,
     services: [],
     deployments: [],
     env: [],
