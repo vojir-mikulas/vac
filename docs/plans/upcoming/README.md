@@ -60,6 +60,7 @@ trustworthy and effortless," not by what's technically interesting.
 | 16 | [16-compose-preflight-validation.md](16-compose-preflight-validation.md) | Trust & UX | Preflight lint of user compose: hard-error/warn on edge-port/bundled-proxy/docker.sock/host-ports | M |
 | 17 | ✅ [../done/17-installer-overhaul.md](../done/17-installer-overhaul.md) | Trust & UX | Guided installer wizard + readable `main()` + `vac managed-services on\|off` | M |
 | 18 | [18-portability-import-export.md](18-portability-import-export.md) | Trust moat | Portable app spec: import on-ramp (spec/compose/instance) + export exit-ramp (k8s/standalone compose) — no lock-in | L |
+| 19 | [19-scale-to-zero.md](19-scale-to-zero.md) | Reliability / density | Opt-in sleep idle (stateless HTTP) containers + cold-start on first request via Caddy edge wake handler | M–L |
 
 ## Suggested order
 
