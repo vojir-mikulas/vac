@@ -11,8 +11,11 @@ trust**, not feature count. Order by "does this make the deploy loop feel more
 trustworthy and effortless," not by what's technically interesting.
 
 > **Executing in parallel?** See [`00-parallel-tracks.md`](00-parallel-tracks.md) — it groups
-> these 13 stubs into concurrent tracks by subsystem ownership (Deploy Core / Observability /
-> Trust / Managed Services), with the sequencing and collision points worked out.
+> these stubs into concurrent tracks by subsystem ownership (Deploy Core / Observability /
+> Trust / Managed Services / Trust & Safety / Dev-Experience), with the sequencing and collision
+> points worked out. Current live tracks: **D** (managed services, in progress), **E** (trust &
+> safety — `16`+`15`, new), **F** (dev-experience — `14`, new). Track A's `05` is deferred; the
+> old Managed-VAC track (`10`) is dropped for now.
 
 ## Plans
 
@@ -43,6 +46,8 @@ trustworthy and effortless," not by what's technically interesting.
 | 11 | ✅ [../done/11-audit-log-and-revert.md](../done/11-audit-log-and-revert.md) | Close the loop / moat | Audit log (who did what) + curated revert of safely-invertible actions | M |
 | 12 | [12-addon-templates-catalog.md](12-addon-templates-catalog.md) | Monetization seed | One-click add-on templates catalog; Grafana flagship | M |
 | 13 | ✅ [../done/13-prometheus-metrics-exposition.md](../done/13-prometheus-metrics-exposition.md) | Reliability / observability | Expose VAC metrics on a Prometheus `/metrics` endpoint | S–M |
+| 14 | [14-ci-workflow-cleanup.md](14-ci-workflow-cleanup.md) | Dev-experience | Trim CI hot path (bench-ram off PRs), DRY setup, consolidate tag workflows | S |
+| 15 | [15-security-dashboard.md](15-security-dashboard.md) | Trust moat | Read-only Security tab: posture checklist, traffic-anomaly/DDoS signals, fail2ban/firewall view | M |
 | 16 | [16-compose-preflight-validation.md](16-compose-preflight-validation.md) | Trust & UX | Preflight lint of user compose: hard-error/warn on edge-port/bundled-proxy/docker.sock/host-ports | M |
 
 ## Suggested order
@@ -57,8 +62,11 @@ trustworthy and effortless," not by what's technically interesting.
 6. **06 resource guardrails** — the small-VPS reliability story.
 7. **05 zero-downtime** — hardest; do once 01/02 are solid.
 8. **13 prometheus exposition** — standalone-useful; unblocks 12's "charts about VAC."
-9. **08 → 09 → 12 → 10** — the Managed VAC arc, furthest out (backups → managed DBs →
-   add-on catalog/Grafana → full provisioning).
+9. **16 compose preflight** — deploy-path safety; teach the operator why a compose won't run
+   instead of failing opaquely. Pairs with **15 security dashboard** (read-only posture/traffic).
+10. **14 CI cleanup** — cheap dev-experience win; land any time.
+11. **08 → 09 → 12** — the Managed Services arc (backups → managed DBs → add-on catalog/Grafana).
+   *(10 Managed VAC provisioning is **dropped for now** — separate repo, needs a business behind it.)*
 
 ## Deliberately NOT doing (guard the moat)
 
