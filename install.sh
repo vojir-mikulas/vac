@@ -184,7 +184,10 @@ esac
 VACEOF
   sed -i "s#__VAC_DIR__#$VAC_INSTALL_DIR#g" /usr/local/bin/vac
   sed -i "s#__VAC_ASSET_BASE__#$VAC_ASSET_BASE#g" /usr/local/bin/vac
-  chmod +x /usr/local/bin/vac
+  # Explicit 0755 (not `chmod +x`): on a fresh install we run under `umask 077`
+  # (set when writing the .env), and a who-less `+x` is masked down to owner-only
+  # — leaving the wrapper root-unreadable so the granted user can't run `vac`.
+  chmod 0755 /usr/local/bin/vac
 }
 
 grant_user_access() {
