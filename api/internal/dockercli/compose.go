@@ -175,6 +175,48 @@ func ParsePsOutput(b []byte) ([]PsService, error) {
 	return out, nil
 }
 
+// Exec runs `docker exec {containerID} sh -c {cmd}` and streams the command's
+// stdout into `out` (Track D / D1). It runs inside the *running* container so
+// engine credentials already present in the container env (e.g. $POSTGRES_USER)
+// resolve without VAC duplicating them. stdout is piped straight to the writer —
+// never buffered in full — so a large dump doesn't blow the RAM budget. stderr
+// is captured separately and surfaced in the error on a non-zero exit.
+func (c *Compose) Exec(ctx context.Context, containerID string, cmd []string, out io.Writer) error {
+	if containerID == "" {
+		return errors.New("dockercli: exec needs a container id")
+	}
+	if len(cmd) == 0 {
+		return errors.New("dockercli: exec needs a command")
+	}
+	// `sh -c` so the user command can use pipes/redirection/$VARS exactly as it
+	// would inside the container. cmd is joined into a single shell string.
+	shell := strings.Join(cmd, " ")
+	command := c.command(ctx, "", "exec", containerID, "sh", "-c", shell)
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	if err := command.Start(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return ErrDockerMissing
+		}
+		return err
+	}
+	// Copy stdout to the destination as it arrives. A copy error is recorded but
+	// we still Wait so the child is reaped and its exit status is observed.
+	_, copyErr := io.Copy(out, stdout)
+	waitErr := command.Wait()
+	if waitErr != nil {
+		return mapCmdError(waitErr, stderr.Bytes())
+	}
+	if copyErr != nil {
+		return fmt.Errorf("dockercli: exec stream: %w", copyErr)
+	}
+	return nil
+}
+
 // command builds an *exec.Cmd with a minimal explicit env. We never inherit
 // os.Environ — that would leak VAC_MASTER_KEY into the child.
 func (c *Compose) command(ctx context.Context, wd string, args ...string) *exec.Cmd {

@@ -32,5 +32,13 @@ export const queryKeys = {
     triggers: (id: string) => ['apps', id, 'triggers'] as const,
     webhook: (id: string) => ['apps', id, 'webhook'] as const,
     metrics: (id: string, since: string) => ['apps', id, 'metrics', since] as const,
+    // Track D — managed services.
+    backups: (id: string) => ['apps', id, 'backups'] as const,
+    backupRuns: (id: string, cid: string) => ['apps', id, 'backups', cid, 'runs'] as const,
+    databases: (id: string) => ['apps', id, 'databases'] as const,
+  },
+  addons: {
+    all: ['addons'] as const,
+    detail: (id: string) => ['addons', id] as const,
   },
 } as const

@@ -8,10 +8,18 @@ import { EmptyState } from '@/components/common/empty-state'
 import { ServiceCard } from '@/features/app-detail/service-card'
 import { useServices } from '@/lib/api/services'
 import { useStackControl } from '@/lib/api/apps'
+import { useBackups } from '@/lib/api/backups'
+import { useInstanceInfo } from '@/lib/api/instance'
 
 export function ServicesTab({ appId }: { appId: string }) {
   const { data: services, isLoading } = useServices(appId)
   const stack = useStackControl(appId)
+  const { data: instance } = useInstanceInfo()
+  const managed = instance?.managed_services ?? false
+  // Only fetch backups when the managed-services gate is open, so the warning
+  // badge has data without an extra request on boxes that don't use the feature.
+  const { data: backups } = useBackups(appId, managed)
+  const backedUp = new Set((backups ?? []).map((b) => b.service_name))
 
   const control = (action: 'start' | 'stop' | 'restart') =>
     stack.mutate(action, {
@@ -59,7 +67,12 @@ export function ServicesTab({ appId }: { appId: string }) {
       ) : services && services.length > 0 ? (
         <div className="flex flex-col gap-4">
           {services.map((svc) => (
-            <ServiceCard key={svc.id} appId={appId} service={svc} />
+            <ServiceCard
+              key={svc.id}
+              appId={appId}
+              service={svc}
+              noBackupWarning={managed && !backedUp.has(svc.name)}
+            />
           ))}
         </div>
       ) : (

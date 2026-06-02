@@ -302,6 +302,7 @@ export function buildInitialState(): MockState {
       commit: fakeSha().slice(0, 7),
       built_at: daysAgoISO(1),
       channel: 'preview',
+      managed_services: true,
     },
     baseDomain: 'apps.example.com',
     apps: [storefront, marketing, gateway, analytics],

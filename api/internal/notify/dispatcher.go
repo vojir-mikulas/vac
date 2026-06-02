@@ -292,6 +292,21 @@ func (d *Dispatcher) OOMKilled(appName, appID, service string, limitMB int) {
 	})
 }
 
+// BackupFailed fires the backup-failed event (Track D / D1). Backup success is
+// surfaced in-UI only — a failed scheduled backup is the event that warrants a
+// push, since stateful data is the thing the operator most wants to hear about.
+func (d *Dispatcher) BackupFailed(appName, appID, service, errMsg string) {
+	msg := fmt.Sprintf("Backup of %s failed", service)
+	if errMsg != "" {
+		msg += ": " + errMsg
+	}
+	d.dispatch(Event{
+		Type: EventBackupFailed, OK: false,
+		Title:   "Backup failed: " + appName + "/" + service,
+		AppName: appName, AppID: appID, Service: service, Message: msg,
+	})
+}
+
 // CertExpiring fires the TLS-certificate-expiring event (plan 03). daysLeft is
 // the whole days until notAfter; a non-positive value means already expired.
 func (d *Dispatcher) CertExpiring(host string, daysLeft int, notAfter time.Time) {

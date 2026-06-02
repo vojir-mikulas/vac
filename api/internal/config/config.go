@@ -86,6 +86,14 @@ type Config struct {
 	NotifyDiscordURL string `yaml:"-"`
 	NotifySlackURL   string `yaml:"-"`
 
+	// Track D (managed services). ManagedServices is the master gate: when off
+	// (the default) the backup scheduler / managed-DB goroutines never start,
+	// the nav entries stay hidden, and the <200 MB control-plane claim holds.
+	// ManagedDBIsolated points managed Postgres at a second vac-db-managed
+	// instance for blast-radius isolation instead of sharing the control-plane DB.
+	ManagedServices   bool `yaml:"managed_services"`
+	ManagedDBIsolated bool `yaml:"managed_db_isolated"`
+
 	// Build metadata injected by main() from ldflags vars; surfaced by the
 	// instance-info endpoint. Not read from env/yaml.
 	Version   string `yaml:"-"`
@@ -306,6 +314,13 @@ func applyEnv(cfg *Config) {
 	}
 	cfg.NotifyDiscordURL = os.Getenv("VAC_NOTIFY_DISCORD_URL")
 	cfg.NotifySlackURL = os.Getenv("VAC_NOTIFY_SLACK_URL")
+
+	if v := os.Getenv("VAC_MANAGED_SERVICES"); v != "" {
+		cfg.ManagedServices = v == "true" || v == "1"
+	}
+	if v := os.Getenv("VAC_MANAGED_DB_ISOLATED"); v != "" {
+		cfg.ManagedDBIsolated = v == "true" || v == "1"
+	}
 }
 
 func validate(cfg *Config) {

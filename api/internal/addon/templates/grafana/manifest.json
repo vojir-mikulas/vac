@@ -1,0 +1,13 @@
+{
+  "id": "grafana",
+  "name": "Grafana",
+  "description": "Dashboards and visualization. Deploys as a normal app on this box, pre-provisioned with a welcome dashboard. Add your managed database as a data source to chart your own data.",
+  "category": "observability",
+  "footprint_mb": 150,
+  "depends_on_db": "",
+  "compose_file": "compose.yaml",
+  "default_env": {
+    "GF_ADMIN_USER": "admin",
+    "GF_ADMIN_PASSWORD": "@random"
+  }
+}

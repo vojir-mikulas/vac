@@ -1,0 +1,74 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+import { api } from '@/lib/api/client'
+import { queryKeys } from '@/lib/query/keys'
+import type { BackupConfig, BackupConfigInput, BackupRun } from '@/types/api'
+
+export const backupsApi = {
+  list: (appId: string) => api.get<BackupConfig[]>(`apps/${appId}/backups`),
+  create: (appId: string, input: BackupConfigInput) =>
+    api.post<BackupConfig>(`apps/${appId}/backups`, input),
+  update: (appId: string, cid: string, input: BackupConfigInput) =>
+    api.put<BackupConfig>(`apps/${appId}/backups/${cid}`, input),
+  remove: (appId: string, cid: string) => api.del<void>(`apps/${appId}/backups/${cid}`),
+  run: (appId: string, cid: string) => api.post<void>(`apps/${appId}/backups/${cid}/run`),
+  runs: (appId: string, cid: string) => api.get<BackupRun[]>(`apps/${appId}/backups/${cid}/runs`),
+  // Artifact download is a plain authenticated GET — used as an anchor href.
+  downloadUrl: (appId: string, rid: string) => `/api/apps/${appId}/backups/runs/${rid}/download`,
+}
+
+export function useBackups(appId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.apps.backups(appId),
+    queryFn: () => backupsApi.list(appId),
+    enabled,
+  })
+}
+
+export function useCreateBackup(appId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: BackupConfigInput) => backupsApi.create(appId, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.apps.backups(appId) }),
+  })
+}
+
+export function useUpdateBackup(appId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ cid, input }: { cid: string; input: BackupConfigInput }) =>
+      backupsApi.update(appId, cid, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.apps.backups(appId) }),
+  })
+}
+
+export function useDeleteBackup(appId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (cid: string) => backupsApi.remove(appId, cid),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.apps.backups(appId) }),
+  })
+}
+
+export function useRunBackup(appId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (cid: string) => backupsApi.run(appId, cid),
+    // The run is detached server-side; refetch shortly so the history catches up.
+    onSuccess: (_, cid) => {
+      qc.invalidateQueries({ queryKey: queryKeys.apps.backupRuns(appId, cid) })
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: queryKeys.apps.backups(appId) })
+        qc.invalidateQueries({ queryKey: queryKeys.apps.backupRuns(appId, cid) })
+      }, 2_000)
+    },
+  })
+}
+
+export function useBackupRuns(appId: string, cid: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.apps.backupRuns(appId, cid),
+    queryFn: () => backupsApi.runs(appId, cid),
+    enabled,
+  })
+}

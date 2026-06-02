@@ -17,6 +17,7 @@ import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppLogsRouteImport } from './routes/_app/logs'
 import { Route as AppDeploymentsRouteImport } from './routes/_app/deployments'
 import { Route as AppDatabaseRouteImport } from './routes/_app/database'
+import { Route as AppAddonsRouteImport } from './routes/_app/addons'
 import { Route as AppActivityRouteImport } from './routes/_app/activity'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppAppsIndexRouteImport } from './routes/_app/apps/index'
@@ -36,6 +37,8 @@ import { Route as AppAppsAppIdOverviewRouteImport } from './routes/_app/apps/$ap
 import { Route as AppAppsAppIdLogsRouteImport } from './routes/_app/apps/$appId/logs'
 import { Route as AppAppsAppIdEnvironmentRouteImport } from './routes/_app/apps/$appId/environment'
 import { Route as AppAppsAppIdDeploysRouteImport } from './routes/_app/apps/$appId/deploys'
+import { Route as AppAppsAppIdDatabasesRouteImport } from './routes/_app/apps/$appId/databases'
+import { Route as AppAppsAppIdBackupsRouteImport } from './routes/_app/apps/$appId/backups'
 
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
@@ -74,6 +77,11 @@ const AppDeploymentsRoute = AppDeploymentsRouteImport.update({
 const AppDatabaseRoute = AppDatabaseRouteImport.update({
   id: '/database',
   path: '/database',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAddonsRoute = AppAddonsRouteImport.update({
+  id: '/addons',
+  path: '/addons',
   getParentRoute: () => AppRoute,
 } as any)
 const AppActivityRoute = AppActivityRouteImport.update({
@@ -172,12 +180,23 @@ const AppAppsAppIdDeploysRoute = AppAppsAppIdDeploysRouteImport.update({
   path: '/deploys',
   getParentRoute: () => AppAppsAppIdRoute,
 } as any)
+const AppAppsAppIdDatabasesRoute = AppAppsAppIdDatabasesRouteImport.update({
+  id: '/databases',
+  path: '/databases',
+  getParentRoute: () => AppAppsAppIdRoute,
+} as any)
+const AppAppsAppIdBackupsRoute = AppAppsAppIdBackupsRouteImport.update({
+  id: '/backups',
+  path: '/backups',
+  getParentRoute: () => AppAppsAppIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/activity': typeof AppActivityRoute
+  '/addons': typeof AppAddonsRoute
   '/database': typeof AppDatabaseRoute
   '/deployments': typeof AppDeploymentsRoute
   '/logs': typeof AppLogsRoute
@@ -193,6 +212,8 @@ export interface FileRoutesByFullPath {
   '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/apps/': typeof AppAppsIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
+  '/apps/$appId/backups': typeof AppAppsAppIdBackupsRoute
+  '/apps/$appId/databases': typeof AppAppsAppIdDatabasesRoute
   '/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
   '/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
   '/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
@@ -206,6 +227,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/activity': typeof AppActivityRoute
+  '/addons': typeof AppAddonsRoute
   '/database': typeof AppDatabaseRoute
   '/deployments': typeof AppDeploymentsRoute
   '/logs': typeof AppLogsRoute
@@ -219,6 +241,8 @@ export interface FileRoutesByTo {
   '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/apps': typeof AppAppsIndexRoute
   '/settings': typeof AppSettingsIndexRoute
+  '/apps/$appId/backups': typeof AppAppsAppIdBackupsRoute
+  '/apps/$appId/databases': typeof AppAppsAppIdDatabasesRoute
   '/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
   '/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
   '/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
@@ -234,6 +258,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/_app/activity': typeof AppActivityRoute
+  '/_app/addons': typeof AppAddonsRoute
   '/_app/database': typeof AppDatabaseRoute
   '/_app/deployments': typeof AppDeploymentsRoute
   '/_app/logs': typeof AppLogsRoute
@@ -249,6 +274,8 @@ export interface FileRoutesById {
   '/_app/settings/notifications': typeof AppSettingsNotificationsRoute
   '/_app/apps/': typeof AppAppsIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
+  '/_app/apps/$appId/backups': typeof AppAppsAppIdBackupsRoute
+  '/_app/apps/$appId/databases': typeof AppAppsAppIdDatabasesRoute
   '/_app/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
   '/_app/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
   '/_app/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
@@ -264,6 +291,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/activity'
+    | '/addons'
     | '/database'
     | '/deployments'
     | '/logs'
@@ -279,6 +307,8 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/apps/'
     | '/settings/'
+    | '/apps/$appId/backups'
+    | '/apps/$appId/databases'
     | '/apps/$appId/deploys'
     | '/apps/$appId/environment'
     | '/apps/$appId/logs'
@@ -292,6 +322,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/activity'
+    | '/addons'
     | '/database'
     | '/deployments'
     | '/logs'
@@ -305,6 +336,8 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/apps'
     | '/settings'
+    | '/apps/$appId/backups'
+    | '/apps/$appId/databases'
     | '/apps/$appId/deploys'
     | '/apps/$appId/environment'
     | '/apps/$appId/logs'
@@ -319,6 +352,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/_app/activity'
+    | '/_app/addons'
     | '/_app/database'
     | '/_app/deployments'
     | '/_app/logs'
@@ -334,6 +368,8 @@ export interface FileRouteTypes {
     | '/_app/settings/notifications'
     | '/_app/apps/'
     | '/_app/settings/'
+    | '/_app/apps/$appId/backups'
+    | '/_app/apps/$appId/databases'
     | '/_app/apps/$appId/deploys'
     | '/_app/apps/$appId/environment'
     | '/_app/apps/$appId/logs'
@@ -406,6 +442,13 @@ declare module '@tanstack/react-router' {
       path: '/database'
       fullPath: '/database'
       preLoaderRoute: typeof AppDatabaseRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/addons': {
+      id: '/_app/addons'
+      path: '/addons'
+      fullPath: '/addons'
+      preLoaderRoute: typeof AppAddonsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/activity': {
@@ -541,6 +584,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAppsAppIdDeploysRouteImport
       parentRoute: typeof AppAppsAppIdRoute
     }
+    '/_app/apps/$appId/databases': {
+      id: '/_app/apps/$appId/databases'
+      path: '/databases'
+      fullPath: '/apps/$appId/databases'
+      preLoaderRoute: typeof AppAppsAppIdDatabasesRouteImport
+      parentRoute: typeof AppAppsAppIdRoute
+    }
+    '/_app/apps/$appId/backups': {
+      id: '/_app/apps/$appId/backups'
+      path: '/backups'
+      fullPath: '/apps/$appId/backups'
+      preLoaderRoute: typeof AppAppsAppIdBackupsRouteImport
+      parentRoute: typeof AppAppsAppIdRoute
+    }
   }
 }
 
@@ -571,6 +628,8 @@ const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
 )
 
 interface AppAppsAppIdRouteChildren {
+  AppAppsAppIdBackupsRoute: typeof AppAppsAppIdBackupsRoute
+  AppAppsAppIdDatabasesRoute: typeof AppAppsAppIdDatabasesRoute
   AppAppsAppIdDeploysRoute: typeof AppAppsAppIdDeploysRoute
   AppAppsAppIdEnvironmentRoute: typeof AppAppsAppIdEnvironmentRoute
   AppAppsAppIdLogsRoute: typeof AppAppsAppIdLogsRoute
@@ -581,6 +640,8 @@ interface AppAppsAppIdRouteChildren {
 }
 
 const AppAppsAppIdRouteChildren: AppAppsAppIdRouteChildren = {
+  AppAppsAppIdBackupsRoute: AppAppsAppIdBackupsRoute,
+  AppAppsAppIdDatabasesRoute: AppAppsAppIdDatabasesRoute,
   AppAppsAppIdDeploysRoute: AppAppsAppIdDeploysRoute,
   AppAppsAppIdEnvironmentRoute: AppAppsAppIdEnvironmentRoute,
   AppAppsAppIdLogsRoute: AppAppsAppIdLogsRoute,
@@ -596,6 +657,7 @@ const AppAppsAppIdRouteWithChildren = AppAppsAppIdRoute._addFileChildren(
 
 interface AppRouteChildren {
   AppActivityRoute: typeof AppActivityRoute
+  AppAddonsRoute: typeof AppAddonsRoute
   AppDatabaseRoute: typeof AppDatabaseRoute
   AppDeploymentsRoute: typeof AppDeploymentsRoute
   AppLogsRoute: typeof AppLogsRoute
@@ -607,6 +669,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppActivityRoute: AppActivityRoute,
+  AppAddonsRoute: AppAddonsRoute,
   AppDatabaseRoute: AppDatabaseRoute,
   AppDeploymentsRoute: AppDeploymentsRoute,
   AppLogsRoute: AppLogsRoute,

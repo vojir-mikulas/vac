@@ -1,0 +1,122 @@
+package dbprovision
+
+import (
+	"context"
+	"fmt"
+	"time"
+)
+
+// MariaDBEngine is the worked example of a shared, lazily-started engine: one
+// vac-mariadb daemon, multi-tenant by database, provisioned by `docker exec`ing
+// the mariadb admin CLI (decision #6). The admin password is derived from the
+// master key so it's stable across restarts without separate storage.
+type MariaDBEngine struct {
+	docker  DockerController
+	workDir string
+	edge    string
+	adminPw string
+}
+
+const (
+	mariadbContainer = "vac-mariadb"
+	mariadbProject   = "vac-managed-mariadb"
+	mariadbImage     = "mariadb:11"
+)
+
+// NewMariaDBEngine wires the MariaDB recipe.
+func NewMariaDBEngine(docker DockerController, cfg Config) *MariaDBEngine {
+	return &MariaDBEngine{
+		docker:  docker,
+		workDir: cfg.WorkDir,
+		edge:    cfg.EdgeNetwork,
+		adminPw: deriveAdminPassword(cfg.MasterKey, "mariadb"),
+	}
+}
+
+func (e *MariaDBEngine) Name() string { return "mariadb" }
+
+func (e *MariaDBEngine) composeYAML() string {
+	// vac-edge is external (owned by the VAC stack); the daemon joins it with a
+	// stable alias so apps reach it the same way they reach each other.
+	return fmt.Sprintf(`name: %s
+services:
+  mariadb:
+    image: %s
+    container_name: %s
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: "%s"
+    volumes:
+      - data:/var/lib/mysql
+    networks:
+      %s:
+        aliases:
+          - %s
+volumes:
+  data:
+networks:
+  %s:
+    external: true
+`, mariadbProject, mariadbImage, mariadbContainer, e.adminPw, e.edge, mariadbContainer, e.edge)
+}
+
+// EnsureRunning lazily brings up the shared daemon (first use only) and writes a
+// root client config inside the container so dumps/admin don't carry the
+// password on the command line.
+func (e *MariaDBEngine) EnsureRunning(ctx context.Context) error {
+	dir, err := writeComposeProject(e.workDir, "mariadb", e.composeYAML())
+	if err != nil {
+		return err
+	}
+	if err := e.docker.Up(ctx, dir, "compose.yaml", mariadbProject, ""); err != nil {
+		return fmt.Errorf("dbprovision: mariadb up: %w", err)
+	}
+	ping := fmt.Sprintf("mariadb -uroot -p%s -e 'SELECT 1'", e.adminPw)
+	if err := pingUntilReady(ctx, e.docker, mariadbContainer, ping, 90*time.Second); err != nil {
+		return fmt.Errorf("dbprovision: mariadb not ready: %w", err)
+	}
+	// Root client config so `mariadb-dump {db}` needs no password on the CLI.
+	cnf := fmt.Sprintf(`printf '[client]\nuser=root\npassword=%s\n' > /root/.my.cnf`, e.adminPw)
+	if err := execOK(ctx, e.docker, mariadbContainer, cnf); err != nil {
+		return fmt.Errorf("dbprovision: mariadb client config: %w", err)
+	}
+	return nil
+}
+
+func (e *MariaDBEngine) Provision(ctx context.Context, dbName, roleName, password string) error {
+	// Names are sanitized to [a-z0-9_] so they need no backtick quoting (which
+	// would otherwise trigger command substitution inside the container shell).
+	sql := fmt.Sprintf(
+		"CREATE DATABASE IF NOT EXISTS %s; CREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s'; GRANT ALL PRIVILEGES ON %s.* TO '%s'@'%%'; FLUSH PRIVILEGES;",
+		dbName, roleName, password, dbName, roleName,
+	)
+	cmd := fmt.Sprintf(`mariadb -uroot -p%s -e "%s"`, e.adminPw, sql)
+	if err := execOK(ctx, e.docker, mariadbContainer, cmd); err != nil {
+		return fmt.Errorf("dbprovision: mariadb provision: %w", err)
+	}
+	return nil
+}
+
+func (e *MariaDBEngine) Deprovision(ctx context.Context, dbName, roleName string) error {
+	sql := fmt.Sprintf("DROP DATABASE IF EXISTS %s; DROP USER IF EXISTS '%s'@'%%'; FLUSH PRIVILEGES;", dbName, roleName)
+	cmd := fmt.Sprintf(`mariadb -uroot -p%s -e "%s"`, e.adminPw, sql)
+	if err := execOK(ctx, e.docker, mariadbContainer, cmd); err != nil {
+		return fmt.Errorf("dbprovision: mariadb deprovision: %w", err)
+	}
+	return nil
+}
+
+func (e *MariaDBEngine) ConnString(dbName, roleName, password string) string {
+	return fmt.Sprintf("mysql://%s:%s@%s:3306/%s", roleName, password, mariadbContainer, dbName)
+}
+
+func (e *MariaDBEngine) DefaultBackupCommand(dbName string) string {
+	// Reads root creds from /root/.my.cnf written at EnsureRunning, so no
+	// password lands in the stored backup command.
+	return fmt.Sprintf("mariadb-dump %s", dbName)
+}
+
+func (e *MariaDBEngine) BackupContainer() string { return mariadbContainer }
+func (e *MariaDBEngine) EnvVarName() string      { return "DATABASE_URL" }
+func (e *MariaDBEngine) FootprintMB() int        { return 150 }
+func (e *MariaDBEngine) Shared() bool            { return true }

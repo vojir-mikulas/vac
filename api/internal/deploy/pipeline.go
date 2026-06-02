@@ -47,6 +47,15 @@ type Router interface {
 	WaitHealthy(ctx context.Context, appID string) error
 }
 
+// TemplateMaterializer copies an add-on template's embedded files into the
+// deploy work dir, replacing the git clone for template-sourced apps (Track D /
+// D3). nil → template apps fail with a clear error. Implemented by
+// addon.Registry. This is the only deploy-pipeline touch in Track D: an additive
+// branch in the clone step, never a rewrite of build/up/health/route.
+type TemplateMaterializer interface {
+	Materialize(templateID, destDir string) error
+}
+
 // Reconciler attaches runtime-log followers to an app's freshly-(re)created
 // containers after a deploy. Implemented by logstream.Supervisor; nil disables
 // the explicit nudge (the supervisor still reconciles off container events).
@@ -89,10 +98,11 @@ type Pipeline struct {
 	Docker             DockerClient
 	Git                GitClient
 	HealthChecker      Checker
-	Router             Router     // nil → Phase 2 loopback health check fallback
-	Hub                Publisher  // nil → no live build-log streaming
-	Reconciler         Reconciler // nil → no explicit log-follower nudge
-	Notifier           Notifier   // nil → no deploy notifications
+	Router             Router               // nil → Phase 2 loopback health check fallback
+	Hub                Publisher            // nil → no live build-log streaming
+	Reconciler         Reconciler           // nil → no explicit log-follower nudge
+	Notifier           Notifier             // nil → no deploy notifications
+	Templates          TemplateMaterializer // nil → template-sourced apps fail
 	WorkDir            string
 	HealthCheckTimeout time.Duration
 	HealthCheckRetries int
@@ -172,7 +182,23 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 	}
 	defer cleanupKey()
 
-	if err := p.cloneOrPull(ctx, app, repoDir, keyPath); err != nil {
+	// Template-sourced apps (add-ons) materialize embedded files instead of
+	// cloning — the one Track-D branch in the clone step (decision #7 / D3).
+	if app.Source == store.AppSourceTemplate {
+		if p.Templates == nil {
+			return fmt.Errorf("pipeline: app is template-sourced but no template registry is configured")
+		}
+		if app.TemplateID == nil || *app.TemplateID == "" {
+			return fmt.Errorf("pipeline: template app has no template id")
+		}
+		_ = p.logSystem(ctx, deploymentID, "materializing add-on template: "+*app.TemplateID)
+		if err := os.MkdirAll(filepath.Dir(repoDir), 0o755); err != nil { //nolint:gosec // G301: app working dir
+			return fmt.Errorf("pipeline: mkdir workdir: %w", err)
+		}
+		if err := p.Templates.Materialize(*app.TemplateID, repoDir); err != nil {
+			return fmt.Errorf("pipeline: materialize template: %w", err)
+		}
+	} else if err := p.cloneOrPull(ctx, app, repoDir, keyPath); err != nil {
 		return err
 	}
 	// Rollback pins the clone to a prior commit. The deployment row already
