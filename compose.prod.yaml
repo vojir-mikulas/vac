@@ -41,7 +41,7 @@ services:
       vac-db:
         condition: service_healthy
     environment:
-      VAC_PORT: "3000"
+      VAC_PORT: "9393"
       VAC_HOST: "0.0.0.0"
       VAC_DATABASE_URL: "postgres://vac:${VAC_DB_PASSWORD}@vac-db:5432/vac?sslmode=disable"
       VAC_MASTER_KEY: ${VAC_MASTER_KEY:?VAC_MASTER_KEY is required (32 bytes hex)}
@@ -75,7 +75,7 @@ services:
       GOMEMLIMIT: "${VAC_GOMEMLIMIT:-188743680}" # 180 MiB
       GOGC: "${VAC_GOGC:-100}"
     ports:
-      - "${VAC_HOST_PORT:-3000}:3000"
+      - "${VAC_HOST_PORT:-9393}:9393"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - vac_repos:/var/lib/vac/repos

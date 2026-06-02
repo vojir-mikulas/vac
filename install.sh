@@ -33,7 +33,7 @@ VAC_VERSION="${VAC_VERSION:-latest}"
 VAC_INSTALL_DIR="${VAC_INSTALL_DIR:-/opt/vac}"
 VAC_REGISTRY="${VAC_REGISTRY:-ghcr.io/vojir-mikulas}"
 VAC_ASSET_BASE="${VAC_ASSET_BASE:-https://get.vac.vojir.io}"
-VAC_HOST_PORT="${VAC_HOST_PORT:-3000}"
+VAC_HOST_PORT="${VAC_HOST_PORT:-9393}"
 VAC_DOMAIN="${VAC_DOMAIN:-}"
 # Managed services (backups, managed databases, the add-on catalog). Off by
 # default — it starts background workers and uses a little more RAM. Toggle any
