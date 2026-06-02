@@ -3,34 +3,93 @@
 #
 #   curl -sSL get.vac.vojir.io | sh
 #
-# Idempotent: re-running upgrades images and preserves your secrets/config.
-# Override defaults with env vars, e.g.:
+# Run it in a terminal and it walks you through a short setup (domain, managed
+# services, sudo-free access) and shows a summary before touching the host. Pipe
+# it without a terminal (CI, provisioning) and it runs unattended with safe
+# defaults. Re-running upgrades the images and preserves your secrets/config.
+#
+# Override any default — and skip the matching question — with env vars:
 #   VAC_VERSION=v0.5.0 VAC_DOMAIN=vac.example.com sh install.sh
+#
+# Flags:
+#   --yes, -y         Accept defaults; never prompt (even in a terminal).
+#   --no-grant        Keep VAC root-only (don't grant the sudo user access).
+#   --grant           Force the grant on (the default).
+#   -h, --help        Show help and exit.
 set -eu
 
-# ── Config (overridable via env) ───────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Config (overridable via env)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Which knobs did the caller pre-set via env? A pre-set knob skips its wizard
+# question — this is what keeps `curl | sh` fully unattended for automation.
+# Captured before defaults are applied (defaults would mask the distinction).
+[ -n "${VAC_DOMAIN+x}" ]           && DOMAIN_PRESET=1  || DOMAIN_PRESET=0
+[ -n "${VAC_MANAGED_SERVICES+x}" ] && MANAGED_PRESET=1 || MANAGED_PRESET=0
+[ -n "${VAC_GRANT_ACCESS+x}" ]     && GRANT_PRESET=1   || GRANT_PRESET=0
+
 VAC_VERSION="${VAC_VERSION:-latest}"
 VAC_INSTALL_DIR="${VAC_INSTALL_DIR:-/opt/vac}"
 VAC_REGISTRY="${VAC_REGISTRY:-ghcr.io/vojir-mikulas}"
 VAC_ASSET_BASE="${VAC_ASSET_BASE:-https://get.vac.vojir.io}"
 VAC_HOST_PORT="${VAC_HOST_PORT:-3000}"
 VAC_DOMAIN="${VAC_DOMAIN:-}"
+# Managed services (backups, managed databases, the add-on catalog). Off by
+# default — it starts background workers and uses a little more RAM. Toggle any
+# time with `vac managed-services on|off`.
+VAC_MANAGED_SERVICES="${VAC_MANAGED_SERVICES:-}"
 # When installed via sudo, also let the invoking user run `vac` without sudo:
 # add them to the `docker` group and give them the install dir (which holds the
-# root-only .env). Opt out with the --no-grant flag or VAC_GRANT_ACCESS=0.
-# Note: docker-group membership is root-equivalent on this host — opt out if
-# that isn't acceptable.
+# root-only .env). Opt out with --no-grant or VAC_GRANT_ACCESS=0.
+# Note: docker-group membership is root-equivalent on this host.
 VAC_GRANT_ACCESS="${VAC_GRANT_ACCESS:-1}"
-RELOGIN=0
+
+ASSUME_YES=0          # --yes / -y: never prompt
+INTERACTIVE=0         # resolved at wizard time (a readable /dev/tty + not --yes)
+FRESH=0               # 1 on a first-time install (no existing .env)
+RELOGIN=0             # 1 when the user must re-login for docker-group membership
+IP=""                 # detected public/host IP, filled lazily by detect_ip()
 
 COMPOSE_FILE="$VAC_INSTALL_DIR/compose.prod.yaml"
 ENV_FILE="$VAC_INSTALL_DIR/.env"
 
-# ── Output helpers ──────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Output & prompt helpers
+# ─────────────────────────────────────────────────────────────────────────────
 if [ -t 1 ]; then B="$(printf '\033[1m')"; G="$(printf '\033[32m')"; Y="$(printf '\033[33m')"; R="$(printf '\033[31m')"; N="$(printf '\033[0m')"; else B=; G=; Y=; R=; N=; fi
-info()  { printf '%s==>%s %s\n' "$G" "$N" "$1"; }
-warn()  { printf '%s!  %s%s\n' "$Y" "$1" "$N"; }
-die()   { printf '%serror:%s %s\n' "$R" "$N" "$1" >&2; exit 1; }
+info() { printf '%s==>%s %s\n' "$G" "$N" "$1"; }
+warn() { printf '%s!  %s%s\n' "$Y" "$1" "$N"; }
+die()  { printf '%serror:%s %s\n' "$R" "$N" "$1" >&2; exit 1; }
+
+# Prompts read from /dev/tty, never stdin — under `curl | sh`, stdin is the
+# pipe carrying this script, so only the controlling terminal can answer.
+say() { printf '%s\n' "$1" > /dev/tty; }            # a line of wizard prose
+
+ask() {
+  # ask <question> [default] -> echoes the answer (default if blank)
+  _def="${2:-}"
+  if [ -n "$_def" ]; then printf '%s [%s] ' "$1" "$_def" > /dev/tty
+  else printf '%s ' "$1" > /dev/tty; fi
+  IFS= read -r _ans < /dev/tty || _ans=
+  [ -n "$_ans" ] || _ans="$_def"
+  printf '%s' "$_ans"
+}
+
+confirm() {
+  # confirm <question> <default:y|n> -> 0 for yes, 1 for no
+  _hint='[y/N]'; [ "${2:-n}" = y ] && _hint='[Y/n]'
+  printf '%s %s ' "$1" "$_hint" > /dev/tty
+  IFS= read -r _ans < /dev/tty || _ans=
+  [ -n "$_ans" ] || _ans="${2:-n}"
+  case "$_ans" in [Yy]*) return 0 ;; *) return 1 ;; esac
+}
+
+normalize_bool() {
+  # Map a loose truthy/falsy string to the literal true|false the API expects.
+  case "$1" in true|TRUE|1|yes|YES|on|y|Y) printf 'true' ;; *) printf 'false' ;; esac
+}
+
 usage() {
   cat <<USAGE
 VAC installer
@@ -39,54 +98,21 @@ VAC installer
   curl -sSL get.vac.vojir.io/install.sh | sudo sh -s -- [flags]
 
 Flags:
+  --yes, -y    Accept defaults and never prompt (even in a terminal).
   --no-grant   Don't add the invoking user to the docker group or chown the
                install dir — leave VAC root-only.
   --grant      Force the grant on (this is the default).
   -h, --help   Show this help and exit.
 
-Env overrides: VAC_VERSION, VAC_DOMAIN, VAC_INSTALL_DIR, VAC_HOST_PORT,
-VAC_REGISTRY, VAC_GRANT_ACCESS (1/0).
+Env overrides (a pre-set value skips its question): VAC_VERSION, VAC_DOMAIN,
+VAC_MANAGED_SERVICES (true/false), VAC_INSTALL_DIR, VAC_HOST_PORT, VAC_REGISTRY,
+VAC_GRANT_ACCESS (1/0).
 USAGE
 }
 
-# Answer --help before any preflight/elevation so it never needs Linux or root.
-# Peek without consuming "$@" so the args still forward through self-elevation.
-for _a in "$@"; do
-  case "$_a" in -h|--help) usage; exit 0 ;; esac
-done
-
-# ── Pre-flight ────────────────────────────────────────────────────────────--
-[ "$(uname -s)" = "Linux" ] || die "VAC installs on Linux hosts only (found $(uname -s))."
-
-case "$(uname -m)" in
-  x86_64|amd64|aarch64|arm64) ;;
-  *) die "Unsupported architecture: $(uname -m). VAC ships amd64 and arm64." ;;
-esac
-
-if [ "$(id -u)" -ne 0 ]; then
-  if command -v sudo >/dev/null 2>&1; then
-    info "Re-running with sudo…"
-    # Forward "$@" so flags (e.g. --no-grant) survive the elevation: with
-    # `sh -c BODY name arg…`, name becomes $0 and the rest become $1….
-    exec sudo -E sh -c "$(cat "$0" 2>/dev/null || true)" sh "$@" 2>/dev/null || die "Please run as root: curl -sSL get.vac.vojir.io | sudo sh"
-  fi
-  die "Please run as root (or install sudo)."
-fi
-
-# ── Args ──────────────────────────────────────────────────────────────────--
-# Parsed after self-elevation (which forwards "$@") so flags reliably cross the
-# sudo boundary rather than depending on an env var surviving it. Flags win
-# over the env defaults set above.
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --no-grant) VAC_GRANT_ACCESS=0 ;;
-    --grant)    VAC_GRANT_ACCESS=1 ;;
-    -h|--help)  usage; exit 0 ;;
-    *) die "unknown option: $1 (try --help)" ;;
-  esac
-  shift
-done
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Small utilities
+# ─────────────────────────────────────────────────────────────────────────────
 fetch() {
   # fetch <url> <dest>
   if command -v curl >/dev/null 2>&1; then curl -fsSL "$1" -o "$2"
@@ -98,6 +124,260 @@ rand_hex() {
   # rand_hex <bytes>
   if command -v openssl >/dev/null 2>&1; then openssl rand -hex "$1"
   else od -An -tx1 -N "$1" /dev/urandom | tr -d ' \n'; fi
+}
+
+detect_ip() {
+  # Cache the best-guess public IP for the dashboard URL / DNS hints.
+  [ -n "$IP" ] && { printf '%s' "$IP"; return; }
+  IP="$(curl -fsS https://api.ipify.org 2>/dev/null || true)"
+  [ -n "$IP" ] || IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  [ -n "$IP" ] || IP="<server-ip>"
+  printf '%s' "$IP"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pre-flight & privilege
+# ─────────────────────────────────────────────────────────────────────────────
+handle_help() {
+  # Answer --help before any preflight/elevation so it never needs Linux or
+  # root. Peek without consuming "$@" so args still forward through elevation.
+  for _a in "$@"; do
+    case "$_a" in -h|--help) usage; exit 0 ;; esac
+  done
+}
+
+preflight() {
+  [ "$(uname -s)" = "Linux" ] || die "VAC installs on Linux hosts only (found $(uname -s))."
+  case "$(uname -m)" in
+    x86_64|amd64|aarch64|arm64) ;;
+    *) die "Unsupported architecture: $(uname -m). VAC ships amd64 and arm64." ;;
+  esac
+}
+
+elevate_if_needed() {
+  # Re-run under sudo if we're not root. Forward "$@" so flags survive the
+  # elevation: with `sh -c BODY name arg…`, name becomes $0 and the rest $1….
+  [ "$(id -u)" -ne 0 ] || return 0
+  command -v sudo >/dev/null 2>&1 || die "Please run as root (or install sudo)."
+  info "Re-running with sudo…"
+  exec sudo -E sh -c "$(cat "$0" 2>/dev/null || true)" sh "$@" 2>/dev/null \
+    || die "Please run as root: curl -sSL get.vac.vojir.io | sudo sh"
+}
+
+parse_args() {
+  # Parsed after self-elevation (which forwards "$@") so flags reliably cross
+  # the sudo boundary. Flags win over the env defaults set above.
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --yes|-y)   ASSUME_YES=1 ;;
+      --no-grant) VAC_GRANT_ACCESS=0; GRANT_PRESET=1 ;;
+      --grant)    VAC_GRANT_ACCESS=1; GRANT_PRESET=1 ;;
+      -h|--help)  usage; exit 0 ;;
+      *) die "unknown option: $1 (try --help)" ;;
+    esac
+    shift
+  done
+}
+
+detect_fresh() {
+  if [ -f "$ENV_FILE" ]; then FRESH=0; else FRESH=1; fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Guided setup
+# ─────────────────────────────────────────────────────────────────────────────
+run_wizard() {
+  # Upgrades keep their config untouched — nothing to ask.
+  if [ "$FRESH" != 1 ]; then
+    info "Existing install found at ${B}${VAC_INSTALL_DIR}${N} — keeping secrets, upgrading images."
+    return 0
+  fi
+
+  # Interactive only when there's a terminal to answer and the user didn't opt
+  # out with --yes. Otherwise: announce the defaults and proceed unattended.
+  if [ "$ASSUME_YES" != 1 ] && [ -r /dev/tty ]; then INTERACTIVE=1; fi
+  if [ "$INTERACTIVE" != 1 ]; then
+    VAC_MANAGED_SERVICES="$(normalize_bool "${VAC_MANAGED_SERVICES:-false}")"
+    info "Running non-interactively — using defaults (domain: ${VAC_DOMAIN:-none}, managed services: ${VAC_MANAGED_SERVICES})."
+    return 0
+  fi
+
+  wizard_welcome
+  wizard_system_summary
+  wizard_ask_domain
+  wizard_ask_managed_services
+  wizard_ask_grant
+  wizard_confirm
+}
+
+wizard_welcome() {
+  say ""
+  say "${B}Welcome to VAC${N} — a self-hosted PaaS for a single box."
+  say "This will:"
+  say "  • install Docker if it's missing"
+  say "  • lay down the stack in ${B}${VAC_INSTALL_DIR}${N} and start it"
+  say "  • install the ${B}vac${N} management command"
+  say ""
+  say "Nothing changes on this host until you confirm. Ctrl-C any time to abort."
+}
+
+wizard_system_summary() {
+  if command -v docker >/dev/null 2>&1; then _dk="installed"; else _dk="${Y}will be installed${N}"; fi
+  say ""
+  say "${B}System${N}"
+  say "  host:    $(uname -s) $(uname -m)"
+  say "  docker:  ${_dk}"
+  say "  install: ${VAC_INSTALL_DIR}"
+  say "  address: $(detect_ip)"
+}
+
+wizard_ask_domain() {
+  [ "$DOMAIN_PRESET" = 1 ] && return 0
+  say ""
+  say "${B}Domain${N}  (optional — you can also set this later with 'vac set-domain')"
+  say "  Give VAC a domain to serve the dashboard over HTTPS and enable automatic"
+  say "  per-app subdomains. Leave blank to reach it by IP for now."
+  VAC_DOMAIN="$(ask 'Domain (blank = use IP):' '')"
+  if [ -n "$VAC_DOMAIN" ]; then
+    say "  DNS to create later:  A vac.${VAC_DOMAIN} → $(detect_ip)   and   A *.${VAC_DOMAIN} → $(detect_ip)"
+  fi
+}
+
+wizard_ask_managed_services() {
+  if [ "$MANAGED_PRESET" = 1 ]; then
+    VAC_MANAGED_SERVICES="$(normalize_bool "$VAC_MANAGED_SERVICES")"
+    return 0
+  fi
+  say ""
+  say "${B}Managed services${N}  (automatic backups, managed databases, add-on catalog)"
+  say "  Off by default — it starts background workers and uses a little more RAM."
+  say "  You can turn it on or off any time with: ${B}vac managed-services on|off${N}"
+  if confirm 'Enable managed services now?' n; then
+    VAC_MANAGED_SERVICES=true
+  else
+    VAC_MANAGED_SERVICES=false
+  fi
+}
+
+wizard_ask_grant() {
+  # Only meaningful when invoked via sudo from a real user account.
+  [ "$GRANT_PRESET" = 1 ] && return 0
+  _u="${SUDO_USER:-}"
+  { [ -n "$_u" ] && [ "$_u" != root ]; } || return 0
+  say ""
+  say "${B}Access${N}"
+  say "  Let ${B}${_u}${N} run 'vac' without sudo? This adds them to the 'docker'"
+  say "  group (root-equivalent on this host) and hands them the install dir."
+  if confirm "Grant ${_u} sudo-free access?" y; then
+    VAC_GRANT_ACCESS=1
+  else
+    VAC_GRANT_ACCESS=0
+  fi
+}
+
+wizard_confirm() {
+  [ "$VAC_GRANT_ACCESS" = 1 ] && _grant="yes" || _grant="no"
+  say ""
+  say "${B}Ready to install${N}"
+  say "  version:           ${VAC_VERSION}"
+  say "  install dir:       ${VAC_INSTALL_DIR}"
+  say "  domain:            ${VAC_DOMAIN:-none (reach by IP)}"
+  say "  managed services:  ${VAC_MANAGED_SERVICES}"
+  say "  sudo-free access:  ${_grant}"
+  say ""
+  confirm 'Proceed?' y || die "Aborted — nothing was changed."
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Docker
+# ─────────────────────────────────────────────────────────────────────────────
+ensure_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    info "Docker not found — installing via get.docker.com…"
+    command -v curl >/dev/null 2>&1 || die "curl is required to install Docker."
+    curl -fsSL https://get.docker.com | sh
+  fi
+
+  # Ensure the daemon is up (systemd or sysvinit).
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable --now docker >/dev/null 2>&1 || true
+  elif command -v service >/dev/null 2>&1; then
+    service docker start >/dev/null 2>&1 || true
+  fi
+
+  docker info >/dev/null 2>&1 || die "Docker is installed but the daemon isn't reachable."
+  docker compose version >/dev/null 2>&1 || die "The Docker Compose v2 plugin is required (docker compose)."
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Install directory & assets
+# ─────────────────────────────────────────────────────────────────────────────
+lay_down_files() {
+  info "Installing into ${B}${VAC_INSTALL_DIR}${N}"
+  mkdir -p "$VAC_INSTALL_DIR"
+
+  info "Fetching compose.prod.yaml…"
+  fetch "$VAC_ASSET_BASE/compose.prod.yaml" "$COMPOSE_FILE"
+
+  # Stash uninstall.sh next to the compose file so `vac uninstall` works offline
+  # and is where an operator would look. Non-fatal — the wrapper also fetches it.
+  info "Fetching uninstall.sh…"
+  if fetch "$VAC_ASSET_BASE/uninstall.sh" "$VAC_INSTALL_DIR/uninstall.sh"; then
+    chmod +x "$VAC_INSTALL_DIR/uninstall.sh"
+  else
+    warn "Could not fetch uninstall.sh; 'vac uninstall' will fall back to the network."
+  fi
+}
+
+generate_env() {
+  # Only on first install — secrets are preserved across re-runs.
+  if [ "$FRESH" != 1 ]; then
+    info "Existing config found — keeping secrets."
+  else
+    info "Generating secrets…"
+    MASTER_KEY="$(rand_hex 32)"
+    DB_PASSWORD="$(rand_hex 24)"          # hex → URL-safe inside the Postgres DSN
+
+    DOCKER_GID="$(getent group docker 2>/dev/null | cut -d: -f3)"
+    [ -n "${DOCKER_GID:-}" ] || DOCKER_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo 999)"
+
+    umask 077
+    cat > "$ENV_FILE" <<EOF
+# Generated by the VAC installer on $(date -u +%Y-%m-%dT%H:%M:%SZ). Keep this safe.
+VAC_VERSION=$VAC_VERSION
+VAC_REGISTRY=$VAC_REGISTRY
+VAC_MASTER_KEY=$MASTER_KEY
+VAC_DB_PASSWORD=$DB_PASSWORD
+DOCKER_GID=$DOCKER_GID
+VAC_HOST_PORT=$VAC_HOST_PORT
+VAC_BASE_DOMAIN=$VAC_DOMAIN
+VAC_MANAGED_SERVICES=$(normalize_bool "${VAC_MANAGED_SERVICES:-false}")
+EOF
+    chmod 600 "$ENV_FILE"
+  fi
+
+  # Pin the requested version for this run even on upgrades.
+  if grep -q '^VAC_VERSION=' "$ENV_FILE"; then
+    sed -i "s|^VAC_VERSION=.*|VAC_VERSION=$VAC_VERSION|" "$ENV_FILE"
+  else
+    printf 'VAC_VERSION=%s\n' "$VAC_VERSION" >> "$ENV_FILE"
+  fi
+}
+
+start_stack() {
+  info "Pulling images (${VAC_REGISTRY}/vac-* : ${VAC_VERSION})…"
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull
+
+  info "Starting VAC…"
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The `vac` management CLI
+# ─────────────────────────────────────────────────────────────────────────────
+install_cli() {
+  info "Installing the 'vac' command…"
+  write_vac_cli
 }
 
 write_vac_cli() {
@@ -228,131 +508,76 @@ grant_user_access() {
   chown -R "$TARGET_USER" "$VAC_INSTALL_DIR" || warn "  could not chown $VAC_INSTALL_DIR"
 }
 
-# ── Docker ────────────────────────────────────────────────────────────────--
-if ! command -v docker >/dev/null 2>&1; then
-  info "Docker not found — installing via get.docker.com…"
-  if command -v curl >/dev/null 2>&1; then curl -fsSL https://get.docker.com | sh
-  else die "curl is required to install Docker."; fi
-fi
+# ─────────────────────────────────────────────────────────────────────────────
+# Summary
+# ─────────────────────────────────────────────────────────────────────────────
+print_summary() {
+  detect_ip >/dev/null
 
-# Ensure the daemon is up (systemd or sysvinit).
-if command -v systemctl >/dev/null 2>&1; then
-  systemctl enable --now docker >/dev/null 2>&1 || true
-elif command -v service >/dev/null 2>&1; then
-  service docker start >/dev/null 2>&1 || true
-fi
+  # On a fresh install, vac-api writes a one-time setup token into its work dir.
+  # Read it back through the container so we can hand the operator a ready-to-
+  # click link with the token baked in — no log-digging. The token lives on a
+  # named volume, so the host can't read the file directly. Upgrades have no
+  # token (the admin already exists), so we only bother when FRESH=1.
+  SETUP_TOKEN=""
+  if [ "$FRESH" = "1" ]; then
+    info "Waiting for VAC to come up…"
+    i=0
+    while [ "$i" -lt 60 ]; do
+      SETUP_TOKEN="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" \
+        exec -T vac-api cat /var/lib/vac/repos/setup.token 2>/dev/null | tr -d '\r\n' || true)"
+      [ -n "$SETUP_TOKEN" ] && break
+      i=$((i + 1)); sleep 1
+    done
+  fi
 
-docker info >/dev/null 2>&1 || die "Docker is installed but the daemon isn't reachable."
-docker compose version >/dev/null 2>&1 || die "The Docker Compose v2 plugin is required (docker compose)."
+  printf '\n%s VAC is up.%s\n\n' "$B$G" "$N"
+  if [ -n "$VAC_DOMAIN" ]; then
+    printf '  Dashboard:  %shttps://vac.%s%s   (once DNS + TLS settle)\n' "$B" "$VAC_DOMAIN" "$N"
+    printf '  Direct:     http://%s:%s   (recovery / pre-DNS fallback)\n' "$IP" "$VAC_HOST_PORT"
+    printf '\n  DNS: point %sA vac.%s%s and %sA *.%s%s at this host (%s).\n' "$B" "$VAC_DOMAIN" "$N" "$B" "$VAC_DOMAIN" "$N" "$IP"
+  else
+    printf '  Dashboard:  %shttp://%s:%s%s\n' "$B" "$IP" "$VAC_HOST_PORT" "$N"
+    printf '\n  Add a domain later to put the dashboard on HTTPS and enable\n'
+    printf '  automatic app subdomains:\n'
+    printf '    %svac set-domain example.com%s\n' "$B" "$N"
+  fi
+  if [ -n "$SETUP_TOKEN" ]; then
+    printf '\n  %sCreate your admin account — open this link (token included):%s\n' "$B" "$N"
+    printf '    %s%shttp://%s:%s/setup?token=%s%s\n' "$B" "$G" "$IP" "$VAC_HOST_PORT" "$SETUP_TOKEN" "$N"
+    printf '\n  This one-time token is consumed once the account is created.\n'
+  else
+    printf '\n  Open the dashboard to create your admin account.\n'
+  fi
+  if [ "$(normalize_bool "${VAC_MANAGED_SERVICES:-false}")" = "true" ]; then
+    printf '  Managed services are %son%s — backups, databases & add-ons are available.\n' "$B" "$N"
+  fi
+  printf '  Manage:  %svac status | vac logs | vac upgrade | vac down%s\n' "$B" "$N"
+  if [ "${RELOGIN:-0}" = "1" ]; then
+    printf '\n  %sLog out and back in%s (or run %snewgrp docker%s) so %s%s%s can run\n' "$B" "$N" "$B" "$N" "$B" "${SUDO_USER:-your user}" "$N"
+    printf '  %svac%s commands without sudo.\n' "$B" "$N"
+  fi
+  printf '\n'
+}
 
-# ── Lay down the install directory ────────────────────────────────────────--
-info "Installing into ${B}${VAC_INSTALL_DIR}${N}"
-mkdir -p "$VAC_INSTALL_DIR"
+# ─────────────────────────────────────────────────────────────────────────────
+# Orchestration
+# ─────────────────────────────────────────────────────────────────────────────
+main() {
+  handle_help "$@"
+  preflight
+  elevate_if_needed "$@"   # re-execs as root; everything below runs privileged
+  parse_args "$@"
+  detect_fresh
 
-info "Fetching compose.prod.yaml…"
-fetch "$VAC_ASSET_BASE/compose.prod.yaml" "$COMPOSE_FILE"
+  run_wizard               # gather + confirm choices before any host mutation
+  ensure_docker
+  lay_down_files
+  generate_env
+  start_stack
+  install_cli
+  grant_user_access
+  print_summary
+}
 
-# Stash the uninstall script next to the compose file so `vac uninstall` works
-# offline and shows up where an operator would look for it. Non-fatal — the
-# `vac uninstall` wrapper also fetches it on demand.
-info "Fetching uninstall.sh…"
-if fetch "$VAC_ASSET_BASE/uninstall.sh" "$VAC_INSTALL_DIR/uninstall.sh"; then
-  chmod +x "$VAC_INSTALL_DIR/uninstall.sh"
-else
-  warn "Could not fetch uninstall.sh; 'vac uninstall' will fall back to the network."
-fi
-
-# ── Generate .env (only on first install — secrets are preserved on re-run) ──
-if [ -f "$ENV_FILE" ]; then
-  FRESH=0
-  info "Existing config found — keeping secrets, upgrading images."
-else
-  FRESH=1
-  info "Generating secrets…"
-  MASTER_KEY="$(rand_hex 32)"
-  DB_PASSWORD="$(rand_hex 24)"          # hex → URL-safe inside the Postgres DSN
-
-  DOCKER_GID="$(getent group docker 2>/dev/null | cut -d: -f3)"
-  [ -n "${DOCKER_GID:-}" ] || DOCKER_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo 999)"
-
-  umask 077
-  cat > "$ENV_FILE" <<EOF
-# Generated by the VAC installer on $(date -u +%Y-%m-%dT%H:%M:%SZ). Keep this safe.
-VAC_VERSION=$VAC_VERSION
-VAC_REGISTRY=$VAC_REGISTRY
-VAC_MASTER_KEY=$MASTER_KEY
-VAC_DB_PASSWORD=$DB_PASSWORD
-DOCKER_GID=$DOCKER_GID
-VAC_HOST_PORT=$VAC_HOST_PORT
-VAC_BASE_DOMAIN=$VAC_DOMAIN
-EOF
-  chmod 600 "$ENV_FILE"
-fi
-
-# Pin the requested version for this run even on upgrades.
-if grep -q '^VAC_VERSION=' "$ENV_FILE"; then
-  sed -i "s|^VAC_VERSION=.*|VAC_VERSION=$VAC_VERSION|" "$ENV_FILE"
-else
-  printf 'VAC_VERSION=%s\n' "$VAC_VERSION" >> "$ENV_FILE"
-fi
-
-# ── Start the stack ─────────────────────────────────────────────────────────
-info "Pulling images (${VAC_REGISTRY}/vac-* : ${VAC_VERSION})…"
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull
-
-info "Starting VAC…"
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
-
-# ── Install the `vac` management CLI ─────────────────────────────────────────
-info "Installing the 'vac' command…"
-write_vac_cli
-
-# Hand sudo-free access to the invoking user (opt-out via VAC_GRANT_ACCESS=0).
-grant_user_access
-
-# ── Done ──────────────────────────────────────────────────────────────────--
-IP="$(curl -fsS https://api.ipify.org 2>/dev/null || true)"
-[ -n "$IP" ] || IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-[ -n "$IP" ] || IP="<server-ip>"
-
-# On a fresh install, vac-api writes a one-time setup token into its work dir.
-# Read it back through the container so we can hand the operator a ready-to-click
-# link with the token baked in — no log-digging required. The token lives on a
-# named volume, so the host can't read the file directly. Upgrades have no token
-# (the admin already exists), so we only bother when FRESH=1.
-SETUP_TOKEN=""
-if [ "${FRESH:-0}" = "1" ]; then
-  info "Waiting for VAC to come up…"
-  i=0
-  while [ "$i" -lt 60 ]; do
-    SETUP_TOKEN="$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" \
-      exec -T vac-api cat /var/lib/vac/repos/setup.token 2>/dev/null | tr -d '\r\n' || true)"
-    [ -n "$SETUP_TOKEN" ] && break
-    i=$((i + 1)); sleep 1
-  done
-fi
-
-printf '\n%s VAC is up.%s\n\n' "$B$G" "$N"
-if [ -n "$VAC_DOMAIN" ]; then
-  printf '  Dashboard:  %shttps://vac.%s%s   (once DNS + TLS settle)\n' "$B" "$VAC_DOMAIN" "$N"
-  printf '  Direct:     http://%s:%s   (recovery / pre-DNS fallback)\n' "$IP" "$VAC_HOST_PORT"
-  printf '\n  DNS: point %sA vac.%s%s and %sA *.%s%s at this host (%s).\n' "$B" "$VAC_DOMAIN" "$N" "$B" "$VAC_DOMAIN" "$N" "$IP"
-else
-  printf '  Dashboard:  %shttp://%s:%s%s\n' "$B" "$IP" "$VAC_HOST_PORT" "$N"
-  printf '\n  Add a domain later to put the dashboard on HTTPS and enable\n'
-  printf '  automatic app subdomains:\n'
-  printf '    %svac set-domain example.com%s\n' "$B" "$N"
-fi
-if [ -n "$SETUP_TOKEN" ]; then
-  printf '\n  %sCreate your admin account — open this link (token included):%s\n' "$B" "$N"
-  printf '    %s%shttp://%s:%s/setup?token=%s%s\n' "$B" "$G" "$IP" "$VAC_HOST_PORT" "$SETUP_TOKEN" "$N"
-  printf '\n  This one-time token is consumed once the account is created.\n'
-else
-  printf '\n  Open the dashboard to create your admin account.\n'
-fi
-printf '  Manage:  %svac status | vac logs | vac upgrade | vac down%s\n' "$B" "$N"
-if [ "${RELOGIN:-0}" = "1" ]; then
-  printf '\n  %sLog out and back in%s (or run %snewgrp docker%s) so %s%s%s can run\n' "$B" "$N" "$B" "$N" "$B" "${SUDO_USER:-your user}" "$N"
-  printf '  %svac%s commands without sudo.\n' "$B" "$N"
-fi
-printf '\n'
+main "$@"
