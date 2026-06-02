@@ -135,6 +135,16 @@ case "$cmd" in
     printf '  A   *.%s     → this host   (for deployed apps)\n' "$1"
     printf 'TLS certificates are issued automatically by Let'"'"'s Encrypt once DNS points here.\n' ;;
   unset-domain) set_env VAC_BASE_DOMAIN ""; dc up -d vac-api; echo "Automatic subdomains disabled." ;;
+  managed-services)
+    case "${1:-}" in
+      on|true|1)
+        set_env VAC_MANAGED_SERVICES true; dc up -d vac-api
+        echo "Managed services enabled (backups, databases, add-ons)." ;;
+      off|false|0|"")
+        set_env VAC_MANAGED_SERVICES false; dc up -d vac-api
+        echo "Managed services disabled." ;;
+      *) echo "usage: vac managed-services on|off" >&2; exit 1 ;;
+    esac ;;
   config)    cat "$ENVF" ;;
   version|--version|-v)
     pinned="$(grep '^VAC_VERSION=' "$ENVF" 2>/dev/null | cut -d= -f2-)"
@@ -173,6 +183,7 @@ vac — manage this VAC install ($DIR)
   vac upgrade [version]            pull + recreate (optionally pin a version)
   vac set-domain <domain>          serve dashboard on HTTPS + enable app subdomains
   vac unset-domain                 disable HTTPS dashboard and app subdomains
+  vac managed-services on|off      toggle backups, databases & the add-on catalog
   vac reset-password <username>    set a new password and revoke sessions
   vac up | down | restart [service]
   vac config                       print the .env
