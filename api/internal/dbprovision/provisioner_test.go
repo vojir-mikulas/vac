@@ -170,8 +170,60 @@ func TestProvisioner_AddRejectsUnknownEngine(t *testing.T) {
 	st := newFakeProvStore()
 	p := newTestProvisioner(t, st, &fakeEngine{name: "postgres"})
 	p.logger = discardLogger()
-	if _, err := p.Add(context.Background(), st.app, "oracle"); !errors.Is(err, ErrUnsupportedEngine) {
+	if _, err := p.Add(context.Background(), st.app, "oracle", ""); !errors.Is(err, ErrUnsupportedEngine) {
 		t.Errorf("err = %v, want ErrUnsupportedEngine", err)
+	}
+}
+
+// TestProvisioner_ResolveBindingName covers the DATABASE_URL collision fix
+// (P1.1): a second managed DB must not silently reuse the first's binding.
+func TestProvisioner_ResolveBindingName(t *testing.T) {
+	eng := &fakeEngine{name: "postgres"}
+	withDBs := func(names ...string) *fakeProvStore {
+		st := newFakeProvStore()
+		for i, n := range names {
+			id := "db" + string(rune('a'+i))
+			st.dbs[id] = store.ManagedDatabase{ID: id, AppID: st.app.ID, Engine: "postgres", EnvVarName: n}
+		}
+		return st
+	}
+	mk := func(st *fakeProvStore) *Provisioner {
+		p := newTestProvisioner(t, st, eng)
+		p.logger = discardLogger()
+		return p
+	}
+
+	cases := []struct {
+		name      string
+		existing  []string
+		requested string
+		want      string
+		wantErr   error
+	}{
+		{name: "first default → DATABASE_URL", want: "DATABASE_URL"},
+		{name: "second default → suffixed by engine", existing: []string{"DATABASE_URL"}, want: "DATABASE_URL_POSTGRES"},
+		{name: "third default → numbered", existing: []string{"DATABASE_URL", "DATABASE_URL_POSTGRES"}, want: "DATABASE_URL_2"},
+		{name: "explicit honored", requested: "ANALYTICS_DATABASE_URL", want: "ANALYTICS_DATABASE_URL"},
+		{name: "explicit duplicate conflicts", existing: []string{"DATABASE_URL"}, requested: "DATABASE_URL", wantErr: store.ErrConflict},
+		{name: "malformed rejected", requested: "lower-case", wantErr: ErrInvalidBindingName},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := mk(withDBs(c.existing...))
+			got, err := p.resolveBindingName(context.Background(), "app1", eng, c.requested)
+			if c.wantErr != nil {
+				if !errors.Is(err, c.wantErr) {
+					t.Fatalf("err = %v, want %v", err, c.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveBindingName: %v", err)
+			}
+			if got != c.want {
+				t.Errorf("binding = %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 

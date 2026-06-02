@@ -31,7 +31,7 @@ type Enqueuer interface {
 // DBProvisioner provisions a managed database for a template that depends on one.
 // *dbprovision.Provisioner satisfies it; nil disables DB-dependent templates.
 type DBProvisioner interface {
-	Add(ctx context.Context, app store.App, engine string) (store.ManagedDatabase, error)
+	Add(ctx context.Context, app store.App, engine, envVarName string) (store.ManagedDatabase, error)
 }
 
 // Installer turns a catalog template into a running app: create a template app,
@@ -104,7 +104,7 @@ func (in *Installer) Install(ctx context.Context, templateID, name, slug string)
 	if tmpl.DependsOnDB != "" {
 		if in.dbProv == nil {
 			in.logger.Warn("addon: template depends on a managed DB but provisioning is unavailable", "template", templateID)
-		} else if _, derr := in.dbProv.Add(ctx, app, tmpl.DependsOnDB); derr != nil {
+		} else if _, derr := in.dbProv.Add(ctx, app, tmpl.DependsOnDB, ""); derr != nil {
 			in.logger.Warn("addon: provision dependent DB", "template", templateID, "err", derr)
 		}
 	}

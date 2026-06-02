@@ -3,7 +3,10 @@ package dbprovision
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
@@ -16,7 +19,14 @@ var (
 	// ErrEncryptionDisabled is returned when VAC_MASTER_KEY is unset — managed DBs
 	// can't be created because the connection secret can't be sealed.
 	ErrEncryptionDisabled = errors.New("dbprovision: encryption disabled (VAC_MASTER_KEY unset)")
+	// ErrInvalidBindingName is returned for a requested env-var binding that isn't
+	// a legal shell/identifier env var name.
+	ErrInvalidBindingName = errors.New("dbprovision: invalid binding name (must match [A-Z_][A-Z0-9_]*)")
 )
+
+// bindingNameRe is the legal shape for the env var a connection string is
+// injected as — a conventional uppercase env var identifier.
+var bindingNameRe = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 
 // Store is the persistence slice the provisioner needs. *store.Store satisfies it.
 type Store interface {
@@ -96,15 +106,23 @@ func (p *Provisioner) EngineInfoFor(name string) (EngineInfo, bool) {
 
 // Add creates a managed DB row in the `provisioning` state and runs the actual
 // provisioning in the background (cold-starting a shared daemon can take tens of
-// seconds). The caller polls the row's status. Returns ErrUnsupportedEngine /
-// ErrEncryptionDisabled / store.ErrConflict synchronously.
-func (p *Provisioner) Add(ctx context.Context, app store.App, engineName string) (store.ManagedDatabase, error) {
+// seconds). The caller polls the row's status.
+//
+// envVarName is the env var the connection string is injected as; pass "" to let
+// the provisioner pick a unique default (DATABASE_URL, then a suffixed name if
+// taken). Returns ErrUnsupportedEngine / ErrEncryptionDisabled /
+// ErrInvalidBindingName / store.ErrConflict (binding already used) synchronously.
+func (p *Provisioner) Add(ctx context.Context, app store.App, engineName, envVarName string) (store.ManagedDatabase, error) {
 	eng, ok := p.engines[engineName]
 	if !ok {
 		return store.ManagedDatabase{}, ErrUnsupportedEngine
 	}
 	if p.box == nil {
 		return store.ManagedDatabase{}, ErrEncryptionDisabled
+	}
+	binding, err := p.resolveBindingName(ctx, app.ID, eng, envVarName)
+	if err != nil {
+		return store.ManagedDatabase{}, err
 	}
 	names, err := generateNames(app.Slug)
 	if err != nil {
@@ -118,12 +136,52 @@ func (p *Provisioner) Add(ctx context.Context, app store.App, engineName string)
 		return store.ManagedDatabase{}, err
 	}
 	role := names.RoleName
-	row, err := p.store.CreateManagedDatabase(ctx, app.ID, engineName, names.DBName, &role, sealed, eng.EnvVarName())
+	row, err := p.store.CreateManagedDatabase(ctx, app.ID, engineName, names.DBName, &role, sealed, binding)
 	if err != nil {
 		return store.ManagedDatabase{}, err
 	}
 	go p.provision(row, app, eng, names, sealed)
 	return row, nil
+}
+
+// resolveBindingName picks the env var the connection string will be injected as,
+// guaranteeing uniqueness within the app so a second managed DB can't silently
+// overwrite the first (the historic DATABASE_URL collision).
+//
+//   - requested != "": validated; rejected with store.ErrConflict if already
+//     taken by another DB on the app, ErrInvalidBindingName if malformed.
+//   - requested == "": defaults to the engine's name (DATABASE_URL); if that is
+//     taken, falls back to DATABASE_URL_<ENGINE>, then DATABASE_URL_2, _3, …
+func (p *Provisioner) resolveBindingName(ctx context.Context, appID string, eng Engine, requested string) (string, error) {
+	existing, err := p.store.ListManagedDatabasesForApp(ctx, appID)
+	if err != nil {
+		return "", err
+	}
+	used := make(map[string]bool, len(existing))
+	for _, m := range existing {
+		used[m.EnvVarName] = true
+	}
+	if requested != "" {
+		if !bindingNameRe.MatchString(requested) {
+			return "", ErrInvalidBindingName
+		}
+		if used[requested] {
+			return "", store.ErrConflict
+		}
+		return requested, nil
+	}
+	base := eng.EnvVarName()
+	if !used[base] {
+		return base, nil
+	}
+	if suffixed := base + "_" + strings.ToUpper(eng.Name()); !used[suffixed] {
+		return suffixed, nil
+	}
+	for i := 2; ; i++ {
+		if cand := fmt.Sprintf("%s_%d", base, i); !used[cand] {
+			return cand, nil
+		}
+	}
 }
 
 // provision performs the engine-side work and flips the row to ready/error.
@@ -146,8 +204,10 @@ func (p *Provisioner) provision(row store.ManagedDatabase, app store.App, eng En
 		return
 	}
 	// Seed a daily local backup so the DB is covered with no manual config. The
-	// config is keyed on (app, BackupContainer); a second managed DB sharing the
-	// same container collides — fine, the first one's backup already exists.
+	// config is keyed on (app, BackupContainer): a second managed DB of the same
+	// engine shares the container, so its seed conflicts. We surface that instead
+	// of dropping it silently — the second DB's data isn't separately covered by
+	// its own dump command, which the operator should know.
 	_, err := p.store.CreateBackupConfig(ctx, app.ID, store.BackupConfigInput{
 		ServiceName: eng.BackupContainer(),
 		Command:     eng.DefaultBackupCommand(names.DBName),
@@ -157,7 +217,11 @@ func (p *Provisioner) provision(row store.ManagedDatabase, app store.App, eng En
 		KeepCount:   7,
 		Enabled:     true,
 	})
-	if err != nil && !errors.Is(err, store.ErrConflict) {
+	switch {
+	case errors.Is(err, store.ErrConflict):
+		p.logger.Info("dbprovision: backup already configured for this engine container; new DB shares it and is not separately dumped",
+			"app", app.Slug, "engine", eng.Name(), "container", eng.BackupContainer())
+	case err != nil:
 		p.logger.Warn("dbprovision: seed backup config", "app", app.Slug, "err", err)
 	}
 	if err := p.store.SetManagedDatabaseStatus(ctx, row.ID, "ready", nil); err != nil {

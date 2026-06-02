@@ -20,7 +20,7 @@ import (
 type DBProvisioner interface {
 	AvailableEngines() []dbprovision.EngineInfo
 	EngineInfoFor(name string) (dbprovision.EngineInfo, bool)
-	Add(ctx context.Context, app store.App, engine string) (store.ManagedDatabase, error)
+	Add(ctx context.Context, app store.App, engine, envVarName string) (store.ManagedDatabase, error)
 	Remove(ctx context.Context, appID, id string) error
 }
 
@@ -82,6 +82,10 @@ func ListDatabases(s *store.Store, prov DBProvisioner) http.HandlerFunc {
 
 type addDatabaseReq struct {
 	Engine string `json:"engine"`
+	// EnvVarName is the env var the connection string is injected as. Empty lets
+	// the backend pick a unique default (DATABASE_URL, then a suffixed name when
+	// the app already has a DB bound to DATABASE_URL).
+	EnvVarName string `json:"env_var_name"`
 }
 
 type addDatabaseResp struct {
@@ -114,15 +118,17 @@ func AddDatabase(s *store.Store, prov DBProvisioner) http.HandlerFunc {
 			WriteError(w, http.StatusUnprocessableEntity, "unsupported engine")
 			return
 		}
-		m, err := prov.Add(r.Context(), app, req.Engine)
+		m, err := prov.Add(r.Context(), app, req.Engine, req.EnvVarName)
 		if err != nil {
 			switch {
 			case errors.Is(err, dbprovision.ErrUnsupportedEngine):
 				WriteError(w, http.StatusUnprocessableEntity, "unsupported engine")
 			case errors.Is(err, dbprovision.ErrEncryptionDisabled):
 				WriteError(w, http.StatusUnprocessableEntity, "encryption is disabled (VAC_MASTER_KEY unset); managed databases need it")
+			case errors.Is(err, dbprovision.ErrInvalidBindingName):
+				WriteError(w, http.StatusBadRequest, "env_var_name must be an uppercase identifier (e.g. ANALYTICS_DATABASE_URL)")
 			case errors.Is(err, store.ErrConflict):
-				WriteError(w, http.StatusConflict, "a database of this kind already exists for this app")
+				WriteError(w, http.StatusConflict, "that env var binding is already used by another database on this app; choose a different name")
 			default:
 				WriteError(w, http.StatusInternalServerError, "could not provision database")
 			}
