@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Database, Download, Play, Plus, Trash2 } from 'lucide-react'
+import { Database, Download, Pencil, Play, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
@@ -8,6 +8,7 @@ import { StatusPill } from '@/components/common/status-pill'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -39,6 +40,7 @@ import {
   useCreateBackup,
   useDeleteBackup,
   useRunBackup,
+  useUpdateBackup,
   useBackupRuns,
 } from '@/lib/api/backups'
 import { useServices } from '@/lib/api/services'
@@ -74,7 +76,7 @@ export function BackupsTab({ appId }: { appId: string }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <SectionHeader className="mb-0">Scheduled backups</SectionHeader>
-        <AddBackupDialog appId={appId} />
+        <BackupDialog appId={appId} />
       </div>
 
       {isLoading ? (
@@ -130,6 +132,7 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
             <Play className="size-3.5" />
             Back up now
           </Button>
+          <BackupDialog appId={appId} config={config} />
           <Button
             variant="danger"
             size="sm"
@@ -243,18 +246,24 @@ function Field({ label, value }: { label: string; value: string }) {
   )
 }
 
-function AddBackupDialog({ appId }: { appId: string }) {
+function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig }) {
+  const isEdit = !!config
   const [open, setOpen] = useState(false)
   const { data: services } = useServices(appId)
   const create = useCreateBackup(appId)
+  const update = useUpdateBackup(appId)
+  const pending = create.isPending || update.isPending
 
-  const [serviceName, setServiceName] = useState('')
-  const [command, setCommand] = useState('pg_dump -U $POSTGRES_USER $POSTGRES_DB')
-  const [frequency, setFrequency] = useState<BackupFrequency>('daily')
-  const [hour, setHour] = useState(3)
-  const [dayOfWeek, setDayOfWeek] = useState(0)
-  const [destination, setDestination] = useState<'local' | 's3'>('local')
-  const [keepCount, setKeepCount] = useState(7)
+  const [serviceName, setServiceName] = useState(config?.service_name ?? '')
+  const [command, setCommand] = useState(
+    config?.command ?? 'pg_dump -U $POSTGRES_USER $POSTGRES_DB',
+  )
+  const [frequency, setFrequency] = useState<BackupFrequency>(config?.frequency ?? 'daily')
+  const [hour, setHour] = useState(config?.hour_of_day ?? 3)
+  const [dayOfWeek, setDayOfWeek] = useState(config?.day_of_week ?? 0)
+  const [destination, setDestination] = useState<'local' | 's3'>(config?.destination ?? 'local')
+  const [keepCount, setKeepCount] = useState(config?.keep_count ?? 7)
+  const [enabled, setEnabled] = useState(config?.enabled ?? true)
   const [s3, setS3] = useState({
     endpoint: '',
     region: 'us-east-1',
@@ -270,6 +279,10 @@ function AddBackupDialog({ appId }: { appId: string }) {
       toast.error('Pick a service')
       return
     }
+    // On edit, an unchanged S3 destination with a blank secret means "keep the
+    // existing credentials & settings": the backend preserves them when s3 is
+    // null. Re-enter the secret to change any S3 field.
+    const keepS3 = isEdit && destination === 's3' && s3.secret_key.trim() === ''
     const input: BackupConfigInput = {
       service_name: serviceName,
       command,
@@ -278,45 +291,70 @@ function AddBackupDialog({ appId }: { appId: string }) {
       day_of_week: frequency === 'weekly' ? dayOfWeek : null,
       destination,
       keep_count: keepCount,
-      s3: destination === 's3' ? s3 : null,
+      enabled,
+      s3: destination === 's3' && !keepS3 ? s3 : null,
     }
-    create.mutate(input, {
+    const onDone = {
       onSuccess: () => {
-        toast.success('Backup configured')
+        toast.success(isEdit ? 'Backup updated' : 'Backup configured')
         setOpen(false)
       },
-      onError: (e) => toast.error(e.message),
-    })
+      onError: (e: Error) => toast.error(e.message),
+    }
+    if (isEdit) {
+      update.mutate({ cid: config.id, input }, onDone)
+    } else {
+      create.mutate(input, onDone)
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="brand" size="sm">
-          <Plus className="size-4" />
-          Add backup
-        </Button>
+        {isEdit ? (
+          <Button variant="outline" size="sm" aria-label="Edit backup">
+            <Pencil className="size-3.5" />
+          </Button>
+        ) : (
+          <Button variant="brand" size="sm">
+            <Plus className="size-4" />
+            Add backup
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Schedule a backup</DialogTitle>
+          <DialogTitle>{isEdit ? `Edit backup · ${serviceName}` : 'Schedule a backup'}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4 py-2">
-          <Labeled label="Service">
-            <Select value={serviceName} onValueChange={setServiceName}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a service" />
-              </SelectTrigger>
-              <SelectContent>
-                {(services ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.name}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Labeled>
+          {isEdit ? (
+            <Labeled label="Service">
+              <Input value={serviceName} disabled className="font-mono text-xs" />
+            </Labeled>
+          ) : (
+            <Labeled label="Service">
+              <Select value={serviceName} onValueChange={setServiceName}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a service" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(services ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.name}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Labeled>
+          )}
+
+          {isEdit ? (
+            <label className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium">Enabled</span>
+              <Switch checked={enabled} onCheckedChange={setEnabled} />
+            </label>
+          ) : null}
 
           <Labeled
             label="Backup command"
@@ -425,10 +463,18 @@ function AddBackupDialog({ appId }: { appId: string }) {
                     onChange={(e) => setS3({ ...s3, access_key: e.target.value })}
                   />
                 </Labeled>
-                <Labeled label="Secret key">
+                <Labeled
+                  label="Secret key"
+                  hint={
+                    isEdit
+                      ? 'Leave blank to keep the existing S3 settings & credentials. Re-enter the secret to change any S3 field.'
+                      : undefined
+                  }
+                >
                   <Input
                     type="password"
                     value={s3.secret_key}
+                    placeholder={isEdit ? 'unchanged' : undefined}
                     onChange={(e) => setS3({ ...s3, secret_key: e.target.value })}
                   />
                 </Labeled>
@@ -441,8 +487,8 @@ function AddBackupDialog({ appId }: { appId: string }) {
           <Button variant="outline" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button variant="brand" disabled={create.isPending} onClick={submit}>
-            Save backup
+          <Button variant="brand" disabled={pending} onClick={submit}>
+            {isEdit ? 'Save changes' : 'Save backup'}
           </Button>
         </DialogFooter>
       </DialogContent>

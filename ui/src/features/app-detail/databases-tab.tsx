@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/common/empty-state'
 import { StatusPill } from '@/components/common/status-pill'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
@@ -126,19 +127,27 @@ function Field({ label, value, mono }: { label: string; value: string; mono?: bo
 function AddDatabaseDialog({ appId }: { appId: string }) {
   const [open, setOpen] = useState(false)
   const { data: engines } = useDatabaseEngines(appId)
+  const { data: databases } = useDatabases(appId)
   const add = useAddDatabase(appId)
   const [engine, setEngine] = useState('postgres')
+  const [binding, setBinding] = useState('')
 
   const selected = (engines ?? []).find((e) => e.name === engine)
+  // DATABASE_URL is taken once any DB is already bound to it — surface the
+  // auto-suffix behaviour so a second DB doesn't look like it'll overwrite.
+  const databaseUrlTaken = (databases ?? []).some((d) => d.env_var_name === 'DATABASE_URL')
 
   const submit = () => {
-    add.mutate(engine, {
-      onSuccess: (res) => {
-        toast.success(res.warning || 'Database provisioning started')
-        setOpen(false)
+    add.mutate(
+      { engine, envVarName: binding.trim() || undefined },
+      {
+        onSuccess: (res) => {
+          toast.success(res.warning || 'Database provisioning started')
+          setOpen(false)
+        },
+        onError: (e) => toast.error(e.message),
       },
-      onError: (e) => toast.error(e.message),
-    })
+    )
   }
 
   return (
@@ -186,9 +195,24 @@ function AddDatabaseDialog({ appId }: { appId: string }) {
             </p>
           )}
 
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium">Connection env var (optional)</span>
+            <Input
+              value={binding}
+              onChange={(e) => setBinding(e.target.value)}
+              placeholder={databaseUrlTaken ? 'DATABASE_URL is taken' : 'DATABASE_URL'}
+              className="font-mono text-xs"
+            />
+            <span className="text-2xs text-muted-foreground">
+              {databaseUrlTaken
+                ? 'This app already binds DATABASE_URL. Leave blank to auto-name (e.g. DATABASE_URL_MARIADB), or set your own uppercase name.'
+                : 'Leave blank to use DATABASE_URL. Set a custom uppercase name to run multiple databases side by side.'}
+            </span>
+          </div>
+
           <p className="text-2xs text-muted-foreground">
-            VAC injects the connection string as <code className="font-mono">DATABASE_URL</code> and
-            schedules a nightly backup. Redeploy the app to pick up the new env var.
+            VAC injects the connection string as this env var and schedules a nightly backup.
+            Redeploy the app to pick it up.
           </p>
         </div>
 

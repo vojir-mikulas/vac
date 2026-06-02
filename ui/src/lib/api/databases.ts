@@ -7,8 +7,11 @@ import type { AddDatabaseResult, DBEngineInfo, ManagedDatabase } from '@/types/a
 export const databasesApi = {
   list: (appId: string) => api.get<ManagedDatabase[]>(`apps/${appId}/databases`),
   engines: (appId: string) => api.get<DBEngineInfo[]>(`apps/${appId}/databases/engines`),
-  add: (appId: string, engine: string) =>
-    api.post<AddDatabaseResult>(`apps/${appId}/databases`, { engine }),
+  add: (appId: string, engine: string, envVarName?: string) =>
+    api.post<AddDatabaseResult>(`apps/${appId}/databases`, {
+      engine,
+      env_var_name: envVarName || undefined,
+    }),
   remove: (appId: string, dbid: string) => api.del<void>(`apps/${appId}/databases/${dbid}`),
 }
 
@@ -35,7 +38,8 @@ export function useDatabaseEngines(appId: string, enabled = true) {
 export function useAddDatabase(appId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (engine: string) => databasesApi.add(appId, engine),
+    mutationFn: ({ engine, envVarName }: { engine: string; envVarName?: string }) =>
+      databasesApi.add(appId, engine, envVarName),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.apps.databases(appId) })
       // A new managed DB injects an env var, so the env list changes too.
