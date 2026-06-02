@@ -21,7 +21,7 @@ hell. Everything else is arranged to stay out of that path.
           │
    new    ├─ Track E: TRUST & SAFETY ────────── 16 ‖ 15              (new)
           │
-   new    └─ Track F: DEV-EXPERIENCE ────────── 14                   (new)
+   done   └─ Track F: DEV-EXPERIENCE ────────── ✅14                  (re-enabled)
 
  dropped    Track ⨯: MANAGED VAC (separate repo) ─ 10                (dropped for now)
 ```
@@ -125,9 +125,14 @@ because they share files.
 **Owns:** `.github/` only (`workflows/`, a new composite action). **Zero overlap with any other
 track's source.** Safe to land any time.
 
+**Detailed execution plan:** [`F-dev-experience-execution.md`](F-dev-experience-execution.md).
+The four cleanups landed in `8e41215`, were disabled in `4893ec5`, and are **re-enabled** in
+this track after a local green pass — see the execution plan for the activation gate (the
+`schedule`/`push:main` triggers only fire from the file once it's on `main`).
+
 | Order | Item | Effort | Status | Note |
 |---|---|---|---|---|
-| F1 | `14` CI / Actions cleanup | S | stub | move `bench-ram` off the PR hot path, skip docs-only churn, DRY the setup, merge the two tag workflows |
+| F1 | `14` CI / Actions cleanup | S | ✅ done | cleanup shipped in `8e41215`; triggers re-enabled (push/PR + bench-ram main/nightly) after local green pass |
 
 ## Track ⨯ — Managed VAC *(dropped for now)*
 
