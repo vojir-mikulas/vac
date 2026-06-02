@@ -53,6 +53,13 @@ services:
       VAC_BASE_DOMAIN: "${VAC_BASE_DOMAIN:-}"
       # Override the dashboard hostname (defaults to vac.<base domain>).
       VAC_CONTROL_DOMAIN: "${VAC_CONTROL_DOMAIN:-}"
+      # Track D master gate. Off by default — set to "true" in your .env to expose
+      # managed backups, managed databases, and the add-on catalog (and start
+      # their background workers). VAC_MASTER_KEY is required when on.
+      VAC_MANAGED_SERVICES: "${VAC_MANAGED_SERVICES:-}"
+      # Point managed Postgres at a separate vac-db-managed instance for
+      # blast-radius isolation instead of sharing the control-plane DB.
+      VAC_MANAGED_DB_ISOLATED: "${VAC_MANAGED_DB_ISOLATED:-}"
     ports:
       - "${VAC_HOST_PORT:-3000}:3000"
     volumes:
