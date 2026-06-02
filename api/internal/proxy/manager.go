@@ -460,7 +460,7 @@ func (m *Manager) applyControlRoute(ctx context.Context) error {
 	}
 	port := m.cfg.ControlPort
 	if port <= 0 {
-		port = 3000
+		port = 9393 // must match config.Default().Server.Port
 	}
 	route := caddy.Route{
 		ID:    controlRouteID,

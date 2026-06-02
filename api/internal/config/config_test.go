@@ -10,8 +10,8 @@ import (
 
 func TestDefault(t *testing.T) {
 	c := Default()
-	if c.Server.Port != 3000 {
-		t.Errorf("default port = %d, want 3000", c.Server.Port)
+	if c.Server.Port != 9393 {
+		t.Errorf("default port = %d, want 9393", c.Server.Port)
 	}
 	if c.Server.Host != "0.0.0.0" {
 		t.Errorf("default host = %q, want 0.0.0.0", c.Server.Host)

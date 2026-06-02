@@ -272,12 +272,14 @@ func main() {
 	go logSup.Run(ctx)
 	pipeline.Reconciler = logSup
 
-	pruner := retention.New(st, retention.Config{
-		RuntimeDays:    cfg.LogRetentionDays,
-		RequestMetrics: cfg.RequestMetricsRetention,
-		ActivityDays:   cfg.ActivityRetentionDays,
-		RingBuffer:     cfg.LogRingBuffer,
-		HourOfDay:      3,
+	pruner := retention.New(st, docker, retention.Config{
+		RuntimeDays:         cfg.LogRetentionDays,
+		RequestMetrics:      cfg.RequestMetricsRetention,
+		ActivityDays:        cfg.ActivityRetentionDays,
+		RingBuffer:          cfg.LogRingBuffer,
+		ImageKeepCount:      cfg.ImageKeepCount,
+		DeploymentKeepCount: cfg.DeploymentKeepCount,
+		HourOfDay:           3,
 	}, slog.Default())
 	go pruner.Run(ctx)
 

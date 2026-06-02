@@ -273,7 +273,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/{id}/env/{key}/reveal", handler.RevealAppEnv(s, box))
 
 				r.Get("/{id}/services", handler.ListAppServices(s))
-				r.Patch("/{id}/services/{name}", handler.PatchAppService(s))
+				r.Patch("/{id}/services/{name}", handler.PatchAppService(s, proxyMgr))
 
 				// Domains: per-app view (custom + derived auto hosts, with live
 				// DNS/cert status). The Settings → Domains hub uses /api/domains.

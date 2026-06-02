@@ -48,6 +48,7 @@ type Config struct {
 	LogRetentionDays      int           `yaml:"log_retention_days"`
 	ActivityRetentionDays int           `yaml:"activity_retention_days"`
 	LogRingBuffer         int           `yaml:"ring_buffer_lines"`
+	DeploymentKeepCount   int           `yaml:"deployment_keep_count"`
 
 	// Phase 3: reverse proxy & HTTPS.
 	CaddyAdminURL           string        `yaml:"caddy_admin_url"`
@@ -122,7 +123,10 @@ type ServerConfig struct {
 func Default() Config {
 	return Config{
 		Server: ServerConfig{
-			Port: 3000,
+			// 9393 is a deliberately uncommon control-plane port: 3000 is the most
+			// contested app dev port, so claiming it as the dashboard default
+			// invites collisions on a fresh box. Override with VAC_PORT.
+			Port: 9393,
 			Host: "0.0.0.0",
 		},
 		Exposure:           ExposurePublic,
@@ -141,6 +145,7 @@ func Default() Config {
 		LogRetentionDays:      7,
 		ActivityRetentionDays: 30,
 		LogRingBuffer:         10000,
+		DeploymentKeepCount:   20,
 
 		CaddyAdminURL:           "http://vac-proxy:2019",
 		BaseDomain:              "",
@@ -278,6 +283,11 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("VAC_LOG_RING_BUFFER"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.LogRingBuffer = n
+		}
+	}
+	if v := os.Getenv("VAC_DEPLOYMENT_KEEP_COUNT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.DeploymentKeepCount = n
 		}
 	}
 

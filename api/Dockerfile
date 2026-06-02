@@ -72,5 +72,5 @@ COPY --from=api /out/vac-api /usr/local/bin/vac-api
 USER vac:vac
 WORKDIR /var/lib/vac
 
-EXPOSE 3000
+EXPOSE 9393
 ENTRYPOINT ["/usr/local/bin/vac-api"]

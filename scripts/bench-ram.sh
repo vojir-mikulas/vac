@@ -33,7 +33,7 @@ cd "$ROOT"
 export VAC_DB_PASSWORD="${VAC_DB_PASSWORD:-bench-$(openssl rand -hex 8)}"
 export VAC_MASTER_KEY="${VAC_MASTER_KEY:-$(openssl rand -hex 32)}"
 export VAC_METRICS_TOKEN="${VAC_METRICS_TOKEN:-$(openssl rand -hex 16)}"
-# Avoid colliding with a developer's running stack on :3000.
+# Avoid colliding with the default control port (:9393) or a developer's stack.
 export VAC_HOST_PORT="${VAC_HOST_PORT:-3999}"
 
 API_URL="http://127.0.0.1:${VAC_HOST_PORT}"

@@ -10,7 +10,7 @@ import (
 // secureForRequest reports whether the cookies set on this response should
 // carry the Secure attribute. Decided per-request: a TLS connection direct to
 // vac-api, or an X-Forwarded-Proto=https header from vac-proxy in front,
-// counts as secure. Plain-HTTP requests (e.g. http://<vps-ip>:3000 on
+// counts as secure. Plain-HTTP requests (e.g. http://<vps-ip>:9393 on
 // first boot) do not — marking cookies Secure there would make browsers drop
 // them and silently break login.
 //

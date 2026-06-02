@@ -46,6 +46,13 @@ func scanService(row pgx.Row) (Service, error) {
 // discovered service list with the DB. internal_port is COALESCE'd so a deploy
 // that can't detect the container port (no published/exposed mapping) preserves
 // any operator-set value rather than nulling it.
+//
+// Caveat (operator overrides are not sticky): when a deploy *does* detect a
+// container port, EXCLUDED.internal_port is non-null and wins, so a value an
+// operator set via PatchAppService is overwritten on the next deploy. That's
+// acceptable today — the override exists mainly for repos that only `expose` a
+// port (detection returns 0, override preserved). Making overrides survive a
+// redeploy would need an explicit "operator-set" flag column.
 func (s *Store) UpsertService(ctx context.Context, appID, name string, containerID *string, exposedPort, internalPort *int, status string) (Service, error) {
 	return scanService(s.pool.QueryRow(ctx, `
 		INSERT INTO services (app_id, service_name, container_id, exposed_port, internal_port, status)
@@ -68,6 +75,31 @@ func (s *Store) GetService(ctx context.Context, appID, name string) (Service, er
 		return Service{}, ErrNotFound
 	}
 	return svc, err
+}
+
+// ListServiceProjects returns one (app slug, service name) pair per persisted
+// service across all apps. The retention pruner uses these to enumerate
+// (compose project, service) pairs for per-service image pruning — the compose
+// project is "vac-"+slug (mirrors deploy.composeProject).
+func (s *Store) ListServiceProjects(ctx context.Context) ([]struct{ Slug, ServiceName string }, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.slug, s.service_name
+		FROM services s JOIN apps a ON a.id = s.app_id
+		ORDER BY a.slug, s.service_name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []struct{ Slug, ServiceName string }
+	for rows.Next() {
+		var p struct{ Slug, ServiceName string }
+		if err := rows.Scan(&p.Slug, &p.ServiceName); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) ListServicesForApp(ctx context.Context, appID string) ([]Service, error) {

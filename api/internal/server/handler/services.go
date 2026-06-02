@@ -3,11 +3,13 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/vojir-mikulas/vac/api/internal/audit"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
@@ -72,7 +74,15 @@ type patchServiceRequest struct {
 // from the compose port mapping, but settable when the repo only `expose`s a
 // port); health_path is the Caddy active health-check path. Domains are managed
 // via the /domains endpoints, not here.
-func PatchAppService(s *store.Store) http.HandlerFunc {
+//
+// internal_port / health_path feed Caddy routing only — the container's own
+// listening port is intrinsic to the image and VAC can't change it. So a change
+// to either re-syncs the live Caddy route (new dial port / health-check path)
+// rather than redeploying: the effect is immediate, no restart needed. Note the
+// next deploy re-detects the port via `docker compose ps` and may overwrite an
+// operator-set value (see store.UpsertService) — the override is best-effort,
+// not sticky across deploys.
+func PatchAppService(s *store.Store, pm ProxyManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		appID := chi.URLParam(r, "id")
 		name := chi.URLParam(r, "name")
@@ -100,6 +110,32 @@ func PatchAppService(s *store.Store) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "could not update service")
 			return
 		}
+
+		// A routing-relevant change must reach Caddy now, not on the next deploy:
+		// re-push the app's routes so the upstream dials the new port / health
+		// path. proxySync is nil-safe and best-effort (logs on failure).
+		if req.InternalPort != nil || req.HealthPath != nil {
+			proxySync(r.Context(), pm, appID)
+		}
+
+		audit.SetTarget(r.Context(), "app", appID)
+		audit.Describe(r.Context(), describeServicePatch(name, req))
+
 		WriteJSON(w, http.StatusOK, toServiceDTO(updated))
+	}
+}
+
+// describeServicePatch builds the activity-feed summary for a service patch,
+// naming only the fields that were actually set.
+func describeServicePatch(name string, req patchServiceRequest) string {
+	switch {
+	case req.InternalPort != nil:
+		return fmt.Sprintf("set %s internal port to %d", name, *req.InternalPort)
+	case req.HealthPath != nil:
+		return fmt.Sprintf("set %s health path to %s", name, *req.HealthPath)
+	case req.ExposedPort != nil:
+		return fmt.Sprintf("set %s exposed port to %d", name, *req.ExposedPort)
+	default:
+		return "updated service " + name
 	}
 }

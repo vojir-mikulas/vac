@@ -24,7 +24,7 @@ git tag v0.5.0          ─►  GitHub Actions  ─►  ghcr.io/vojir/vac-api:0.
         ├─ ensures Docker
         ├─ writes /opt/vac/.env (generated secrets)
         ├─ fetches compose.prod.yaml
-        └─ docker compose up -d   ─►  http://<ip>:3000  (onboarding wizard)
+        └─ docker compose up -d   ─►  http://<ip>:9393  (onboarding wizard)
 ```
 
 Relevant files in this repo:
@@ -134,7 +134,7 @@ Piping a remote script to `sh` is a trust ask. Reduce the blast radius:
 ### Requirements
 
 - A Linux VPS (amd64 or arm64), root or `sudo`.
-- Ports **80** and **443** open (app ingress via Caddy) and **3000** for the
+- Ports **80** and **443** open (app ingress via Caddy) and **9393** for the
   dashboard until a domain is set.
 - For automatic HTTPS subdomains later: a wildcard DNS record (see below).
 
@@ -160,7 +160,7 @@ The installer:
 4. Installs the `vac` management command.
 5. Prints the dashboard URL.
 
-Open `http://<server-ip>:3000` and complete the **onboarding wizard** to create
+Open `http://<server-ip>:9393` and complete the **onboarding wizard** to create
 your admin account.
 
 ### Installer environment variables
@@ -171,7 +171,7 @@ your admin account.
 | `VAC_DOMAIN` | _(empty)_ | Set the base domain at install time (else add later). |
 | `VAC_INSTALL_DIR` | `/opt/vac` | Where compose + `.env` live. |
 | `VAC_REGISTRY` | `ghcr.io/vojir` | Image namespace. |
-| `VAC_HOST_PORT` | `3000` | Host port for the dashboard. |
+| `VAC_HOST_PORT` | `9393` | Host port for the dashboard. |
 | `VAC_ASSET_BASE` | `https://get.vac.vojir.io` | Where to fetch assets from. |
 
 ### Adding a domain later
@@ -195,7 +195,7 @@ free for an app or marketing page. To pin a different host (apex included),
 set `VAC_CONTROL_DOMAIN=admin.example.com` in `/opt/vac/.env` and
 `vac restart vac-api`.
 
-Caddy provisions TLS automatically once DNS resolves. `http://<server-ip>:3000`
+Caddy provisions TLS automatically once DNS resolves. `http://<server-ip>:9393`
 keeps working as a recovery fallback for hosts that get locked out of DNS or
 ACME. Custom per-service domains are managed in the dashboard (Settings →
 domains) regardless of the base domain.
@@ -245,7 +245,7 @@ The state worth backing up lives in Docker named volumes:
 |---|---|
 | `denied` / `unauthorized` on pull | GHCR packages still private — make `vac-api` and `vac-proxy` public (§1.1). |
 | `VAC_MASTER_KEY is required` | `.env` missing/empty — re-run the installer, or restore your backed-up `.env`. |
-| Dashboard unreachable on `:3000` | Check `vac status` / `vac logs vac-api`; ensure the host firewall allows the port. |
+| Dashboard unreachable on `:9393` | Check `vac status` / `vac logs vac-api`; ensure the host firewall allows the port. |
 | Subdomains have no certificate | DNS not resolving yet, or ports 80/443 blocked. Verify the `A`/wildcard records and `vac logs vac-proxy`. |
 | `docker compose` not found | Old Docker — the installer needs the Compose v2 plugin (`docker compose`, not `docker-compose`). |
 | Can't read the Docker socket | `DOCKER_GID` in `.env` doesn't match the host. Set it to `getent group docker \| cut -d: -f3` and `vac up`. |

@@ -6,7 +6,11 @@ package retention
 import (
 	"context"
 	"log/slog"
+	"sort"
+	"strings"
 	"time"
+
+	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 )
 
 // PruneStore is the slice of *store.Store the pruner writes against.
@@ -16,6 +20,17 @@ type PruneStore interface {
 	DeleteAuditLogOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 	ListRuntimeLogServices(ctx context.Context) ([]struct{ AppID, ServiceName string }, error)
 	TrimRuntimeLogsToRingBuffer(ctx context.Context, appID, serviceName string, keepN int) (int64, error)
+	// Image prune (P2.3) + deployment retention (P2.4).
+	ListServiceProjects(ctx context.Context) ([]struct{ Slug, ServiceName string }, error)
+	PruneDeployments(ctx context.Context, keepN int) (int64, error)
+}
+
+// ImagePruner lists and removes per-service docker images. Satisfied by
+// *dockercli.Compose. nil disables the image-prune pass (e.g. tests, or a host
+// without a docker client wired).
+type ImagePruner interface {
+	ListImages(ctx context.Context, projectName, serviceName string) ([]dockercli.Image, error)
+	RemoveImage(ctx context.Context, id string) error
 }
 
 // Config carries the retention windows. RuntimeDays governs runtime_logs;
@@ -30,6 +45,12 @@ type Config struct {
 	// The live follower trims continuously; this catches stopped-app services
 	// whose follower isn't running. Default 10000.
 	RingBuffer int
+	// ImageKeepCount is how many most-recent images to keep per service when the
+	// image-prune pass runs. <=0 disables image pruning. Default 3.
+	ImageKeepCount int
+	// DeploymentKeepCount is how many most-recent deployments to keep per app.
+	// <=0 disables deployment retention. Default 20.
+	DeploymentKeepCount int
 	// Hour of day (0-23) the prune runs in time.Local. Default 3 (03:00).
 	HourOfDay int
 }
@@ -37,13 +58,15 @@ type Config struct {
 // Pruner is the background scheduler.
 type Pruner struct {
 	store  PruneStore
+	images ImagePruner // nil → image-prune pass skipped
 	cfg    Config
 	logger *slog.Logger
 	now    func() time.Time // injectable for tests
 }
 
-// New returns a Pruner with the given store + config.
-func New(s PruneStore, cfg Config, logger *slog.Logger) *Pruner {
+// New returns a Pruner with the given store + config. images may be nil to skip
+// the per-service image-prune pass.
+func New(s PruneStore, images ImagePruner, cfg Config, logger *slog.Logger) *Pruner {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -59,11 +82,18 @@ func New(s PruneStore, cfg Config, logger *slog.Logger) *Pruner {
 	if cfg.RingBuffer <= 0 {
 		cfg.RingBuffer = 10000
 	}
+	if cfg.ImageKeepCount <= 0 {
+		cfg.ImageKeepCount = 3
+	}
+	if cfg.DeploymentKeepCount <= 0 {
+		cfg.DeploymentKeepCount = 20
+	}
 	if cfg.HourOfDay < 0 || cfg.HourOfDay > 23 {
 		cfg.HourOfDay = 3
 	}
 	return &Pruner{
 		store:  s,
+		images: images,
 		cfg:    cfg,
 		logger: logger,
 		now:    time.Now,
@@ -126,7 +156,87 @@ func (p *Pruner) PruneOnce(ctx context.Context) error {
 		trimmed += n
 	}
 	p.logger.Info("retention: ring-buffer trim", "deleted", trimmed, "keep_per_service", p.cfg.RingBuffer)
+
+	// Deployment retention: trim history beyond the rollback window.
+	dn, err := p.store.PruneDeployments(ctx, p.cfg.DeploymentKeepCount)
+	if err != nil {
+		return err
+	}
+	p.logger.Info("retention: pruned deployments", "deleted", dn, "keep_per_app", p.cfg.DeploymentKeepCount)
+
+	// Image prune: keep only the newest ImageKeepCount images per service. Done
+	// last and best-effort — a docker hiccup here must not fail the DB passes.
+	p.pruneImages(ctx)
 	return nil
+}
+
+// pruneImages removes all but the newest ImageKeepCount images per
+// (compose project, service). Best-effort: a list/remove failure for one
+// service is logged and skipped, never propagated. "image in use" removals
+// (the live image) are expected and ignored.
+func (p *Pruner) pruneImages(ctx context.Context) {
+	if p.images == nil {
+		return
+	}
+	pairs, err := p.store.ListServiceProjects(ctx)
+	if err != nil {
+		p.logger.Warn("retention: list service projects failed", "err", err)
+		return
+	}
+	var removed int
+	for _, pr := range pairs {
+		project := "vac-" + pr.Slug // mirrors deploy.composeProject
+		imgs, err := p.images.ListImages(ctx, project, pr.ServiceName)
+		if err != nil {
+			p.logger.Warn("retention: list images failed", "project", project, "service", pr.ServiceName, "err", err)
+			continue
+		}
+		for _, id := range staleImageIDs(imgs, p.cfg.ImageKeepCount) {
+			if err := p.images.RemoveImage(ctx, id); err != nil {
+				// In-use (current) image, or another transient — expected; skip.
+				p.logger.Debug("retention: remove image skipped", "id", id, "err", err)
+				continue
+			}
+			removed++
+		}
+	}
+	p.logger.Info("retention: pruned images", "removed", removed, "keep_per_service", p.cfg.ImageKeepCount)
+}
+
+// staleImageIDs returns the image IDs to remove: everything except the newest
+// keepN by CreatedAt. Docker's `images` output is newest-first already, but we
+// sort defensively on the parsed CreatedAt (format "2006-01-02 15:04:05 -0700 MST")
+// and fall back to the listed order when a timestamp won't parse.
+func staleImageIDs(imgs []dockercli.Image, keepN int) []string {
+	if keepN < 0 {
+		keepN = 0
+	}
+	if len(imgs) <= keepN {
+		return nil
+	}
+	sorted := make([]dockercli.Image, len(imgs))
+	copy(sorted, imgs)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return imageCreatedAt(sorted[i].CreatedAt).After(imageCreatedAt(sorted[j].CreatedAt))
+	})
+	var ids []string
+	for _, img := range sorted[keepN:] {
+		if strings.TrimSpace(img.ID) != "" {
+			ids = append(ids, img.ID)
+		}
+	}
+	return ids
+}
+
+// imageCreatedAt parses docker's CreatedAt string; unparseable values sort
+// oldest (zero time) so a malformed timestamp never shields an image from prune.
+func imageCreatedAt(s string) time.Time {
+	for _, layout := range []string{"2006-01-02 15:04:05 -0700 MST", "2006-01-02 15:04:05 -0700", time.RFC3339} {
+		if t, err := time.Parse(layout, strings.TrimSpace(s)); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 func timeUntilNext(now time.Time, hour int) time.Duration {

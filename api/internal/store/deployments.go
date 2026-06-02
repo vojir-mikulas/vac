@@ -256,6 +256,43 @@ func (s *Store) ReapStuckDeployments(ctx context.Context, olderThan time.Duratio
 	return tag.RowsAffected(), nil
 }
 
+// PruneDeployments deletes old deployment history beyond the retention window,
+// keeping per app: the keepN most recent rows (by triggered_at) PLUS the latest
+// `running` row (the live version's rollback target, in case it has fallen out
+// of the top-N behind a run of newer failed deploys). In-flight (non-terminal)
+// rows are never deleted regardless of rank. Returns the number of rows removed.
+//
+// FK fallout is intentional: deployment_logs cascade-delete with their
+// deployment (build logs for pruned deploys are reclaimed), and rolled_back_from
+// pointers SET NULL (see migrations 00008 / 00020). keepN <= 0 is treated as a
+// no-op (retention disabled) rather than deleting everything.
+func (s *Store) PruneDeployments(ctx context.Context, keepN int) (int64, error) {
+	if keepN <= 0 {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx, `
+		WITH ranked AS (
+			SELECT id,
+			       row_number() OVER (PARTITION BY app_id ORDER BY triggered_at DESC) AS rn
+			FROM deployments
+		),
+		keep AS (
+			SELECT id FROM ranked WHERE rn <= $1
+			UNION
+			SELECT DISTINCT ON (app_id) id FROM deployments
+			WHERE status = 'running'
+			ORDER BY app_id, triggered_at DESC
+		)
+		DELETE FROM deployments d
+		WHERE d.status NOT IN ('queued','cloning','building','deploying','health-checking')
+		  AND d.id NOT IN (SELECT id FROM keep)
+	`, keepN)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // MarkInProgressDeploymentsInterrupted runs once at boot — any row stuck in a
 // non-terminal state from a previous run becomes `interrupted`. This is the
 // graceful-interrupt mechanism from mvp.md § Graceful Shutdown.

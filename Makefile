@@ -14,7 +14,7 @@ help: ## Show this help
 install: ## Install all dependencies
 	pnpm install
 
-dev: ## Run API + UI in parallel (UI dev server proxies /api to :3000)
+dev: ## Run API + UI in parallel (UI dev server proxies /api to :9393)
 	@trap 'kill 0' EXIT; \
 		$(MAKE) dev-api & \
 		$(MAKE) dev-ui & \

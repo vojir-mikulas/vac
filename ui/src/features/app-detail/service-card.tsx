@@ -148,6 +148,10 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
               value={exposedPort}
               onChange={(e) => setExposedPort(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              Host-published port — diagnostic only; HTTP services are reached over the internal
+              network, not a host port.
+            </p>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="internal">Internal port</Label>
@@ -157,6 +161,10 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
               value={internalPort}
               onChange={(e) => setInternalPort(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              The port the container actually serves on. Saving re-routes traffic to it
+              immediately — no restart needed.
+            </p>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="health">Health check path</Label>

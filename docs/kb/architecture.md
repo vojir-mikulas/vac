@@ -51,7 +51,7 @@ Each package owns one concern.
 | `stats` | per-app `docker stats` (subscriber-gated, live-only) + host stats (gopsutil) |
 | `reqmetrics` | scrapes/aggregates Caddy access log into per-service request rate |
 | `notify` | Discord/Slack webhook dispatch (deploy ok/fail, crash-loop, restarted) |
-| `retention` | runtime-log cleanup policy |
+| `retention` | nightly cleanup: runtime logs, request metrics, audit log, per-service image prune, deployment history |
 | `crypto` | `crypto.Box` AES-256-GCM encrypt/decrypt for secrets at rest |
 | `auth` | sessions, TOTP, password, API-token auth |
 | `config` | env-var parsing / configuration |
