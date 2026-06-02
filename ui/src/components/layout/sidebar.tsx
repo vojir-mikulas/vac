@@ -48,7 +48,9 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <img src="/vac-logo.svg" alt="" aria-hidden="true" className="size-7 rounded-md" />
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold tracking-tight">VAC</span>
-            <span className="font-mono text-2xs text-muted-foreground">Containers</span>
+            <span className="font-mono text-2xs text-muted-foreground">
+              Vojir's Awesome Containers
+            </span>
           </div>
         </Link>
       </div>
