@@ -57,7 +57,10 @@ ENV_FILE="$VAC_INSTALL_DIR/.env"
 # ─────────────────────────────────────────────────────────────────────────────
 # Output & prompt helpers
 # ─────────────────────────────────────────────────────────────────────────────
-if [ -t 1 ]; then B="$(printf '\033[1m')"; G="$(printf '\033[32m')"; Y="$(printf '\033[33m')"; R="$(printf '\033[31m')"; N="$(printf '\033[0m')"; else B=; G=; Y=; R=; N=; fi
+if [ -t 1 ]; then
+  B="$(printf '\033[1m')"; D="$(printf '\033[2m')"; N="$(printf '\033[0m')"
+  R="$(printf '\033[31m')"; G="$(printf '\033[32m')"; Y="$(printf '\033[33m')"; C="$(printf '\033[36m')"
+else B=; D=; N=; R=; G=; Y=; C=; fi
 info() { printf '%s==>%s %s\n' "$G" "$N" "$1"; }
 warn() { printf '%s!  %s%s\n' "$Y" "$1" "$N"; }
 die()  { printf '%serror:%s %s\n' "$R" "$N" "$1" >&2; exit 1; }
@@ -108,6 +111,31 @@ Env overrides (a pre-set value skips its question): VAC_VERSION, VAC_DOMAIN,
 VAC_MANAGED_SERVICES (true/false), VAC_INSTALL_DIR, VAC_HOST_PORT, VAC_REGISTRY,
 VAC_GRANT_ACCESS (1/0).
 USAGE
+}
+
+show_banner() {
+  # Retro VAC wordmark shown once at the top of the run. Printed only when
+  # stdout is a terminal — under `curl | sh` that's true, but a redirect to a
+  # file or CI log is not, so machine output stays clean.
+  [ -t 1 ] || return 0
+  # Wipe the screen only for a fresh interactive run where a human is watching;
+  # CI / --yes / piped runs keep their scrollback. Remove this `if` block to
+  # never clear the screen.
+  if [ "$ASSUME_YES" != 1 ] && [ -r /dev/tty ]; then
+    clear 2>/dev/null || printf '\033[H\033[2J'
+  fi
+  printf '%s' "$C"
+  cat <<'ART'
+    ██╗   ██╗ █████╗  ██████╗
+    ██║   ██║██╔══██╗██╔════╝
+    ██║   ██║███████║██║
+    ╚██╗ ██╔╝██╔══██║██║
+     ╚████╔╝ ██║  ██║╚██████╗
+      ╚═══╝  ╚═╝  ╚═╝ ╚═════╝
+ART
+  printf '%s' "$N"
+  printf '    %sself-hosted PaaS for a single box%s  ·  %s%s%s\n\n' \
+    "$D" "$N" "$B" "$VAC_VERSION" "$N"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -212,7 +240,7 @@ run_wizard() {
 
 wizard_welcome() {
   say ""
-  say "${B}Welcome to VAC${N} — a self-hosted PaaS for a single box."
+  say "${B}${C}Welcome to VAC${N} — a self-hosted PaaS for a single box."
   say "This will:"
   say "  • install Docker if it's missing"
   say "  • lay down the stack in ${B}${VAC_INSTALL_DIR}${N} and start it"
@@ -224,7 +252,7 @@ wizard_welcome() {
 wizard_system_summary() {
   if command -v docker >/dev/null 2>&1; then _dk="installed"; else _dk="${Y}will be installed${N}"; fi
   say ""
-  say "${B}System${N}"
+  say "${B}${C}System${N}"
   say "  host:    $(uname -s) $(uname -m)"
   say "  docker:  ${_dk}"
   say "  install: ${VAC_INSTALL_DIR}"
@@ -234,7 +262,7 @@ wizard_system_summary() {
 wizard_ask_domain() {
   [ "$DOMAIN_PRESET" = 1 ] && return 0
   say ""
-  say "${B}Domain${N}  (optional — you can also set this later with 'vac set-domain')"
+  say "${B}${C}Domain${N}  (optional — you can also set this later with 'vac set-domain')"
   say "  Give VAC a domain to serve the dashboard over HTTPS and enable automatic"
   say "  per-app subdomains. Leave blank to reach it by IP for now."
   VAC_DOMAIN="$(ask 'Domain (blank = use IP):' '')"
@@ -249,7 +277,7 @@ wizard_ask_managed_services() {
     return 0
   fi
   say ""
-  say "${B}Managed services${N}  (automatic backups, managed databases, add-on catalog)"
+  say "${B}${C}Managed services${N}  (automatic backups, managed databases, add-on catalog)"
   say "  Off by default — it starts background workers and uses a little more RAM."
   say "  You can turn it on or off any time with: ${B}vac managed-services on|off${N}"
   if confirm 'Enable managed services now?' n; then
@@ -265,7 +293,7 @@ wizard_ask_grant() {
   _u="${SUDO_USER:-}"
   { [ -n "$_u" ] && [ "$_u" != root ]; } || return 0
   say ""
-  say "${B}Access${N}"
+  say "${B}${C}Access${N}"
   say "  Let ${B}${_u}${N} run 'vac' without sudo? This adds them to the 'docker'"
   say "  group (root-equivalent on this host) and hands them the install dir."
   if confirm "Grant ${_u} sudo-free access?" y; then
@@ -278,7 +306,7 @@ wizard_ask_grant() {
 wizard_confirm() {
   [ "$VAC_GRANT_ACCESS" = 1 ] && _grant="yes" || _grant="no"
   say ""
-  say "${B}Ready to install${N}"
+  say "${B}${C}Ready to install${N}"
   say "  version:           ${VAC_VERSION}"
   say "  install dir:       ${VAC_INSTALL_DIR}"
   say "  domain:            ${VAC_DOMAIN:-none (reach by IP)}"
@@ -544,7 +572,14 @@ print_summary() {
   fi
   if [ -n "$SETUP_TOKEN" ]; then
     printf '\n  %sCreate your admin account — open this link (token included):%s\n' "$B" "$N"
-    printf '    %s%shttp://%s:%s/setup?token=%s%s\n' "$B" "$G" "$IP" "$VAC_HOST_PORT" "$SETUP_TOKEN" "$N"
+    if [ -n "$VAC_DOMAIN" ]; then
+      printf '    %s%shttps://vac.%s/setup?token=%s%s   %s(once DNS + TLS settle)%s\n' \
+        "$B" "$G" "$VAC_DOMAIN" "$SETUP_TOKEN" "$N" "$D" "$N"
+      printf '    %s%shttp://%s:%s/setup?token=%s%s   %s(direct — works right now)%s\n' \
+        "$B" "$G" "$IP" "$VAC_HOST_PORT" "$SETUP_TOKEN" "$N" "$D" "$N"
+    else
+      printf '    %s%shttp://%s:%s/setup?token=%s%s\n' "$B" "$G" "$IP" "$VAC_HOST_PORT" "$SETUP_TOKEN" "$N"
+    fi
     printf '\n  This one-time token is consumed once the account is created.\n'
   else
     printf '\n  Open the dashboard to create your admin account.\n'
@@ -570,6 +605,7 @@ main() {
   parse_args "$@"
   detect_fresh
 
+  show_banner              # retro header (after elevation so it prints once)
   run_wizard               # gather + confirm choices before any host mutation
   ensure_docker
   lay_down_files
