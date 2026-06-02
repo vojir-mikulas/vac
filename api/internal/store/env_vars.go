@@ -72,6 +72,25 @@ func (s *Store) ReplaceEnvVars(ctx context.Context, appID string, vars []EnvVarI
 	return tx.Commit(ctx)
 }
 
+// UpsertEnvVar sets a single env var without disturbing the others (keyed on
+// app_id+key). Used by managed-database provisioning to inject the connection
+// string (Track D / D2); value is sealed upstream.
+func (s *Store) UpsertEnvVar(ctx context.Context, appID, key string, value []byte, sensitive bool) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO env_vars (app_id, key, value, sensitive) VALUES ($1, $2, $3, $4)
+		ON CONFLICT (app_id, key) DO UPDATE
+			SET value = EXCLUDED.value, sensitive = EXCLUDED.sensitive, updated_at = NOW()
+	`, appID, key, value, sensitive)
+	return err
+}
+
+// DeleteEnvVar removes a single env var (no error if absent). Used on
+// managed-database deprovision to pull the injected connection string.
+func (s *Store) DeleteEnvVar(ctx context.Context, appID, key string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM env_vars WHERE app_id = $1 AND key = $2`, appID, key)
+	return err
+}
+
 // GetEnvVar fetches a single row for callers that need to verify presence —
 // not part of the REST surface, but useful for tests and the pipeline.
 func (s *Store) GetEnvVar(ctx context.Context, appID, key string) (EnvVar, error) {

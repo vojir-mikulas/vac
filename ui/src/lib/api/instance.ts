@@ -8,6 +8,8 @@ export interface InstanceInfo {
   commit: string
   built_at: string
   channel: string
+  /** Track D master gate — hides backups/databases/add-ons surfaces when off. */
+  managed_services: boolean
 }
 
 export interface BaseDomainInfo {

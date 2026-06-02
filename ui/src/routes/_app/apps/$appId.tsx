@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useApp } from '@/lib/api/apps'
 import { useTriggerDeploy } from '@/lib/api/deployments'
 import { useDomains } from '@/lib/api/domains'
+import { useInstanceInfo } from '@/lib/api/instance'
 import { toast } from 'sonner'
 
 export const Route = createFileRoute('/_app/apps/$appId')({
@@ -25,13 +26,25 @@ const TABS = [
   { to: 'settings', label: 'Settings' },
 ] as const
 
+// Tabs shown only when the managed-services gate (Track D) is open.
+const MANAGED_TABS = [
+  { to: 'backups', label: 'Backups' },
+  { to: 'databases', label: 'Databases' },
+] as const
+
 function AppDetailLayout() {
   const { appId } = Route.useParams()
   const { data: app, isLoading } = useApp(appId)
   const { data: domains } = useDomains(appId)
+  const { data: instance } = useInstanceInfo()
   const deploy = useTriggerDeploy(appId)
 
   const primaryDomain = domains?.[0]
+
+  // Slot the managed-services tabs in before Settings when the gate is open.
+  const tabs = instance?.managed_services
+    ? [...TABS.slice(0, 5), ...MANAGED_TABS, ...TABS.slice(5)]
+    : TABS
 
   return (
     <PageContainer>
@@ -83,7 +96,7 @@ function AppDetailLayout() {
       <LiveDeployBanner appId={appId} />
 
       <nav aria-label="App sections" className="mb-6 flex gap-1 overflow-x-auto border-b">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <Link
             key={tab.to}
             to={`/apps/$appId/${tab.to}`}

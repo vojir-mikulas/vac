@@ -11,9 +11,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
+	"github.com/vojir-mikulas/vac/api/internal/addon"
 	"github.com/vojir-mikulas/vac/api/internal/auth"
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
+	"github.com/vojir-mikulas/vac/api/internal/dbprovision"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
@@ -30,7 +32,7 @@ import (
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender) (*http.Server, error) {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer) (*http.Server, error) {
 	// Convert the concrete (possibly-nil) manager into nil-able interface
 	// values so handlers' `== nil` guards behave (a typed-nil pointer in an
 	// interface is not nil).
@@ -47,6 +49,29 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		caddyPin = pm
 		ctrlChk = pm
 		baseDom = pm
+	}
+
+	// Managed-database surface (Track D / D2). Convert the possibly-nil concrete
+	// provisioner into nil-able interfaces so the handlers' nil guards behave.
+	var (
+		dbHandler handler.DBProvisioner
+		dbDeprov  handler.AppDBDeprovisioner
+	)
+	if dbProv != nil {
+		dbHandler = dbProv
+		dbDeprov = dbProv
+	}
+
+	// Add-on catalog (Track D / D3). nil-able interfaces for the handlers' guards.
+	var (
+		addonCatalog    handler.AddonCatalog
+		addonInstaller2 handler.AddonInstaller
+	)
+	if addonCat != nil {
+		addonCatalog = addonCat
+	}
+	if addonInstaller != nil {
+		addonInstaller2 = addonInstaller
 	}
 
 	// VPS public address for the DNS-setup guidance and sidebar host row.
@@ -182,7 +207,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Post("/", handler.CreateApp(s))
 				r.Get("/{id}", handler.GetApp(s))
 				r.Patch("/{id}", handler.UpdateApp(s))
-				r.Delete("/{id}", handler.DeleteApp(s, proxyMgr))
+				r.Delete("/{id}", handler.DeleteApp(s, proxyMgr, dbDeprov))
 
 				r.Get("/{id}/ssh-key", handler.GetAppSSHKey(s, keys))
 				r.Post("/{id}/ssh-key/regenerate", handler.RegenerateAppSSHKey(s, keys))
@@ -224,6 +249,29 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/{id}/metrics", handler.AppMetrics(s))
 				r.Get("/{id}/services/{name}/metrics", handler.ServiceMetrics(s))
 
+				// Managed backups (Track D / D1). Gated by VAC_MANAGED_SERVICES so
+				// the surface stays closed until the operator opts in; the UI hides
+				// the tab on the same flag (instance info → managed_services).
+				if cfg.ManagedServices {
+					r.Get("/{id}/backups", handler.ListBackups(s))
+					r.Post("/{id}/backups", handler.CreateBackup(s, box))
+					r.Put("/{id}/backups/{cid}", handler.UpdateBackup(s, box))
+					r.Delete("/{id}/backups/{cid}", handler.DeleteBackup(s))
+					r.Get("/{id}/backups/{cid}/runs", handler.ListBackupRuns(s))
+					r.Get("/{id}/backups/runs/{rid}/download", handler.DownloadBackup(s, box, cfg.WorkDir))
+					if backupEngine != nil {
+						r.Post("/{id}/backups/{cid}/run", handler.RunBackup(s, backupEngine))
+					}
+				}
+
+				// Managed databases (Track D / D2). Same gate as backups.
+				if cfg.ManagedServices && dbHandler != nil {
+					r.Get("/{id}/databases", handler.ListDatabases(s, dbHandler))
+					r.Get("/{id}/databases/engines", handler.ListDatabaseEngines(dbHandler))
+					r.Post("/{id}/databases", handler.AddDatabase(s, dbHandler))
+					r.Delete("/{id}/databases/{dbid}", handler.RemoveDatabase(s, dbHandler))
+				}
+
 				if docker != nil {
 					r.Post("/{id}/start", handler.StartApp(s, docker, proxyMgr))
 					r.Post("/{id}/stop", handler.StopApp(s, docker, proxyMgr))
@@ -238,6 +286,16 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Get("/{id}/stats", handler.StatsWS(s, hub, wsOpts))
 				}
 			})
+
+			// Add-on catalog (Track D / D3). Global surface (installs become
+			// apps); gated by the managed-services flag like backups/databases.
+			if cfg.ManagedServices && addonCatalog != nil {
+				r.Get("/addons", handler.ListAddons(addonCatalog))
+				r.Get("/addons/{id}", handler.GetAddon(addonCatalog))
+				if addonInstaller2 != nil {
+					r.Post("/addons/{id}/install", handler.InstallAddon(addonCatalog, addonInstaller2))
+				}
+			}
 
 			// Real-time WebSocket streams (Phase 4). Server-push only; gated by
 			// RequireSession above + an Origin check in Accept.

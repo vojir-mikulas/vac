@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -348,9 +349,21 @@ func appConfigSnapshot(a store.App) map[string]any {
 	}
 }
 
-func DeleteApp(s *store.Store, pm ProxyManager) http.HandlerFunc {
+// AppDBDeprovisioner drops the engine-side objects of an app's managed databases
+// before the app row (and its cascade) is deleted. *dbprovision.Provisioner
+// satisfies it. May be nil when managed services are off.
+type AppDBDeprovisioner interface {
+	DeprovisionApp(ctx context.Context, appID string)
+}
+
+func DeleteApp(s *store.Store, pm ProxyManager, dbDeprov AppDBDeprovisioner) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
+		// Drop managed-database engine-side objects (DBs/roles inside the shared
+		// instances) before the cascade removes the rows that point at them.
+		if dbDeprov != nil {
+			dbDeprov.DeprovisionApp(r.Context(), id)
+		}
 		// Tear down routes + vac-edge attachments before the cascade removes
 		// the domain rows we'd need to find them.
 		proxyTeardown(r.Context(), pm, id)

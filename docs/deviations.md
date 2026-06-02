@@ -243,6 +243,81 @@ what we do instead, why, and the trade-off (what we give up / when we'd revisit)
 
 ---
 
+## Track D — Managed services (backups / databases / add-ons)
+
+All of Track D ships behind `VAC_MANAGED_SERVICES` (default off): nav entries hidden, API routes
+unmounted, background goroutines (backup scheduler, lazy engine watchers) never start. Zero idle
+footprint on a box that uses none — the `<200 MB` claim holds.
+
+### D1 — S3 backup destination is hand-rolled SigV4, not `minio-go`
+
+- **Plan said:** use a single focused client (`minio-go`) for the `s3` destination.
+- **We do instead:** implement S3-compatible PUT/GET/list/delete against the stdlib with a
+  hand-rolled AWS Signature V4 signer (`api/internal/backup/s3.go`). Path-style addressing +
+  `UNSIGNED-PAYLOAD`; the unknown-length dump is staged to a temp file so the PUT has a
+  Content-Length.
+- **Why:** matches the project's documented "hand-roll to dodge deps" house style (cf. Track B's
+  Prometheus exposition) and keeps the dependency surface flat — no AWS/MinIO SDK transitively
+  pulled. `local` remains the zero-dep default.
+- **Trade-off:** the signer is ours to maintain; it's covered by canonicalization + reference-
+  vector unit tests, but not exercised against a live S3 in CI. B2/MinIO/AWS share the signed
+  API surface we implement.
+
+### D1 — Managed-DB backups exec into a container by name (service-lookup fallback)
+
+- **Context:** D1's backup engine resolves a config's `service_name` to a container via the
+  `services` table. A managed database (D2) lives in a shared engine container (`vac-db`,
+  `vac-mariadb`) that is **not** an app service row.
+- **We do instead:** the backup engine falls back to treating `service_name` as a literal
+  container name when the service lookup returns `ErrNotFound` (`docker exec` accepts names). D2
+  seeds the auto-backup with `service_name = <engine container>`.
+- **Trade-off:** `backup_configs` is `UNIQUE(app_id, service_name)`, so a single app provisioning
+  **two** managed DBs of the same engine (both → `vac-db`) gets one auto-backup, not two. The
+  common one-DB-per-app case is fully covered; the rare case degrades gracefully (logged, not
+  errored).
+
+### D2 — Engines shipped: Postgres + MariaDB; Mongo/Redis and isolated Postgres deferred
+
+- **Plan said:** Postgres (shared `vac-db`) plus a shared lazy daemon per engine for
+  mariadb/mongo/redis, and a `VAC_MANAGED_DB_ISOLATED` opt-in for a second `vac-db-managed`.
+- **We do instead:** ship **Postgres** (pool DDL on `vac-db`, attached to vac-edge) and
+  **MariaDB** (shared, lazily `compose up`ed `vac-mariadb`, provisioned via `docker exec`) as the
+  worked SQL pair. The recipe framework (`Engine` interface + shared compose/exec helpers) is
+  generic — Mongo/Redis drop in as data. `VAC_MANAGED_DB_ISOLATED` is recognized but logs a
+  warning and falls back to shared (isolated instance not yet implemented).
+- **Why:** the `09` stub's own strategy gate ("build when users ask"); shipping two correct SQL
+  engines beats four half-tested ones. The shared admin password for a lazy engine is derived
+  from `VAC_MASTER_KEY` (stable across restarts without separate storage); MariaDB writes a root
+  `~/.my.cnf` so dumps carry no password on the command line.
+- **Trade-off:** rotating `VAC_MASTER_KEY` rotates a running shared engine's admin password
+  (documented manual step); Mongo/Redis aren't offered in the picker yet.
+
+### D2 — Provisioning is asynchronous; status drives the UI
+
+- The add-DB endpoint returns `202` with a `provisioning` row and runs the engine work (which may
+  cold-start a shared daemon for tens of seconds) on a detached goroutine, flipping the row to
+  `ready`/`error`. The connection string is sealed up front (it's deterministic from the
+  generated identity + the engine's fixed alias), so the row's `secret_enc` is populated before
+  the background work runs.
+
+### D3 — Add-on templates are embedded; the clone step branches on `source=template`
+
+- **Plan said:** (decision #7/B) embed templates and materialize them into the work dir, skipping
+  git clone.
+- **We do:** `apps.source` (`git`|`template`) + `apps.template_id`. The **only** deploy-pipeline
+  touch in Track D is an additive branch in the clone step: `source=template` →
+  `Registry.Materialize(templateID, repoDir)` (copy embedded files) instead of `cloneOrPull`. The
+  rest of build/up/health/route is unchanged; `HeadCommit` on a non-git dir returns empty and is
+  skipped, so template apps record no commit. **Flag for Track A at merge.**
+- **Grafana flagship — lightweight datasource deferred:** the template deploys a working Grafana
+  (provisioned welcome dashboard, random admin password injected as `GF_ADMIN_PASSWORD`) that
+  serves out of the box. Auto-wiring a read-only datasource to VAC's `request_metrics` (which
+  needs per-install credential templating into the provisioning YAML) is deferred; the dashboard
+  documents adding a managed-DB datasource by hand. The catalog mechanism (embed → install →
+  deploy-as-app) is the deliverable; Grafana booting served is the acceptance.
+
+---
+
 > Maintenance note: when a deviation is later reconciled (e.g. we adopt the mvp's original
 > approach, or update `mvp.md` to match), mark the row **Resolved** with the date and the
 > commit/PR rather than deleting it — the history is the point.

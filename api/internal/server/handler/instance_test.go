@@ -19,7 +19,7 @@ func TestInstanceInfoReportsBuildMetadata(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d; want 200", rr.Code)
 	}
-	var body map[string]string
+	var body map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -28,6 +28,10 @@ func TestInstanceInfoReportsBuildMetadata(t *testing.T) {
 	}
 	if body["channel"] != "stable" {
 		t.Errorf("channel = %q; want stable", body["channel"])
+	}
+	// Track D gate defaults off.
+	if body["managed_services"] != false {
+		t.Errorf("managed_services = %v; want false by default", body["managed_services"])
 	}
 }
 

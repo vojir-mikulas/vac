@@ -1,8 +1,9 @@
 import { Link } from '@tanstack/react-router'
-import { Activity, Boxes, Database, Rocket, Server, Settings } from 'lucide-react'
+import { Activity, Blocks, Boxes, Database, Rocket, Server, Settings } from 'lucide-react'
 
 import { Meter } from '@/components/common/meter'
 import { useHostStats } from '@/lib/api/metrics'
+import { useInstanceInfo } from '@/lib/api/instance'
 import { formatBytes, formatPercent } from '@/lib/format'
 
 const NAV = [
@@ -12,6 +13,9 @@ const NAV = [
   { to: '/database', label: 'Database', icon: Database },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const
+
+// Shown only when the managed-services gate (Track D) is open.
+const ADDONS_NAV = { to: '/addons', label: 'Add-ons', icon: Blocks } as const
 
 export function Sidebar() {
   return (
@@ -24,6 +28,9 @@ export function Sidebar() {
 // Inner sidebar layout, shared by the fixed desktop rail and the mobile drawer.
 // `onNavigate` lets the mobile drawer close itself when a link is tapped.
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+  const { data: instance } = useInstanceInfo()
+  // Slot Add-ons in before Settings when managed services are enabled.
+  const nav = instance?.managed_services ? [...NAV.slice(0, 4), ADDONS_NAV, ...NAV.slice(4)] : NAV
   return (
     <>
       <div className="border-b px-4.5 pb-3 pt-4.5">
@@ -39,7 +46,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <HostIdentity />
 
       <nav aria-label="Primary" className="flex flex-1 flex-col gap-px px-2 py-2.5">
-        {NAV.map((item) => (
+        {nav.map((item) => (
           <Link
             key={item.to}
             to={item.to}

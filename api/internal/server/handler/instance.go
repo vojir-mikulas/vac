@@ -67,6 +67,9 @@ func InstanceInfo(cfg config.Config) http.HandlerFunc {
 			// Update channels / auto-update are not implemented; the UI renders
 			// these as disabled placeholders. Reported for display only.
 			"channel": "stable",
+			// Track D master gate. The UI hides managed-services surfaces (backups,
+			// databases, add-ons) until this is on.
+			"managed_services": cfg.ManagedServices,
 		})
 	}
 }

@@ -17,11 +17,12 @@ const (
 	EventOOMKilled       EventType = "oom_killed"
 	EventVACRestarted    EventType = "vac_restarted"
 	EventCertExpiring    EventType = "cert_expiring"
+	EventBackupFailed    EventType = "backup_failed"
 )
 
 // AllEvents is the set of implemented events, used to default a missing toggle
 // to "on".
-var AllEvents = []EventType{EventDeploySucceeded, EventDeployFailed, EventCrashLoop, EventOOMKilled, EventVACRestarted, EventCertExpiring}
+var AllEvents = []EventType{EventDeploySucceeded, EventDeployFailed, EventCrashLoop, EventOOMKilled, EventVACRestarted, EventCertExpiring, EventBackupFailed}
 
 // Event is a render-neutral notification. Channels turn it into their own
 // payload shape.

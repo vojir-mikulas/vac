@@ -1,0 +1,21 @@
+{
+  "uid": "vac-welcome",
+  "title": "Welcome",
+  "tags": ["vac"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "",
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Deployed by VAC",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "# 🎉 Grafana is running\n\nThis Grafana was installed from the **VAC add-on catalog** and deployed as a normal app on your box.\n\n## Next steps\n\n1. **Change the admin password** — set `GF_ADMIN_PASSWORD` on the app's Environment tab (a random one was generated at install).\n2. **Add a data source** — if you provisioned a managed database for an app, reveal its `DATABASE_URL` on that app's Environment tab and add it here as a PostgreSQL/MySQL data source.\n3. **Build dashboards** — start charting your data.\n\nManaged entirely by VAC: backups, routing, and HTTPS are already handled."
+      }
+    }
+  ]
+}

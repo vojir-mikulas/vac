@@ -246,6 +246,112 @@ export interface UpdateNotificationInput {
   events: NotificationEvents
 }
 
+// ── Track D: managed backups ───────────────────────────────────────────────
+export type BackupFrequency = 'daily' | 'weekly'
+export type BackupDestinationKind = 'local' | 's3'
+export type BackupRunStatus = 'running' | 'success' | 'failed' | string
+
+export interface BackupRun {
+  id: string
+  config_id: string
+  started_at: string
+  finished_at?: string | null
+  status: BackupRunStatus
+  size_bytes?: number | null
+  artifact_key?: string | null
+  error?: string | null
+}
+
+export interface BackupConfig {
+  id: string
+  app_id: string
+  service_name: string
+  command: string
+  frequency: BackupFrequency
+  hour_of_day: number
+  day_of_week?: number | null
+  destination: BackupDestinationKind
+  keep_count: number
+  enabled: boolean
+  created_at: string
+  updated_at: string
+  last_run?: BackupRun | null
+}
+
+// S3 credentials are write-only — sent on create/update, never returned.
+export interface S3DestinationInput {
+  endpoint: string
+  region?: string
+  bucket: string
+  access_key: string
+  secret_key: string
+  use_ssl?: boolean
+  prefix?: string
+}
+
+export interface BackupConfigInput {
+  service_name: string
+  command: string
+  frequency: BackupFrequency
+  hour_of_day: number
+  day_of_week?: number | null
+  destination: BackupDestinationKind
+  s3?: S3DestinationInput | null
+  keep_count: number
+  enabled?: boolean
+}
+
+// ── Track D: managed databases ─────────────────────────────────────────────
+export type ManagedDBStatus = 'provisioning' | 'ready' | 'error' | string
+
+export interface ManagedDatabase {
+  id: string
+  app_id: string
+  engine: string
+  db_name: string
+  role_name?: string | null
+  env_var_name: string
+  status: ManagedDBStatus
+  error?: string | null
+  created_at: string
+  footprint_mb: number
+  shared: boolean
+}
+
+export interface DBEngineInfo {
+  name: string
+  footprint_mb: number
+  shared: boolean
+}
+
+export interface AddDatabaseResult {
+  database: ManagedDatabase
+  warning?: string
+}
+
+// ── Track D: add-on catalog ────────────────────────────────────────────────
+export interface Addon {
+  id: string
+  name: string
+  description: string
+  category: string
+  footprint_mb: number
+  /** Managed-DB engine to provision before first deploy, or "" for none. */
+  depends_on_db: string
+  compose_file: string
+  default_env: Record<string, string>
+}
+
+export interface AddonInstallResult {
+  app_id: string
+  slug: string
+  name: string
+  status: string
+  deployment_id: string
+  /** Secrets generated at install (e.g. an admin password), shown once. */
+  generated_secrets?: Record<string, string>
+}
+
 // ── WebSocket frames ───────────────────────────────────────────────────────
 export type WsFrameType = 'build' | 'build-end' | 'log' | 'stats' | 'host'
 

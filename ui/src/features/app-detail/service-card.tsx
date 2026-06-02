@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Cog, RotateCw } from 'lucide-react'
+import { Cog, RotateCw, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { StatusPill } from '@/components/common/status-pill'
@@ -20,7 +20,15 @@ import { useAppStatsContext } from '@/features/app-detail/stats-context'
 import { formatBytes, formatDuration, formatPercent } from '@/lib/format'
 import type { Service } from '@/types/api'
 
-export function ServiceCard({ appId, service }: { appId: string; service: Service }) {
+export function ServiceCard({
+  appId,
+  service,
+  noBackupWarning,
+}: {
+  appId: string
+  service: Service
+  noBackupWarning?: boolean
+}) {
   const stats = useAppStatsContext()
   const live = stats[service.name]
   const restart = useRestartService(appId)
@@ -31,6 +39,15 @@ export function ServiceCard({ appId, service }: { appId: string; service: Servic
         <div className="flex items-center gap-2.5">
           <span className="font-mono text-sm font-semibold">{service.name}</span>
           <StatusPill status={service.status} size="sm" />
+          {noBackupWarning ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-warn-border bg-warn-bg px-2 py-0.5 text-2xs font-medium text-warn-foreground"
+              title="No backup is configured for this service — set one up on the Backups tab."
+            >
+              <ShieldAlert className="size-3" />
+              No backup
+            </span>
+          ) : null}
         </div>
         <div className="flex gap-1">
           <ConfigureDialog appId={appId} service={service} />

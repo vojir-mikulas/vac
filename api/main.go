@@ -18,14 +18,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/vojir-mikulas/vac/api/internal/addon"
 	"github.com/vojir-mikulas/vac/api/internal/admin"
 	"github.com/vojir-mikulas/vac/api/internal/auth"
+	"github.com/vojir-mikulas/vac/api/internal/backup"
 	"github.com/vojir-mikulas/vac/api/internal/caddy"
 	"github.com/vojir-mikulas/vac/api/internal/certcheck"
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/crashloop"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/db"
+	"github.com/vojir-mikulas/vac/api/internal/dbprovision"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 	"github.com/vojir-mikulas/vac/api/internal/dockerevents"
@@ -176,6 +179,18 @@ func main() {
 	worker := deploy.NewPipelineWorker(pipeline, 0)
 	worker.Start(ctx)
 
+	// Add-on catalog (Track D / D3). The embedded registry doubles as the deploy
+	// pipeline's template materializer (the clone-step seam), so it's wired even
+	// when managed services are off — a template app deploys the same way. A
+	// parse error here is a build bug; log and continue (no installs exist).
+	addonRegistry, addonErr := addon.NewRegistry()
+	if addonErr != nil {
+		slog.Error("addon registry failed to load; add-ons disabled", "err", addonErr)
+		addonRegistry = nil
+	} else {
+		pipeline.Templates = addonRegistry
+	}
+
 	// Request-rate metrics: tail Caddy's JSON access log and aggregate per
 	// service into the rolling window.
 	collector := reqmetrics.New(st, cfg.CaddyAccessLog, cfg.CaddyMetricsInterval, slog.Default())
@@ -229,7 +244,40 @@ func main() {
 	}, slog.Default())
 	go certChecker.Run(ctx)
 
-	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier)
+	// Track D (managed services). The backup engine is always constructed so the
+	// manual "Back up now" endpoint works the moment the flag is on; the
+	// scheduler goroutine, however, only starts when VAC_MANAGED_SERVICES is on
+	// AND at least one backup config exists — zero idle footprint otherwise
+	// (decision #8). New configs added later are picked up on the next restart.
+	backupEngine := backup.NewEngine(st, docker, box, cfg.WorkDir, notifier, slog.Default())
+	var dbProvisioner *dbprovision.Provisioner
+	if cfg.ManagedServices {
+		if n, err := st.CountBackupConfigs(ctx); err != nil {
+			slog.Warn("backup: could not count configs; scheduler not started", "err", err)
+		} else if n > 0 {
+			go backup.NewScheduler(st, backupEngine, slog.Default()).Run(ctx)
+			slog.Info("backup scheduler started", "configs", n)
+		}
+
+		// Managed databases (D2). The provisioner is only built when the gate is
+		// open — its engines hold docker/pool handles but start no goroutines.
+		dbProvisioner = dbprovision.New(st, box, pool, docker, dbprovision.Config{
+			WorkDir:     cfg.WorkDir,
+			EdgeNetwork: cfg.EdgeNetwork,
+			MasterKey:   cfg.MasterKey,
+		}, slog.Default())
+		if cfg.ManagedDBIsolated {
+			slog.Warn("VAC_MANAGED_DB_ISOLATED is set, but isolated managed Postgres is not yet implemented; using shared vac-db (see docs/deviations.md)")
+		}
+	}
+
+	// Add-on installer (D3) — only when the gate is open and the registry loaded.
+	var addonInstaller *addon.Installer
+	if cfg.ManagedServices && addonRegistry != nil {
+		addonInstaller = addon.NewInstaller(st, box, addonRegistry, worker, dbProvisioner, slog.Default())
+	}
+
+	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, dbProvisioner, addonRegistry, addonInstaller)
 	if err != nil {
 		slog.Error("server init failed", "err", err)
 		os.Exit(1)
