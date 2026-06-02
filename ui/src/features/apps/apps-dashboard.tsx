@@ -1,8 +1,9 @@
 import { useDeferredValue, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Boxes, Download, GitBranch, MoreHorizontal, Plus, Search } from 'lucide-react'
+import { Blocks, Boxes, Download, GitBranch, MoreHorizontal, Plus, Search } from 'lucide-react'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
+import { BrandIcon, brandFor } from '@/components/common/brand-icon'
 import { SectionHeader } from '@/components/common/section-header'
 import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { StatusPill } from '@/components/common/status-pill'
@@ -257,21 +258,34 @@ export function AppsDashboard() {
 }
 
 function AppRow({ app }: { app: App }) {
+  const isAddon = app.source === 'template'
+  const brand = isAddon ? brandFor(app.template_icon) : null
   return (
     <TableRow className="cursor-pointer">
       <TableCell>
         <Link to="/apps/$appId" params={{ appId: app.id }} className="flex items-center gap-3">
           <span className="grid size-8 shrink-0 place-items-center rounded-md border bg-surface-2 font-mono text-sm font-semibold uppercase">
-            {app.name.slice(0, 1)}
+            {brand ? (
+              <BrandIcon brand={app.template_icon} className="size-4" />
+            ) : (
+              app.name.slice(0, 1)
+            )}
           </span>
           <span className="min-w-0">
             <span className="block truncate text-sm font-medium">{app.name}</span>
-            <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
-              <GitBranch className="size-2.5" />
-              <span className="truncate">{app.git_url}</span>
-              <span>:</span>
-              <span>{app.git_branch}</span>
-            </span>
+            {isAddon ? (
+              <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
+                <Blocks className="size-2.5" />
+                <span className="truncate">Installed from {app.template_name ?? 'add-on'}</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
+                <GitBranch className="size-2.5" />
+                <span className="truncate">{app.git_url}</span>
+                <span>:</span>
+                <span>{app.git_branch}</span>
+              </span>
+            )}
           </span>
         </Link>
       </TableCell>

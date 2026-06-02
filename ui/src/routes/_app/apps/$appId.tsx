@@ -2,6 +2,7 @@ import { Link, Outlet, createFileRoute } from '@tanstack/react-router'
 import { Blocks, GitBranch, Globe, Lock, RotateCw } from 'lucide-react'
 
 import { PageContainer } from '@/components/layout/app-shell'
+import { BrandIcon, brandFor } from '@/components/common/brand-icon'
 import { AppStatsProvider } from '@/features/app-detail/stats-context'
 import { LiveDeployBanner } from '@/features/app-detail/live-deploy-banner'
 import { StatusPill } from '@/components/common/status-pill'
@@ -67,7 +68,11 @@ function AppDetailLayout() {
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs text-muted-foreground">
               {isAddon ? (
                 <span className="flex items-center gap-1.5">
-                  <Blocks className="size-3" />
+                  {brandFor(app.template_icon) ? (
+                    <BrandIcon brand={app.template_icon} className="size-3" />
+                  ) : (
+                    <Blocks className="size-3" />
+                  )}
                   Installed from {app.template_name ?? 'add-on'}
                 </span>
               ) : (

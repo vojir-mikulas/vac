@@ -3,6 +3,7 @@ import { AlertTriangle, Database, KeyRound, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
+import { BrandIcon } from '@/components/common/brand-icon'
 import { EmptyState } from '@/components/common/empty-state'
 import { StatusPill } from '@/components/common/status-pill'
 import { Button } from '@/components/ui/button'
@@ -74,6 +75,7 @@ function DatabaseCard({ appId, db }: { appId: string; db: ManagedDatabase }) {
     <Card className="gap-0 p-0">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3.5">
         <div className="flex items-center gap-2.5">
+          <BrandIcon brand={db.engine} className="size-4" />
           <span className="font-mono text-sm font-semibold capitalize">{db.engine}</span>
           <StatusPill status={pillStatus(db.status)} size="sm" />
         </div>

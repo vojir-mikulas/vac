@@ -4,6 +4,7 @@ import { AlertTriangle, Blocks, Database, Download, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
+import { BrandIcon, brandFor } from '@/components/common/brand-icon'
 import { EmptyState } from '@/components/common/empty-state'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -75,7 +76,11 @@ function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }
     <Card className="flex flex-col gap-3 p-5">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Blocks className="size-4 text-muted-foreground" />
+          {brandFor(addon.icon) ? (
+            <BrandIcon brand={addon.icon} className="size-4" />
+          ) : (
+            <Blocks className="size-4 text-muted-foreground" />
+          )}
           <span className="text-sm font-semibold">{addon.name}</span>
         </div>
         {installedApp ? (

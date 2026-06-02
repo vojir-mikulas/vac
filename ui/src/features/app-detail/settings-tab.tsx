@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Blocks, Download } from 'lucide-react'
 
+import { BrandIcon, brandFor } from '@/components/common/brand-icon'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -146,7 +147,11 @@ function SettingsForm({ app }: { app: App }) {
           <SectionHeader>Source</SectionHeader>
           <Card className="gap-3 p-5">
             <div className="flex items-center gap-2">
-              <Blocks className="size-4 text-muted-foreground" />
+              {brandFor(app.template_icon) ? (
+                <BrandIcon brand={app.template_icon} className="size-4" />
+              ) : (
+                <Blocks className="size-4 text-muted-foreground" />
+              )}
               <span className="text-sm font-medium">
                 Installed from {app.template_name ?? 'an add-on'}
               </span>
