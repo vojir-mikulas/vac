@@ -81,6 +81,8 @@ These are deliberate decisions; don't "fix" them without understanding the trade
   (cleanup). See `docs/kb/conventions.md` for the end-to-end "add a feature" walkthrough.
 - At the end of a milestone/phase, propose a ready-to-paste Conventional Commit message
   (commitlint-compatible — see `commitlint.config.js`).
+- **Never add co-authorship or attribution trailers to commits** (no `Co-Authored-By:`,
+  no "Generated with" lines). Commits carry only the human author.
 
 ## The knowledge base (`docs/kb/`) — read this, and keep it honest
 
