@@ -68,6 +68,11 @@ services:
       # Point managed Postgres at a separate vac-db-managed instance for
       # blast-radius isolation instead of sharing the control-plane DB.
       VAC_MANAGED_DB_ISOLATED: "${VAC_MANAGED_DB_ISOLATED:-}"
+      # Interactive container shell (P3.4). Off by default — when "true" it lets
+      # the operator open a root-capable shell into a user app container from the
+      # dashboard (gated by a confirm + audit-logged). Highest blast-radius
+      # feature, so it stays closed until you opt in: `vac container-shell on`.
+      VAC_ENABLE_SHELL: "${VAC_ENABLE_SHELL:-}"
       # Soft heap ceiling: keeps the control plane pacing GC against the
       # <200 MB idle target (plan 07) and, paired with the hard memory limit
       # below, makes a memory regression OOM in testing rather than on a user's
