@@ -22,6 +22,7 @@ import {
 import { SectionHeader } from '@/components/common/section-header'
 import { AutoDeploySection } from '@/features/app-detail/auto-deploy-section'
 import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
+import { AppDomainsSection } from '@/features/app-detail/domains-section'
 import { BuildSourcePicker, type BuildSourceValue } from '@/features/apps/build-source'
 import { useApp, useDeleteApp, useUpdateApp } from '@/lib/api/apps'
 import { useExportApp } from '@/lib/api/portability'
@@ -222,6 +223,13 @@ function SettingsForm({ app }: { app: App }) {
           </section>
         </>
       )}
+
+      {/* Custom domains are a routing concern adjacent to source/build, and
+          apply to add-on apps too (they're routed just like git apps). */}
+      <section>
+        <SectionHeader>Domains</SectionHeader>
+        <AppDomainsSection appId={appId} />
+      </section>
 
       <section>
         <SectionHeader>Runtime</SectionHeader>

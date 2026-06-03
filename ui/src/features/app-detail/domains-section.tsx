@@ -1,0 +1,168 @@
+import { useState } from 'react'
+import { toast } from 'sonner'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
+import { DomainConfigPanel } from '@/features/settings/domain-config-panel'
+import { DomainStatusBadge } from '@/features/settings/domain-status-badge'
+import { useCreateDomain, useDeleteDomain, useDomains } from '@/lib/api/domains'
+import { useServices } from '@/lib/api/services'
+import { cn } from '@/lib/utils'
+import type { Domain } from '@/types/api'
+
+const selectClass =
+  'h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50'
+
+/**
+ * Per-app domain management, surfaced on the app's own Settings tab so the
+ * operator doesn't have to detour to global Settings → Domains. Lists the app's
+ * custom domains and its derived auto hosts (read-only), and adds/removes custom
+ * domains against one of the app's services. Reuses the presentational pieces
+ * (status badge + DNS-record config panel) from the global Domains screen.
+ */
+export function AppDomainsSection({ appId }: { appId: string }) {
+  const { data: domains, isLoading } = useDomains(appId)
+
+  return (
+    <div className="flex flex-col gap-4">
+      {isLoading ? (
+        <Card className="p-5">
+          <Skeleton className="h-20 w-full" />
+        </Card>
+      ) : domains && domains.length > 0 ? (
+        <Card className="gap-0 p-0">
+          {domains.map((d, i) => (
+            <AppDomainRow key={d.id || d.hostname} appId={appId} domain={d} border={i > 0} />
+          ))}
+        </Card>
+      ) : (
+        <Card className="p-5">
+          <p className="text-center text-sm text-muted-foreground">
+            No custom domains. This app is reachable at its automatic subdomain.
+          </p>
+        </Card>
+      )}
+
+      <AddAppDomain appId={appId} />
+    </div>
+  )
+}
+
+function AppDomainRow({
+  appId,
+  domain,
+  border,
+}: {
+  appId: string
+  domain: Domain
+  border: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const del = useDeleteDomain(appId)
+
+  const onDelete = () => {
+    if (!confirm(`Delete ${domain.hostname}? Its route is removed immediately.`)) return
+    del.mutate(domain.id, {
+      onSuccess: () => toast.success('Domain deleted'),
+      onError: (e) => toast.error(e.message),
+    })
+  }
+
+  return (
+    <div className={cn('flex flex-col gap-3 px-5 py-3.5', border && 'border-t')}>
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <span className="truncate font-mono text-sm">{domain.hostname}</span>
+          <div className="text-2xs text-muted-foreground">
+            {domain.service_name} · {domain.managed ? 'managed' : 'custom'}
+          </div>
+        </div>
+        <DomainStatusBadge status={domain.status} />
+        <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
+          {open ? 'Hide' : 'Configure'}
+        </Button>
+        {domain.managed ? (
+          <Badge variant="outline" title="Managed automatically — change the slug or base domain">
+            Auto
+          </Badge>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-err-foreground"
+            disabled={del.isPending}
+            onClick={onDelete}
+          >
+            Delete
+          </Button>
+        )}
+      </div>
+      {open ? <DomainConfigPanel domain={domain} /> : null}
+    </div>
+  )
+}
+
+function AddAppDomain({ appId }: { appId: string }) {
+  const { data: services } = useServices(appId)
+  const create = useCreateDomain(appId)
+  const [hostname, setHostname] = useState('')
+  const [service, setService] = useState('')
+
+  const trimmed = hostname.trim()
+  // The per-app endpoint requires a service binding (unlike the global hub's
+  // optional/unassigned add).
+  const canSubmit = trimmed.includes('.') && service !== '' && !create.isPending
+
+  const onSubmit = () => {
+    create.mutate(
+      { service, hostname: trimmed },
+      {
+        onSuccess: () => {
+          toast.success('Domain added')
+          setHostname('')
+        },
+        onError: (e) => toast.error(e.message),
+      },
+    )
+  }
+
+  return (
+    <Card className="gap-4 p-5">
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="grid gap-2">
+          <Label>Hostname</Label>
+          <Input
+            value={hostname}
+            onChange={(e) => setHostname(e.target.value)}
+            placeholder="app.example.com"
+            className="font-mono text-xs"
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label>Service</Label>
+          <select
+            className={selectClass}
+            value={service}
+            onChange={(e) => setService(e.target.value)}
+          >
+            <option value="">Select service…</option>
+            {(services ?? []).map((s) => (
+              <option key={s.id} value={s.name}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Button variant="brand" size="sm" disabled={!canSubmit} onClick={onSubmit}>
+          Add domain
+        </Button>
+      </div>
+    </Card>
+  )
+}
