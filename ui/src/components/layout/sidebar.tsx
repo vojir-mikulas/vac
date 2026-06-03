@@ -11,9 +11,12 @@ import {
 } from 'lucide-react'
 
 import { Meter } from '@/components/common/meter'
+import { useActiveDeployments } from '@/lib/api/deployments'
 import { useHostStats } from '@/lib/api/metrics'
 import { useInstanceInfo } from '@/lib/api/instance'
+import { useSecurityAttention } from '@/lib/api/security'
 import { formatBytes, formatPercent } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 const NAV = [
   { to: '/apps', label: 'Apps', icon: Boxes },
@@ -37,8 +40,44 @@ export function Sidebar() {
 
 // Inner sidebar layout, shared by the fixed desktop rail and the mobile drawer.
 // `onNavigate` lets the mobile drawer close itself when a link is tapped.
+interface NavBadge {
+  count: number
+  label: string
+  className: string
+}
+
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { data: instance } = useInstanceInfo()
+  const { data: queue } = useActiveDeployments()
+  const security = useSecurityAttention()
+  const deployCount = queue?.length ?? 0
+
+  // Per-item attention badge: deploys in flight (brand) and unresolved security
+  // posture findings (severity-toned, matching the page's "N issues" banner).
+  const badgeFor = (to: string): NavBadge | null => {
+    if (to === '/deployments' && deployCount > 0) {
+      return {
+        count: deployCount,
+        label: `${deployCount} active`,
+        className: 'bg-brand text-brand-foreground',
+      }
+    }
+    if (to === '/security' && security.count > 0) {
+      return {
+        count: security.count,
+        label:
+          security.severity === 'error'
+            ? `${security.count} issue${security.count === 1 ? '' : 's'} need attention`
+            : `${security.count} warning${security.count === 1 ? '' : 's'}`,
+        className:
+          security.severity === 'error'
+            ? 'bg-err text-err-foreground'
+            : 'bg-warn text-warn-foreground',
+      }
+    }
+    return null
+  }
+
   // Slot Add-ons in before Settings when managed services are enabled.
   const nav = instance?.managed_services ? [...NAV.slice(0, 4), ADDONS_NAV, ...NAV.slice(4)] : NAV
   return (
@@ -58,18 +97,32 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <HostIdentity />
 
       <nav aria-label="Primary" className="flex flex-1 flex-col gap-px px-2 py-2.5">
-        {nav.map((item) => (
-          <Link
-            key={item.to}
-            to={item.to}
-            onClick={onNavigate}
-            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-normal text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground data-[status=active]:bg-surface-2 data-[status=active]:font-medium data-[status=active]:text-foreground"
-            activeProps={{ 'data-status': 'active', 'aria-current': 'page' }}
-          >
-            <item.icon className="size-4" />
-            <span>{item.label}</span>
-          </Link>
-        ))}
+        {nav.map((item) => {
+          const badge = badgeFor(item.to)
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              onClick={onNavigate}
+              className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-normal text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground data-[status=active]:bg-surface-2 data-[status=active]:font-medium data-[status=active]:text-foreground"
+              activeProps={{ 'data-status': 'active', 'aria-current': 'page' }}
+            >
+              <item.icon className="size-4" />
+              <span className="flex-1">{item.label}</span>
+              {badge ? (
+                <span
+                  aria-label={badge.label}
+                  className={cn(
+                    'grid min-w-5 place-items-center rounded-full px-1.5 text-2xs font-semibold leading-5',
+                    badge.className,
+                  )}
+                >
+                  {badge.count}
+                </span>
+              ) : null}
+            </Link>
+          )
+        })}
       </nav>
 
       <HostVitals />

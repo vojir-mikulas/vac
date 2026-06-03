@@ -1,5 +1,5 @@
 import { Link, Outlet, createFileRoute } from '@tanstack/react-router'
-import { Blocks, GitBranch, Globe, Lock, RotateCw } from 'lucide-react'
+import { Blocks, ExternalLink, GitBranch, Globe, Lock, RotateCw } from 'lucide-react'
 
 import { PageContainer } from '@/components/layout/app-shell'
 import { BrandIcon, brandFor } from '@/components/common/brand-icon'
@@ -83,14 +83,20 @@ function AppDetailLayout() {
                 </span>
               )}
               {primaryDomain ? (
-                <span className="flex items-center gap-1.5">
+                <a
+                  href={`https://${primaryDomain.hostname}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex items-center gap-1.5 hover:text-foreground"
+                >
                   {primaryDomain.status === 'active' ? (
                     <Lock className="size-3 text-ok" />
                   ) : (
                     <Globe className="size-3" />
                   )}
-                  {primaryDomain.hostname}
-                </span>
+                  <span className="group-hover:underline">{primaryDomain.hostname}</span>
+                  <ExternalLink className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                </a>
               ) : null}
             </div>
           ) : null}

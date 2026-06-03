@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Lock, ShieldAlert } from 'lucide-react'
+import { ExternalLink, Lock, ShieldAlert } from 'lucide-react'
 
 import { SectionHeader } from '@/components/common/section-header'
 import { StatStrip, StatTile } from '@/components/common/stat-tile'
@@ -87,7 +87,15 @@ export function OverviewTab({ appId }: { appId: string }) {
                       ) : (
                         <ShieldAlert className="size-3.5 shrink-0 text-warn" />
                       )}
-                      <span className="truncate font-mono text-xs">{d.hostname}</span>
+                      <a
+                        href={`https://${d.hostname}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex min-w-0 items-center gap-1 font-mono text-xs hover:text-foreground hover:underline"
+                      >
+                        <span className="truncate">{d.hostname}</span>
+                        <ExternalLink className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                      </a>
                     </div>
                     <StatusPill status={d.status === 'active' ? 'success' : 'building'} size="sm" />
                   </div>

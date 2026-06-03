@@ -248,6 +248,20 @@ func main() {
 	// service into the rolling window. When the security monitor is on, it
 	// observes each parsed line through the same tail.
 	collector := reqmetrics.New(st, cfg.CaddyAccessLog, cfg.CaddyMetricsInterval, slog.Default())
+	// Auto-subdomains ({slug}.{base}) route through Caddy but have no domains
+	// row, so feed the collector the same derived host set the status engine and
+	// CaddyAsk use — otherwise their requests are dropped as unknown hosts.
+	collector.SetAutoHostSource(func(ctx context.Context) ([]reqmetrics.AutoHost, error) {
+		hosts, err := proxyMgr.AutoHosts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]reqmetrics.AutoHost, len(hosts))
+		for i, h := range hosts {
+			out[i] = reqmetrics.AutoHost{Hostname: h.Hostname, AppID: h.AppID, ServiceName: h.ServiceName}
+		}
+		return out, nil
+	})
 	if secMonitor != nil {
 		collector.SetObserver(secMonitor.Observe)
 		go secMonitor.Run(ctx)

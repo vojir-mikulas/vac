@@ -100,8 +100,9 @@ type putEnvEntry struct {
 	Key       string `json:"key"`
 	Value     string `json:"value"`
 	Sensitive bool   `json:"sensitive"`
-	// WriteOnly marks this key as unrevealable (implies Sensitive). Once
-	// persisted write-only it cannot be downgraded — delete + recreate to change.
+	// WriteOnly marks this key as unrevealable (implies Sensitive). A persisted
+	// write-only key can be cleared back to plaintext only by supplying a fresh
+	// value (never via Keep, which would expose the prior sealed bytes).
 	WriteOnly bool `json:"write_only"`
 	// Keep reuses the existing sealed value for this key instead of re-sealing
 	// Value. It is the only way a never-revealable write-only secret survives a
@@ -171,10 +172,13 @@ func ReplaceAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 			if e.WriteOnly {
 				e.Sensitive = true
 			}
-			// One-way latch: a key already persisted write-only cannot be downgraded
-			// (that would let someone clear the flag, then reveal). Delete + recreate.
-			if prev, ok := priorByKey[k]; ok && prev.WriteOnly && !e.WriteOnly {
-				WriteError(w, http.StatusBadRequest, "cannot downgrade a write-only secret; delete and recreate it")
+			// Downgrading a write-only secret is only safe when a fresh value
+			// replaces it: re-sealing overwrites the prior bytes, so there is
+			// nothing old left to reveal. The unsafe path is `keep`, which would
+			// carry the old sealed bytes forward and then drop the flag — letting
+			// someone clear write-only and reveal the original. Reject only that.
+			if prev, ok := priorByKey[k]; ok && prev.WriteOnly && !e.WriteOnly && e.Keep {
+				WriteError(w, http.StatusBadRequest, "cannot clear write-only without setting a new value")
 				return
 			}
 			// Keep path: reuse the prior sealed bytes without decrypting. This is how

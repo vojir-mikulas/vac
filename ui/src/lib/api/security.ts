@@ -45,3 +45,22 @@ export function useFirewall() {
     refetchInterval: 15_000,
   })
 }
+
+// useSecurityAttention collapses the posture checklist into a single badge
+// signal for the sidebar: how many findings need attention and the worst
+// severity among them. Mirrors the page's PostureSummary so the badge count
+// matches its "N issues need attention" headline. Reuses the posture query —
+// no extra request beyond what the page already polls.
+export function useSecurityAttention(): {
+  count: number
+  severity: 'warn' | 'error' | null
+} {
+  const { data } = useSecurityPosture()
+  const findings = data ?? []
+  const errors = findings.filter((f) => f.severity === 'error').length
+  const warns = findings.filter((f) => f.severity === 'warn').length
+  return {
+    count: errors + warns,
+    severity: errors > 0 ? 'error' : warns > 0 ? 'warn' : null,
+  }
+}

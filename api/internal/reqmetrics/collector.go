@@ -48,6 +48,12 @@ type Collector struct {
 	// set once at wiring time via SetObserver, so no lock is needed.
 	observe func(AccessLine)
 
+	// autoHosts, when set, enumerates VAC's derived auto-subdomains — hosts that
+	// route through Caddy but carry no domains-table row. Without it, requests to
+	// auto-subdomains are dropped as unknown hosts. Default nil; set once at
+	// wiring time via SetAutoHostSource, so no lock is needed.
+	autoHosts func(context.Context) ([]AutoHost, error)
+
 	mu      sync.Mutex
 	hosts   map[string]svcRef
 	buckets map[bucketKey]*store.RequestBucket
@@ -136,6 +142,22 @@ func (c *Collector) Run(ctx context.Context) {
 // not block (the security monitor only updates in-memory counters).
 func (c *Collector) SetObserver(fn func(AccessLine)) { c.observe = fn }
 
+// AutoHost is the subset of a derived auto-subdomain the collector needs to
+// attribute its requests to a service. It mirrors proxy.AutoHost without
+// coupling this package to proxy.
+type AutoHost struct {
+	Hostname    string
+	AppID       string
+	ServiceName string
+}
+
+// SetAutoHostSource registers the source of derived auto-subdomains, merged into
+// the host map on every refresh so requests to {slug}.{base} hosts (which have
+// no domains row) are counted instead of dropped. Set once before Run.
+func (c *Collector) SetAutoHostSource(fn func(context.Context) ([]AutoHost, error)) {
+	c.autoHosts = fn
+}
+
 func (c *Collector) handleLine(line []byte) {
 	var l AccessLine
 	if err := json.Unmarshal(line, &l); err != nil {
@@ -184,6 +206,21 @@ func (c *Collector) refreshHosts(ctx context.Context) {
 		return
 	}
 	next := make(map[string]svcRef, len(domains))
+	// Derived auto-subdomains route through Caddy but carry no domains row, so
+	// add them first; an assigned custom domain on the same host (unusual)
+	// overrides below.
+	if c.autoHosts != nil {
+		autos, err := c.autoHosts(ctx)
+		if err != nil {
+			c.logger.Warn("reqmetrics: refresh auto hosts", "err", err)
+		}
+		for _, a := range autos {
+			if a.Hostname == "" || a.AppID == "" || a.ServiceName == "" {
+				continue
+			}
+			next[strings.ToLower(a.Hostname)] = svcRef{appID: a.AppID, service: a.ServiceName}
+		}
+	}
 	for _, d := range domains {
 		// Unassigned domains (added but not yet bound to a service) route
 		// nowhere, so they carry no request metrics.

@@ -4,9 +4,13 @@ import { AlertTriangle, X } from 'lucide-react'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Topbar } from '@/components/layout/topbar'
 import { CommandMenu, useCommandMenu } from '@/components/layout/command-menu'
+import { useActiveDeploymentsStream } from '@/lib/api/deployments'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [cmdOpen, setCmdOpen] = useCommandMenu()
+  // One deploy-queue WS connection for the whole shell: keeps the sidebar badge
+  // and the Deployments page live no matter which is on screen.
+  useActiveDeploymentsStream()
 
   return (
     <div className="flex min-h-svh bg-background text-foreground">

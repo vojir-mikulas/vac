@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
 import { isDeployActive } from '@/lib/deploy-status'
+import { useWebSocket } from '@/lib/ws/use-websocket'
 import type { ActiveDeployment, Deployment, DeploymentLogLine } from '@/types/api'
 
 export const deploymentsApi = {
@@ -25,15 +26,31 @@ export const deploymentsApi = {
   },
 }
 
-// useActiveDeployments backs the deploy-queue panel. It polls as a fallback; the
-// panel also subscribes to the /deployments/stream WS and invalidates this query
-// on each change frame for near-instant updates.
+// useActiveDeployments backs the deploy queue and the sidebar badge. It polls as
+// a fallback; useActiveDeploymentsStream pushes live snapshots into this same
+// query cache for near-instant updates.
 export function useActiveDeployments(enabled = true) {
   return useQuery({
     queryKey: queryKeys.deployments.active,
     queryFn: () => deploymentsApi.listActive(),
     enabled,
     refetchInterval: (query) => ((query.state.data ?? []).length > 0 ? 5_000 : false),
+  })
+}
+
+// useActiveDeploymentsStream subscribes to /deployments/stream and writes each
+// snapshot straight into the active-deployments query cache. Mount it once high
+// in the tree (the app shell) so the sidebar badge and the Deployments page both
+// stay live regardless of which is on screen — one connection, paused while the
+// tab is hidden.
+export function useActiveDeploymentsStream() {
+  const qc = useQueryClient()
+  useWebSocket('deployments/stream', {
+    onFrame: (frame) => {
+      if (frame.type === 'deployments') {
+        qc.setQueryData(queryKeys.deployments.active, frame.data as ActiveDeployment[])
+      }
+    },
   })
 }
 

@@ -8,12 +8,12 @@ import { StatusPill } from '@/components/common/status-pill'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/common/empty-state'
-import { DeploySteps } from '@/features/app-detail/deploy-steps'
+import { DeployQueue } from '@/features/deployments/deploy-queue'
 import { useApps } from '@/lib/api/apps'
-import { deploymentsApi } from '@/lib/api/deployments'
+import { deploymentsApi, useActiveDeployments } from '@/lib/api/deployments'
 import { queryKeys } from '@/lib/query/keys'
 import { durationBetween, formatDuration, relativeTime, shortSha } from '@/lib/format'
-import { isDeployActive, isDeploySucceeded, isDeployTerminal } from '@/lib/deploy-status'
+import { isDeploySucceeded, isDeployTerminal } from '@/lib/deploy-status'
 import type { Deployment } from '@/types/api'
 
 interface Row extends Deployment {
@@ -23,6 +23,7 @@ interface Row extends Deployment {
 export function DeploymentsPage() {
   const { data: apps } = useApps()
   const appList = apps ?? []
+  const { data: queue } = useActiveDeployments()
 
   const results = useQueries({
     queries: appList.map((app) => ({
@@ -43,7 +44,7 @@ export function DeploymentsPage() {
   rows.sort((a, b) => new Date(b.triggered_at).getTime() - new Date(a.triggered_at).getTime())
 
   const metrics = computeMetrics(rows)
-  const active = rows.filter((r) => isDeployActive(r.status))
+  const activeCount = queue?.length ?? 0
 
   return (
     <PageContainer>
@@ -54,26 +55,11 @@ export function DeploymentsPage() {
           <StatTile label="Deploys today" value={String(metrics.today)} sub="triggered" accent />
           <StatTile label="Success rate" value={`${metrics.successRate}%`} sub="recent deploys" />
           <StatTile label="Avg build time" value={metrics.avgBuild} sub="successful" />
-          <StatTile label="In progress" value={String(active.length)} sub="running now" />
+          <StatTile label="In progress" value={String(activeCount)} sub="running now" />
         </StatStrip>
       </div>
 
-      {active.length > 0 ? (
-        <div className="mb-6">
-          <SectionHeader>In progress</SectionHeader>
-          <div className="flex flex-col gap-2">
-            {active.map((d) => (
-              <Card key={d.id} className="gap-3 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-mono text-sm font-medium">{d.appName}</span>
-                  <StatusPill status={d.status} size="sm" />
-                </div>
-                <DeploySteps status={d.status} />
-              </Card>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      <DeployQueue />
 
       <SectionHeader>Timeline</SectionHeader>
       {isLoading ? (

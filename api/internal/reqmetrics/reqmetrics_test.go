@@ -53,6 +53,31 @@ func TestCollector_RecordAndFlush(t *testing.T) {
 	}
 }
 
+func TestCollector_AutoHosts(t *testing.T) {
+	// No custom-domain rows; the app is reached only via its derived
+	// auto-subdomain, which has no domains row.
+	s := &fakeStore{}
+	c := New(s, "/nonexistent.log", time.Minute, nil)
+	c.SetAutoHostSource(func(_ context.Context) ([]AutoHost, error) {
+		return []AutoHost{{Hostname: "myapp.vac.example.com", AppID: "a1", ServiceName: "web"}}, nil
+	})
+	c.refreshHosts(context.Background())
+
+	c.record("myapp.vac.example.com", 200, 100)
+	c.record("myapp.vac.example.com:443", 200, 50) // :port stripped
+	c.record("other.vac.example.com", 200, 999)    // unknown auto host, dropped
+
+	c.flush(context.Background())
+
+	if len(s.flushed) != 1 {
+		t.Fatalf("expected 1 bucket, got %d (%+v)", len(s.flushed), s.flushed)
+	}
+	b := s.flushed[0]
+	if b.AppID != "a1" || b.ServiceName != "web" || b.Requests != 2 || b.BytesOut != 150 {
+		t.Errorf("bucket wrong: %+v", b)
+	}
+}
+
 func TestCollector_HandleLine(t *testing.T) {
 	s := &fakeStore{domains: []store.Domain{{AppID: "a1", ServiceName: "web", Hostname: "blog.example.com"}}}
 	c := New(s, "/nonexistent.log", time.Minute, nil)
