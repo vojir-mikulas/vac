@@ -1,4 +1,4 @@
-<!-- generated from commit 0f94e36 on 2026-05-31 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
+<!-- generated from commit 2f520b8 on 2026-06-03 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
 
 # Conventions — how the code is organized & how to add a feature
 
@@ -7,18 +7,25 @@ prettier (`make lint`) — don't restate it; this covers structure and patterns.
 
 ## Backend (`api/internal/`)
 
-- **One package per concern.** A new subsystem gets its own package, not a grab-bag util file.
+- **One package per concern.** A new subsystem gets its own package, not a grab-bag util file
+  (see the package table in `architecture.md` for the existing concerns).
 - **HTTP handlers** live in `server/handler/`, one file per resource (`apps.go`,
-  `deployments.go`, `domains.go`, …). Handlers are thin: parse/validate → call a store or a
-  subsystem → write JSON. Shared helpers: `json.go` (responses), `validate.go` (input checks).
+  `deployments.go`, `domains.go`, `databases.go`, `backups.go`, `addons.go`, `audit.go`, …).
+  Handlers are thin: parse/validate → call a store or a subsystem → write JSON. Shared
+  helpers: `json.go` (responses), `validate.go` (input checks).
 - **Persistence** lives only in `store/`, one file per aggregate. Everything goes through pgx;
-  schema changes are goose migrations. No SQL outside `store/`.
+  schema changes are goose migrations under `store/migrations/`. No SQL outside `store/`.
 - **Status/state** enums and the app/service/deployment status derivation live in
   `deploy/status.go` — reuse them, don't re-define status strings.
 - **Secrets** never touch the DB in plaintext — seal with `crypto.Box` (the same path as env
-  vars / SSH keys / TOTP / webhook URLs), redact on read.
+  vars / SSH keys / TOTP / webhook URLs / managed-DB credentials / backup destinations),
+  redact on read.
+- **Auditing** is automatic: the `audit` middleware persists an enriched per-request `Record`
+  for mutating actions. Handlers enrich it (target, summary) via the context record rather than
+  writing `audit_log` directly; revertable actions snapshot a before-state for `revert`.
 - **Real-time** goes over the `ws` hub by topic (`build:{id}`, runtime-logs per app,
-  `stats:{appId}`, `host`). Producers publish to a topic; the hub fans out to subscribers.
+  `stats:{appId}`, `host`, `deployments`). Producers publish to a topic; the hub fans out to
+  subscribers, and first/last-subscriber hooks gate on-demand producers (e.g. `stats`).
 - **Long-running watchers** subscribe to the single `dockerevents` bus rather than opening
   their own `docker events` stream.
 - **Tests** sit beside code as `*_test.go`. Integration tests (real Postgres / Docker via

@@ -1,4 +1,4 @@
-<!-- generated from commit 0f94e36 on 2026-05-31, deploy queue/concurrency/cancellation hand-patched on 2026-06-03 (plan 20) — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,compose,dockercli,proxy,caddy}/ changed, treat as possibly stale -->
+<!-- generated from commit 2f520b8 on 2026-06-03 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy}/ changed, treat as possibly stale -->
 
 # Deployment flow — git → build → run → route
 
@@ -13,6 +13,9 @@ deployment shows at each step is in **bold**.
   (**queued**), and calls `deploy.Worker.Enqueue(deploymentID)`. Returns `202` immediately,
   `503` if the queue is full (`deploy.ErrQueueFull`), or `409` if the app already has a
   non-terminal deploy (manual/rollback) — the webhook path coalesces to `202` instead.
+- **Webhook trigger.** Inbound Git webhooks land on the `webhook` handler/package, which
+  authenticates against the per-app secret (`apps.webhook_secret_enc`) and matches `ParseRef`
+  against the app's `deploy_triggers` rows to decide whether (and on which branch) to deploy.
 - **Per-app guard.** A partial unique index `one_active_deploy_per_app` (migration 00062)
   allows at most one non-terminal deployment per app. `store.CreateDeployment` /
   `CreateRollbackDeployment` translate the unique violation to `ErrActiveDeploymentExists`.
@@ -23,31 +26,45 @@ deployment shows at each step is in **bold**.
   (default cap 32). N>1 only ever runs deploys for *different* apps concurrently (the per-app
   guard). On boot it sweeps any non-terminal deployments from a previous process to
   **interrupted** (`store.MarkInProgressDeploymentsInterrupted`).
+- **Reaper.** A periodic goroutine (`startReaper`, ~1 min) settles deployments stuck
+  non-terminal past a timeout (~30 min) to **error** — backstop against a hung subprocess.
 - **Cancellation.** Each in-flight deploy runs under a per-deploy context registered in the
   worker. `POST .../deployments/{did}/cancel` → `CancelDeployment` aborts the running
   subprocess (`Worker.Cancel`) and settles the row **canceled** (a terminal status distinct
-  from `interrupted`); a still-queued deploy is settled directly and skipped when dequeued
-  (the pipeline's already-settled guard). The running stack is never torn down.
+  from `interrupted`); the app status is recomputed from current service statuses. A
+  still-queued deploy is settled directly and skipped when dequeued. The running stack is
+  never torn down.
 - **Live queue.** Producers publish a payload-less change frame to the `deployments` WS topic
   on every create/transition/settle; `GET /api/deployments/active` is the snapshot and
   `GET /api/deployments/stream` pushes a fresh snapshot per change (`store.ListActiveDeployments`).
 
-## 1. Clone / pull (**cloning**)
+## 1. Acquire source (**cloning**)
 
 - `deploy/pipeline.go` materializes the app's SSH deploy key (decrypted via `sshkey.Manager`,
   written to a temp file, referenced through `GIT_SSH_COMMAND`, cleaned up after).
 - `gitcli/gitcli.go`: `LsRemote` (cheap pre-check) → `Clone` (shallow `--depth=1
   --single-branch`) or, if the repo dir already exists, `Pull` (fetch + hard reset to
   `origin/{branch}`). `HeadCommit` extracts the short SHA + message, stored on the deployment
-  row.
+  row. **Rollbacks** pin to a prior commit via `FetchCommit` (fetch that SHA, or deepen the
+  shallow clone, then detached checkout).
+- **Template-sourced apps** (add-ons / managed DBs) skip git entirely: the pipeline calls
+  `Templates.Materialize()` to write embedded files into the work dir.
 
-## 2. Detect build type
+## 2. Resolve build → compose file
 
-- `compose/detect.go` `Detect` looks, in order, for `compose.yaml` → `docker-compose.yml` →
-  `Dockerfile`. No match ⇒ `ErrNoComposeOrDockerfile`.
+- An **adapter** layer normalizes the build source to a single compose file: `adapter.For`
+  selects the right adapter (compose / Dockerfile / framework / static) and `Prepare`
+  generates or returns the compose file.
+- `compose/detect.go` `Detect` looks, in order, for `compose.yaml` → `compose.yml` →
+  `docker-compose.yml` → `docker-compose.yaml` → `Dockerfile`. No match ⇒
+  `ErrNoComposeOrDockerfile`.
 - If only a `Dockerfile` is found, `compose/wrap.go` `Wrap` writes a minimal generated
   `compose.yaml` (single `app` service, `build: .`, `restart: always`, `env_file: .env`). The
   generated file is untracked and regenerated each deploy.
+- **Preflight lint** (`compose.Preflight`) runs before the build: VAC-incompatible constructs
+  (host-escape, edge-network conflicts) are hard findings that block the deploy (→ degraded);
+  others log as warnings. An allow-unsafe override exists but never downgrades host-escape.
+- A SHA256 of the resolved compose file is stored on the deployment row for change detection.
 
 ## 3. Build (**building**)
 
@@ -55,12 +72,15 @@ deployment shows at each step is in **bold**.
   `docker compose -p vac-{slug} -f {composeFile} build` with BuildKit enabled. Project name is
   always `vac-{slug}` so VAC stacks never collide with manually-managed compose projects on the
   host.
-- Build output is streamed line-by-line through the deploy log writer (`deploy/loggers.go`):
-  persisted to `deployment_logs` and published live to the WS topic `build:{deploymentID}`.
+- Build output is streamed line-by-line through the deploy log writer (`deploy/loggers.go`
+  `LogWriter`): persisted to `deployment_logs` and published live to the WS topic
+  `build:{deploymentID}`.
 
 ## 4. Up (**deploying**)
 
-- Env vars are decrypted and rendered to an env file, then `Compose.Up` runs
+- Env vars are decrypted and rendered to an env file (when a `crypto.Box` is available), and a
+  per-app RAM cap is layered on via `compose.WriteResourceOverride` (an extra `-f` file, never
+  rewriting the user's compose). Then `Compose.Up` runs
   `docker compose -p vac-{slug} --env-file … up -d --remove-orphans`.
 - `Compose.Ps` lists the resulting containers; the pipeline upserts a `services` row per
   service (`store.UpsertService`) recording container id, internal/published ports, and a
@@ -84,13 +104,13 @@ deployment shows at each step is in **bold**.
   is healthy before declaring success. **This is why `vac-api` being off `vac-edge` matters** —
   it cannot probe the container directly, so Caddy is the health authority.
 - Success ⇒ deployment **running**, app status derived from service statuses
-  (`deploy/status.go` `DeriveAppStatus`).
-- Health failure ⇒ deployment **error** but the stack is **not** torn down; app goes
-  **degraded** and keeps serving the prior version.
+  (`deploy/status.go` `DeriveAppStatus`). The `Reconciler` hook (logstream supervisor) then
+  attaches log followers to the fresh containers, and the optional `notify` hook fires.
+- Health failure ⇒ deployment **error** but the stack is **not** torn down; HTTP-exposing
+  services go **degraded** (portless services untouched) and the app keeps serving the prior
+  version.
 - Build/clone errors ⇒ deployment **error**, app **error**, `notify.DeployFailed` fires. The
   previously running stack is left untouched.
-
-Terminal deployment statuses: `running`, `error`, `interrupted`.
 
 ## After deploy — the always-on subsystems
 
@@ -103,6 +123,8 @@ These run independently of any single deploy, fed by the shared `dockerevents` b
   attached** (live-only, never persisted); host stats via gopsutil on the `host` topic.
 - **Crash-loop** (`crashloop/`): counts `die` events in a sliding window (default ~5 restarts /
   ~2 min); on trip it stops the service, marks it `crash-loop`, and fires `notify.CrashLoop`.
+- **Cert / domain health** (`certcheck`, `certprobe`, `domainstatus`): periodically observe TLS
+  leaf-cert expiry and DNS/cert health for managed hosts; expiry alerts go through `notify`.
 
 ## Status vocabulary
 
