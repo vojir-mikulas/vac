@@ -15,6 +15,9 @@ export function useSecurityPosture() {
   return useQuery({
     queryKey: queryKeys.security.posture,
     queryFn: () => securityApi.posture(),
+    // Re-poll so the posture summary lights up shortly after host state changes
+    // (e.g. the firewall comes up, or the host agent's snapshot refreshes).
+    refetchInterval: 15_000,
   })
 }
 
@@ -31,6 +34,7 @@ export function useFail2ban() {
   return useQuery({
     queryKey: queryKeys.security.fail2ban,
     queryFn: () => securityApi.fail2ban(),
+    refetchInterval: 15_000,
   })
 }
 
@@ -38,5 +42,6 @@ export function useFirewall() {
   return useQuery({
     queryKey: queryKeys.security.firewall,
     queryFn: () => securityApi.firewall(),
+    refetchInterval: 15_000,
   })
 }

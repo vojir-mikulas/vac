@@ -65,6 +65,14 @@ type PostureConfig struct {
 	MasterKeyPresent bool
 	MetricsTokenSet  bool
 	BaseDomainSet    bool
+	AccessLogEnabled bool // Caddy access log configured → traffic panel works
+	// ExpectFirewall/ExpectFail2ban make the absence of a host firewall /
+	// fail2ban a flagged finding (a box with no firewall is dangerous). Operators
+	// who deliberately don't run one opt out (VAC_SECURITY_EXPECT_FIREWALL=false /
+	// the `vac security-check` CLI), which downgrades the finding to an
+	// informational "disabled by operator" row that never warns.
+	ExpectFirewall bool
+	ExpectFail2ban bool
 }
 
 // PostureStore is the read surface the checklist needs over the store.
@@ -73,15 +81,24 @@ type PostureStore interface {
 	ListServicesForApp(ctx context.Context, appID string) ([]store.Service, error)
 }
 
+// PostureHost is the read surface for host firewall/fail2ban state. *Host
+// satisfies it. nil disables the host-backed checks.
+type PostureHost interface {
+	Fail2ban(ctx context.Context) Fail2banState
+	Firewall(ctx context.Context) FirewallState
+}
+
 // Posture computes the read-only posture checklist on each request.
 type Posture struct {
 	store PostureStore
+	host  PostureHost
 	cfg   PostureConfig
 }
 
-// NewPosture wires the checklist over the store and a config snapshot.
-func NewPosture(s PostureStore, cfg PostureConfig) *Posture {
-	return &Posture{store: s, cfg: cfg}
+// NewPosture wires the checklist over the store, the host reader (may be nil),
+// and a config snapshot.
+func NewPosture(s PostureStore, host PostureHost, cfg PostureConfig) *Posture {
+	return &Posture{store: s, host: host, cfg: cfg}
 }
 
 // Check runs every rule and returns all findings (passes and failures), so the
@@ -89,6 +106,12 @@ func NewPosture(s PostureStore, cfg PostureConfig) *Posture {
 // store-dependent rules are skipped, the config rules still report.
 func (p *Posture) Check(ctx context.Context) []PostureFinding {
 	var out []PostureFinding
+
+	// --- Host hardening (firewall / fail2ban) ---
+	// Surfaced first: a box exposed to the internet with no firewall is the most
+	// dangerous posture, so it leads the checklist.
+	out = append(out, p.firewallFinding(ctx))
+	out = append(out, p.fail2banFinding(ctx))
 
 	// --- Config / crypto posture ---
 	if p.cfg.MasterKeyPresent {
@@ -119,6 +142,26 @@ func (p *Posture) Check(ctx context.Context) []PostureFinding {
 		out = append(out, PostureFinding{Severity: SeverityWarn, Code: "exposure_mode",
 			Title:   "Local exposure mode",
 			Message: "Exposure is local — intended for VPN / SSH-tunnel access. Cookies are not marked Secure; do not expose this box directly to the internet."})
+	}
+
+	if p.cfg.BaseDomainSet {
+		out = append(out, PostureFinding{Severity: SeverityOK, Code: "base_domain",
+			Title:   "Base domain configured",
+			Message: "A base domain is set; the dashboard is served over HTTPS and apps get automatic per-subdomain TLS via Caddy."})
+	} else {
+		out = append(out, PostureFinding{Severity: SeverityWarn, Code: "base_domain",
+			Title:   "No base domain",
+			Message: "No base domain is set, so the dashboard is reachable only over plain HTTP by IP. Set one with `vac set-domain <domain>` to enable HTTPS and per-app subdomains."})
+	}
+
+	if p.cfg.AccessLogEnabled {
+		out = append(out, PostureFinding{Severity: SeverityOK, Code: "access_log",
+			Title:   "Request monitoring active",
+			Message: "Caddy's JSON access log is configured; the traffic panel and anomaly detector see every request."})
+	} else {
+		out = append(out, PostureFinding{Severity: SeverityWarn, Code: "access_log",
+			Title:   "Request monitoring disabled",
+			Message: "No Caddy access log is configured (VAC_CADDY_ACCESS_LOG), so the traffic panel stays empty and anomaly detection is off."})
 	}
 
 	// --- App posture (store-backed) ---
@@ -157,4 +200,73 @@ func (p *Posture) Check(ctx context.Context) []PostureFinding {
 	}
 
 	return out
+}
+
+// firewallFinding evaluates host firewall posture. Absence is an error when the
+// operator expects a firewall (the default) — a single VPS with no firewall is
+// dangerous — and an informational OK row when they've explicitly opted out.
+func (p *Posture) firewallFinding(ctx context.Context) PostureFinding {
+	if !p.cfg.ExpectFirewall {
+		return PostureFinding{Severity: SeverityOK, Code: "firewall",
+			Title:   "Firewall check disabled",
+			Message: "Firewall checking is turned off (VAC_SECURITY_EXPECT_FIREWALL=false). VAC won't warn about a missing host firewall."}
+	}
+	if p.host == nil {
+		return PostureFinding{Severity: SeverityWarn, Code: "firewall",
+			Title:   "Firewall state unavailable",
+			Message: "VAC can't read host firewall state on this install."}
+	}
+	fw := p.host.Firewall(ctx)
+	switch {
+	case fw.Stale:
+		return PostureFinding{Severity: SeverityWarn, Code: "firewall",
+			Title:   "Firewall state stale",
+			Message: "The host security agent hasn't reported recently, so firewall state may be out of date. Check that the vac-security-agent timer is running on the host."}
+	case !fw.Detected:
+		return PostureFinding{Severity: SeverityError, Code: "firewall",
+			Title:   "No firewall detected",
+			Message: "No ufw or nftables ruleset was found on the host. Running an internet-facing box without a firewall is dangerous — install and enable ufw (`ufw enable`) or nftables. Opt out with `vac security-check firewall off` if this is intentional."}
+	case !fw.Active:
+		return PostureFinding{Severity: SeverityError, Code: "firewall",
+			Title:   "Firewall installed but inactive",
+			Message: "A " + fw.Backend + " ruleset exists but the firewall is not active. Enable it (e.g. `ufw enable`) so the rules take effect."}
+	default:
+		return PostureFinding{Severity: SeverityOK, Code: "firewall",
+			Title:   "Firewall active",
+			Message: "Host firewall (" + fw.Backend + ") is active and filtering traffic."}
+	}
+}
+
+// fail2banFinding evaluates host fail2ban posture. Absence is a warning when
+// expected (the default) and an informational OK row when opted out.
+func (p *Posture) fail2banFinding(ctx context.Context) PostureFinding {
+	if !p.cfg.ExpectFail2ban {
+		return PostureFinding{Severity: SeverityOK, Code: "fail2ban",
+			Title:   "fail2ban check disabled",
+			Message: "fail2ban checking is turned off (VAC_SECURITY_EXPECT_FAIL2BAN=false). VAC won't warn about a missing fail2ban."}
+	}
+	if p.host == nil {
+		return PostureFinding{Severity: SeverityWarn, Code: "fail2ban",
+			Title:   "fail2ban state unavailable",
+			Message: "VAC can't read host fail2ban state on this install."}
+	}
+	f2b := p.host.Fail2ban(ctx)
+	switch {
+	case f2b.Stale:
+		return PostureFinding{Severity: SeverityWarn, Code: "fail2ban",
+			Title:   "fail2ban state stale",
+			Message: "The host security agent hasn't reported recently, so fail2ban state may be out of date. Check that the vac-security-agent timer is running on the host."}
+	case !f2b.Detected:
+		return PostureFinding{Severity: SeverityWarn, Code: "fail2ban",
+			Title:   "fail2ban not detected",
+			Message: "fail2ban isn't installed or readable on the host. It bans IPs that brute-force SSH and other services — recommended on an internet-facing box. Opt out with `vac security-check fail2ban off` if this is intentional."}
+	case len(f2b.Jails) == 0:
+		return PostureFinding{Severity: SeverityWarn, Code: "fail2ban",
+			Title:   "fail2ban running with no jails",
+			Message: "fail2ban is running but has no active jails, so nothing is being protected. Enable at least the sshd jail."}
+	default:
+		return PostureFinding{Severity: SeverityOK, Code: "fail2ban",
+			Title:   "fail2ban active",
+			Message: "fail2ban is running with active jails, banning abusive IPs."}
+	}
 }

@@ -14,7 +14,7 @@ import {
   useSecurityTraffic,
 } from '@/lib/api/security'
 import { relativeTime } from '@/lib/format'
-import type { PostureFinding, SecuritySeverity, TopTalker } from '@/types/api'
+import type { PostureFinding, RecentRequest, SecuritySeverity, TopTalker } from '@/types/api'
 
 export function SecurityPage() {
   return (
@@ -59,17 +59,61 @@ function PosturePanel() {
       ) : !data || data.length === 0 ? (
         <EmptyState title="No posture checks" description="The posture checklist is unavailable." />
       ) : (
-        <Card className="gap-0 p-0">
-          {data.map((f, i) => (
-            <PostureRow
-              key={f.code + (f.app ?? '') + (f.service ?? '')}
-              finding={f}
-              first={i === 0}
-            />
-          ))}
-        </Card>
+        <>
+          <PostureSummary findings={data} />
+          <Card className="gap-0 p-0">
+            {data.map((f, i) => (
+              <PostureRow
+                key={f.code + (f.app ?? '') + (f.service ?? '')}
+                finding={f}
+                first={i === 0}
+              />
+            ))}
+          </Card>
+        </>
       )}
     </>
+  )
+}
+
+// PostureSummary is the at-a-glance banner that "lights up" red/amber/green from
+// the worst finding, so an operator sees a problem without scanning every row.
+function PostureSummary({ findings }: { findings: PostureFinding[] }) {
+  const errors = findings.filter((f) => f.severity === 'error').length
+  const warns = findings.filter((f) => f.severity === 'warn').length
+  const overall: SecuritySeverity = errors > 0 ? 'error' : warns > 0 ? 'warn' : 'ok'
+
+  const tone =
+    overall === 'error'
+      ? 'border-err/40 bg-err/5'
+      : overall === 'warn'
+        ? 'border-warn/40 bg-warn/5'
+        : 'border-ok/40 bg-ok/5'
+  const headline =
+    overall === 'error'
+      ? `${errors} issue${errors === 1 ? '' : 's'} need attention`
+      : overall === 'warn'
+        ? `${warns} warning${warns === 1 ? '' : 's'}`
+        : 'All checks passing'
+  const sub =
+    overall === 'ok'
+      ? `${findings.length} checks passing`
+      : [
+          errors ? `${errors} error${errors === 1 ? '' : 's'}` : null,
+          warns ? `${warns} warning${warns === 1 ? '' : 's'}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+
+  return (
+    <Card className={`mb-3 flex flex-row items-center gap-4 border p-4 ${tone}`}>
+      <div className="shrink-0">{severityIcon(overall)}</div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold">{headline}</div>
+        <div className="text-2xs text-muted-foreground">{sub}</div>
+      </div>
+      <StatusPill status={SEVERITY_STATUS[overall]} size="sm" className="shrink-0" />
+    </Card>
   )
 }
 
@@ -148,10 +192,74 @@ function TrafficPanel() {
               <AnomaliesList anomalies={data?.recent_anomalies ?? []} />
             </div>
           </div>
+
+          <div className="mt-6">
+            <SectionHeader>Recent requests</SectionHeader>
+            <RecentRequestsTable requests={data?.recent_requests ?? []} />
+          </div>
         </>
       )}
     </>
   )
+}
+
+function RecentRequestsTable({ requests }: { requests: RecentRequest[] }) {
+  if (requests.length === 0) {
+    return (
+      <EmptyState
+        title="No requests yet"
+        description="No requests have hit the proxy yet. If this stays empty, check that Caddy's access log is enabled (see the Posture panel)."
+      />
+    )
+  }
+  return (
+    <Card className="gap-0 overflow-hidden p-0">
+      <div className="flex items-center gap-3 border-b px-5 py-2.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="w-14 shrink-0">Status</span>
+        <span className="w-14 shrink-0">Method</span>
+        <span className="min-w-0 flex-1">Host / path</span>
+        <span className="w-28 shrink-0 text-right">Source IP</span>
+        <span className="w-16 shrink-0 text-right">When</span>
+      </div>
+      <div className="max-h-96 overflow-y-auto">
+        {requests.map((r, i) => (
+          <div
+            key={r.at + r.ip + r.path + i}
+            className={`flex items-center gap-3 px-5 py-2 ${i > 0 ? 'border-t' : ''}`}
+          >
+            <span
+              className={`w-14 shrink-0 font-mono text-xs tabular-nums ${statusTone(r.status)}`}
+            >
+              {r.status}
+            </span>
+            <span className="w-14 shrink-0 font-mono text-2xs text-muted-foreground">
+              {r.method}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-mono text-xs">
+                <span className="text-muted-foreground">{r.host}</span>
+                {r.path}
+              </div>
+            </div>
+            <span className="w-28 shrink-0 truncate text-right font-mono text-2xs text-muted-foreground">
+              {r.ip}
+            </span>
+            <span className="w-16 shrink-0 text-right text-2xs text-muted-foreground">
+              {relativeTime(r.at)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+// statusTone colours an HTTP status: 2xx ok, 3xx muted, 4xx warn, 5xx error.
+function statusTone(status: number): string {
+  if (status >= 500) return 'text-err'
+  if (status >= 400) return 'text-warn'
+  if (status >= 300) return 'text-muted-foreground'
+  return 'text-ok'
 }
 
 function TopTalkersTable({ talkers }: { talkers: TopTalker[] }) {
@@ -225,36 +333,57 @@ function Fail2banPanel() {
       <SectionHeader>fail2ban</SectionHeader>
       {isLoading ? (
         <Skeleton className="h-32 w-full rounded-xl" />
+      ) : data?.stale ? (
+        <EmptyState
+          title="Host agent not reporting"
+          description="The host security agent hasn't refreshed recently, so fail2ban state may be out of date. Check the vac-security-agent timer on the host."
+        />
       ) : !data?.detected ? (
         <EmptyState
           title="Not detected"
-          description="fail2ban is not installed or readable on this host."
+          description="fail2ban is not installed or readable on this host — recommended on an internet-facing box. See the Posture panel."
         />
       ) : !data.jails || data.jails.length === 0 ? (
         <EmptyState title="No jails" description="fail2ban is running but reports no jails." />
       ) : (
-        <Card className="gap-0 p-0">
-          {data.jails.map((j, i) => (
-            <div
-              key={j.name}
-              className={`flex flex-col gap-1 px-5 py-3 ${i > 0 ? 'border-t' : ''}`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-sm font-medium">{j.name}</span>
-                <span className="text-2xs text-muted-foreground">
-                  {j.currently_banned} banned · {j.total_banned} total
-                </span>
-              </div>
-              {j.banned_ips && j.banned_ips.length > 0 ? (
-                <div className="font-mono text-2xs text-muted-foreground">
-                  {j.banned_ips.join(', ')}
+        <>
+          <Card className="gap-0 p-0">
+            {data.jails.map((j, i) => (
+              <div
+                key={j.name}
+                className={`flex flex-col gap-1 px-5 py-3 ${i > 0 ? 'border-t' : ''}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-sm font-medium">{j.name}</span>
+                  <span className="text-2xs text-muted-foreground">
+                    {j.currently_banned} banned · {j.total_banned} total
+                  </span>
                 </div>
-              ) : null}
-            </div>
-          ))}
-        </Card>
+                {j.banned_ips && j.banned_ips.length > 0 ? (
+                  <div className="font-mono text-2xs text-muted-foreground">
+                    {j.banned_ips.join(', ')}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </Card>
+          <HostSourceFooter source={data.source} generatedAt={data.generated_at} />
+        </>
       )}
     </div>
+  )
+}
+
+// HostSourceFooter notes where the fail2ban/firewall read came from and how fresh
+// it is — "via host agent · updated 12s ago" — so a stale/absent agent is legible.
+function HostSourceFooter({ source, generatedAt }: { source?: string; generatedAt?: string }) {
+  if (!source) return null
+  const label = source === 'agent' ? 'host agent' : 'host'
+  return (
+    <p className="mt-1.5 text-2xs text-muted-foreground">
+      via {label}
+      {generatedAt ? ` · updated ${relativeTime(generatedAt)}` : ''}
+    </p>
   )
 }
 
@@ -267,25 +396,40 @@ function FirewallPanel() {
       <SectionHeader>Firewall</SectionHeader>
       {isLoading ? (
         <Skeleton className="h-32 w-full rounded-xl" />
-      ) : !data?.detected ? (
+      ) : data?.stale ? (
         <EmptyState
-          title="Not detected"
-          description="No ufw / nftables ruleset is readable on this host."
+          title="Host agent not reporting"
+          description="The host security agent hasn't refreshed recently, so firewall state may be out of date. Check the vac-security-agent timer on the host."
         />
-      ) : (
-        <Card className="gap-2 p-4">
+      ) : !data?.detected ? (
+        <Card className="gap-1 border-warn/40 bg-warn/5 p-4">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-medium uppercase">{data.backend}</span>
-            <StatusPill status={data.active ? 'running' : 'stopped'} size="sm" />
+            <AlertTriangle className="size-4 text-warn" />
+            <span className="text-sm font-medium">No firewall detected</span>
           </div>
-          {data.rules && data.rules.length > 0 ? (
-            <pre className="overflow-x-auto rounded-lg bg-surface-2 p-3 font-mono text-2xs leading-relaxed">
-              {data.rules.join('\n')}
-            </pre>
-          ) : (
-            <p className="text-sm text-muted-foreground">No rules reported.</p>
-          )}
+          <p className="text-sm text-muted-foreground">
+            No ufw / nftables ruleset is readable on this host. Running an internet-facing box
+            without a firewall is dangerous — enable one, or opt out with{' '}
+            <code className="font-mono text-2xs">vac security-check firewall off</code>.
+          </p>
         </Card>
+      ) : (
+        <>
+          <Card className="gap-2 p-4">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs font-medium uppercase">{data.backend}</span>
+              <StatusPill status={data.active ? 'running' : 'stopped'} size="sm" />
+            </div>
+            {data.rules && data.rules.length > 0 ? (
+              <pre className="overflow-x-auto rounded-lg bg-surface-2 p-3 font-mono text-2xs leading-relaxed">
+                {data.rules.join('\n')}
+              </pre>
+            ) : (
+              <p className="text-sm text-muted-foreground">No rules reported.</p>
+            )}
+          </Card>
+          <HostSourceFooter source={data.source} generatedAt={data.generated_at} />
+        </>
       )}
     </div>
   )

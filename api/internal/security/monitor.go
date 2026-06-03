@@ -28,6 +28,12 @@ const maxTrackedIPs = 1024
 // maxRecentAnomalies bounds the recent-anomalies ring shown on the dashboard.
 const maxRecentAnomalies = 50
 
+// maxRecentRequests bounds the recent-requests ring. This is the live "what's
+// hitting the box right now" feed: a small, always-populated tail so the traffic
+// panel shows real requests even on a quiet box (where the per-IP rate windows
+// are near-empty and the top-talker table looks blank).
+const maxRecentRequests = 100
+
 // Notifier is the slice of *notify.Dispatcher the monitor calls on a breach.
 type Notifier interface {
 	TrafficAnomaly(appName, appID, kind, detail string)
@@ -102,6 +108,17 @@ type Anomaly struct {
 	Detail string    `json:"detail"`
 }
 
+// RecentRequest is one line of the live recent-requests feed.
+type RecentRequest struct {
+	At        time.Time `json:"at"`
+	IP        string    `json:"ip"`
+	Host      string    `json:"host"`
+	Method    string    `json:"method"`
+	Path      string    `json:"path"`
+	Status    int       `json:"status"`
+	UserAgent string    `json:"user_agent"`
+}
+
 // TopTalker is one row of the busiest-source table.
 type TopTalker struct {
 	IP        string    `json:"ip"`
@@ -113,12 +130,13 @@ type TopTalker struct {
 
 // Snapshot is the read-only view the dashboard polls.
 type Snapshot struct {
-	WindowSeconds   int         `json:"window_seconds"`
-	TrackedIPs      int         `json:"tracked_ips"`
-	TotalRequests   int         `json:"total_requests"` // across the window, all tracked IPs
-	TotalErrors     int         `json:"total_errors"`   // 4xx/5xx across the window
-	TopTalkers      []TopTalker `json:"top_talkers"`    // busiest sources, capped
-	RecentAnomalies []Anomaly   `json:"recent_anomalies"`
+	WindowSeconds   int             `json:"window_seconds"`
+	TrackedIPs      int             `json:"tracked_ips"`
+	TotalRequests   int             `json:"total_requests"`  // across the window, all tracked IPs
+	TotalErrors     int             `json:"total_errors"`    // 4xx/5xx across the window
+	TopTalkers      []TopTalker     `json:"top_talkers"`     // busiest sources, capped
+	RecentRequests  []RecentRequest `json:"recent_requests"` // live tail, newest first
+	RecentAnomalies []Anomaly       `json:"recent_anomalies"`
 }
 
 // Monitor maintains bounded streaming per-IP counters fed by the access-log
@@ -131,7 +149,8 @@ type Monitor struct {
 
 	mu        sync.Mutex
 	ips       map[string]*ipCounter
-	anomalies []Anomaly // ring, newest last
+	anomalies []Anomaly       // ring, newest last
+	recent    []RecentRequest // ring, newest last
 }
 
 // NewMonitor wires a Monitor. notifier may be nil (alerts are then logged only).
@@ -180,7 +199,24 @@ func (m *Monitor) Observe(line reqmetrics.AccessLine) {
 		c.lastUA = ua
 	}
 
+	m.recordRecent(RecentRequest{
+		At:        now,
+		IP:        ip,
+		Host:      line.Request.Host,
+		Method:    line.Request.Method,
+		Path:      line.Request.URI,
+		Status:    line.Status,
+		UserAgent: line.UserAgent(),
+	})
 	m.evaluate(c, now)
+}
+
+// recordRecent appends to the bounded recent-requests ring. Caller holds m.mu.
+func (m *Monitor) recordRecent(r RecentRequest) {
+	m.recent = append(m.recent, r)
+	if len(m.recent) > maxRecentRequests {
+		m.recent = m.recent[len(m.recent)-maxRecentRequests:]
+	}
 }
 
 // evaluate trips an alert when a counter crosses a threshold, debounced per IP by
@@ -309,12 +345,20 @@ func (m *Monitor) Snapshot(topN int) Snapshot {
 		recent[i], recent[j] = recent[j], recent[i]
 	}
 
+	reqs := make([]RecentRequest, len(m.recent))
+	copy(reqs, m.recent)
+	// newest first
+	for i, j := 0, len(reqs)-1; i < j; i, j = i+1, j-1 {
+		reqs[i], reqs[j] = reqs[j], reqs[i]
+	}
+
 	return Snapshot{
 		WindowSeconds:   int(m.cfg.Window.Seconds()),
 		TrackedIPs:      active,
 		TotalRequests:   totalReq,
 		TotalErrors:     totalErr,
 		TopTalkers:      talkers,
+		RecentRequests:  reqs,
 		RecentAnomalies: recent,
 	}
 }

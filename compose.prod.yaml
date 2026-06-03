@@ -50,6 +50,10 @@ services:
       VAC_CADDY_ADMIN_URL: "http://vac-proxy:2019"
       VAC_EDGE_NETWORK: "vac-edge"
       VAC_CADDY_ACCESS_LOG: "/var/log/caddy/access.log"
+      # Read-only host security snapshot (fail2ban/firewall) written by the
+      # host-side vac-security-agent timer. The control plane can't read host
+      # firewall state directly (it's sandboxed), so the agent pushes it in here.
+      VAC_SECURITY_DIR: "/var/lib/vac/security"
       # Bearer token gating /metrics + /debug/* (Prometheus exposition and the
       # RAM benchmark). Empty (default) leaves both endpoints closed (404); set
       # it to scrape VAC with your own Prometheus.
@@ -85,6 +89,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - vac_repos:/var/lib/vac/repos
       - vac_caddy_logs:/var/log/caddy:ro
+      # Host security snapshot — a host bind mount (not a named volume) so the
+      # host-side vac-security-agent can write it; vac-api only reads it.
+      - /var/lib/vac/security:/var/lib/vac/security:ro
     group_add:
       - "${DOCKER_GID:-999}"
     # Hard memory wall for the control plane (excludes vac-db). 256 MiB leaves

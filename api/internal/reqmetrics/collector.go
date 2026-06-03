@@ -80,6 +80,7 @@ func New(s Store, logPath string, flushInterval time.Duration, logger *slog.Logg
 type AccessLine struct {
 	Request struct {
 		Host     string              `json:"host"`
+		Method   string              `json:"method"`
 		ClientIP string              `json:"client_ip"`
 		RemoteIP string              `json:"remote_ip"`
 		URI      string              `json:"uri"`

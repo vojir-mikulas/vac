@@ -3,7 +3,10 @@ package security
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestFail2ban_NotDetectedWhenAbsent(t *testing.T) {
@@ -64,6 +67,64 @@ func TestFail2ban_ParsesFixture(t *testing.T) {
 	}
 	if len(j.BannedIPs) != 2 || j.BannedIPs[0] != "1.2.3.4" {
 		t.Errorf("banned IPs wrong: %v", j.BannedIPs)
+	}
+}
+
+func TestSnapshot_ParsesAndFresh(t *testing.T) {
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	content := "generated_at: " + now.Add(-30*time.Second).Format(time.RFC3339) + "\n" +
+		"@@@ fail2ban-status\n" +
+		"Status\n`- Jail list:\tsshd\n" +
+		"@@@ fail2ban-jail sshd\n" +
+		"Status for the jail: sshd\n   |- Currently banned: 3\n   |- Total banned: 9\n   `- Banned IP list: 9.9.9.9\n" +
+		"@@@ firewall ufw\n" +
+		"Status: active\n22/tcp                     ALLOW IN    Anywhere\n"
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "host.snapshot")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &Host{snapshotPath: path, now: func() time.Time { return now }}
+
+	f2b := h.Fail2ban(context.Background())
+	if !f2b.Detected || f2b.Source != "agent" || f2b.Stale {
+		t.Fatalf("fail2ban snapshot wrong: %+v", f2b)
+	}
+	if len(f2b.Jails) != 1 || f2b.Jails[0].CurrentlyBanned != 3 || f2b.Jails[0].TotalBanned != 9 {
+		t.Errorf("fail2ban jail parse wrong: %+v", f2b.Jails)
+	}
+
+	fw := h.Firewall(context.Background())
+	if !fw.Detected || fw.Backend != "ufw" || !fw.Active || fw.Stale {
+		t.Errorf("firewall snapshot wrong: %+v", fw)
+	}
+}
+
+func TestSnapshot_StaleFlagsOldGeneration(t *testing.T) {
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	content := "generated_at: " + now.Add(-10*time.Minute).Format(time.RFC3339) + "\n" +
+		"@@@ firewall ufw\nStatus: active\n"
+	dir := t.TempDir()
+	path := filepath.Join(dir, "host.snapshot")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &Host{snapshotPath: path, now: func() time.Time { return now }}
+	if fw := h.Firewall(context.Background()); !fw.Stale {
+		t.Errorf("expected stale firewall snapshot, got %+v", fw)
+	}
+}
+
+func TestSnapshot_MissingFileFallsBackToExec(t *testing.T) {
+	// snapshotPath set but file absent → fall back to exec (which reports absent).
+	h := &Host{
+		snapshotPath: filepath.Join(t.TempDir(), "absent.snapshot"),
+		now:          time.Now,
+		look:         func(string) bool { return false },
+	}
+	if h.Firewall(context.Background()).Detected {
+		t.Error("missing snapshot + no host tools should report not-detected")
 	}
 }
 

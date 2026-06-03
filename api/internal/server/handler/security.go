@@ -45,6 +45,7 @@ func SecurityTrafficHandler(t SecurityTraffic) http.HandlerFunc {
 		if t == nil {
 			WriteJSON(w, http.StatusOK, security.Snapshot{
 				TopTalkers:      []security.TopTalker{},
+				RecentRequests:  []security.RecentRequest{},
 				RecentAnomalies: []security.Anomaly{},
 			})
 			return

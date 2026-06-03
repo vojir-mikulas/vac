@@ -3,6 +3,7 @@ package security
 import (
 	"bufio"
 	"context"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -12,12 +13,22 @@ import (
 // block a dashboard request.
 const hostExecTimeout = 3 * time.Second
 
+// snapshotStale marks a host-agent snapshot as stale once it's older than this.
+// The agent (scripts/vac-security-agent.sh) refreshes every ~60s, so a gap this
+// wide means the timer stopped — surfaced as "host agent not reporting" rather
+// than a false "not detected".
+const snapshotStale = 5 * time.Minute
+
 // Fail2banState is the read-only fail2ban view. Detected=false means the tool
 // isn't present/readable on this host — the panel renders "not detected" rather
-// than an error.
+// than an error. Source records where the read came from ("agent" = host-side
+// collector snapshot, "host" = direct exec when VAC runs on the host).
 type Fail2banState struct {
-	Detected bool           `json:"detected"`
-	Jails    []Fail2banJail `json:"jails"`
+	Detected    bool           `json:"detected"`
+	Jails       []Fail2banJail `json:"jails"`
+	Stale       bool           `json:"stale"`
+	GeneratedAt *time.Time     `json:"generated_at,omitempty"`
+	Source      string         `json:"source,omitempty"`
 }
 
 // Fail2banJail is one jail's banned-IP summary.
@@ -31,16 +42,29 @@ type Fail2banJail struct {
 // FirewallState is the read-only firewall view. Backend names the tool the rules
 // came from ("ufw" | "nftables" | ""); Detected=false → "not detected".
 type FirewallState struct {
-	Detected bool     `json:"detected"`
-	Backend  string   `json:"backend"`
-	Active   bool     `json:"active"`
-	Rules    []string `json:"rules"`
+	Detected    bool       `json:"detected"`
+	Backend     string     `json:"backend"`
+	Active      bool       `json:"active"`
+	Rules       []string   `json:"rules"`
+	Stale       bool       `json:"stale"`
+	GeneratedAt *time.Time `json:"generated_at,omitempty"`
+	Source      string     `json:"source,omitempty"`
 }
 
-// Host runs capability-detected, read-only host inspections. It NEVER mutates
-// host state — only `status`/list subcommands are invoked. The runner is
-// injectable so tests can stub command output without touching the real host.
+// Host returns read-only fail2ban/firewall state. In production vac-api runs in
+// a sandboxed container that can't see host binaries (no fail2ban-client / ufw /
+// nft on PATH, no privilege), so it reads a snapshot written by a small host-side
+// collector (scripts/vac-security-agent.sh, installed as a systemd timer) into a
+// shared, read-only-mounted file. When no snapshot exists — e.g. VAC running
+// directly on the host in dev — it falls back to direct read-only exec.
+//
+// It NEVER mutates host state: only `status`/list subcommands are ever invoked,
+// and the snapshot path is read, never written.
 type Host struct {
+	// snapshotPath is the host-agent snapshot file. Empty disables the snapshot
+	// path and forces direct exec (used by tests / pure host installs).
+	snapshotPath string
+	now          func() time.Time
 	// run executes argv and returns combined stdout (and an error on non-zero
 	// exit / missing binary). Defaults to a real, env-stripped exec.
 	run func(ctx context.Context, name string, args ...string) (string, error)
@@ -48,9 +72,15 @@ type Host struct {
 	look func(name string) bool
 }
 
-// NewHost returns a Host bound to real read-only exec.
-func NewHost() *Host {
-	return &Host{run: runReadOnly, look: binaryPresent}
+// NewHost returns a Host that prefers the host-agent snapshot at snapshotPath and
+// falls back to direct read-only exec when it's absent.
+func NewHost(snapshotPath string) *Host {
+	return &Host{
+		snapshotPath: snapshotPath,
+		now:          time.Now,
+		run:          runReadOnly,
+		look:         binaryPresent,
+	}
 }
 
 // runReadOnly executes a read-only command with a bounded timeout and a minimal
@@ -69,9 +99,24 @@ func binaryPresent(name string) bool {
 	return err == nil
 }
 
-// Fail2ban returns the current jail/ban state, or Detected:false when
-// fail2ban-client is absent or unreadable. Never errors on a missing tool.
+// Fail2ban returns the current jail/ban state. It reads the host-agent snapshot
+// when present (the production path), else falls back to direct exec. Never
+// errors on a missing tool — Detected:false renders as "not detected".
 func (h *Host) Fail2ban(ctx context.Context) Fail2banState {
+	if snap, ok := h.readSnapshot(); ok {
+		st := snap.fail2ban
+		st.Source = "agent"
+		if snap.generatedAt != nil {
+			st.GeneratedAt = snap.generatedAt
+			st.Stale = h.now().Sub(*snap.generatedAt) > snapshotStale
+		}
+		return st
+	}
+	return h.fail2banExec(ctx)
+}
+
+// fail2banExec is the direct-exec read used when no snapshot is available.
+func (h *Host) fail2banExec(ctx context.Context) Fail2banState {
 	if !h.look("fail2ban-client") {
 		return Fail2banState{Detected: false}
 	}
@@ -82,7 +127,7 @@ func (h *Host) Fail2ban(ctx context.Context) Fail2banState {
 		return Fail2banState{Detected: false}
 	}
 	jailNames := parseFail2banJailList(statusOut)
-	state := Fail2banState{Detected: true}
+	state := Fail2banState{Detected: true, Source: "host"}
 	for _, name := range jailNames {
 		jailOut, err := h.run(ctx, "fail2ban-client", "status", name)
 		if err != nil {
@@ -137,18 +182,36 @@ func parseFail2banJail(name, out string) Fail2banJail {
 	return jail
 }
 
-// Firewall returns the host firewall rules, preferring ufw then nftables, or
-// Detected:false when neither tool is present/readable. Never errors on a
-// missing tool.
+// Firewall returns the host firewall rules. It reads the host-agent snapshot when
+// present (the production path), else falls back to direct exec preferring ufw
+// then nftables. Never errors on a missing tool.
 func (h *Host) Firewall(ctx context.Context) FirewallState {
+	if snap, ok := h.readSnapshot(); ok {
+		st := snap.firewall
+		st.Source = "agent"
+		if snap.generatedAt != nil {
+			st.GeneratedAt = snap.generatedAt
+			st.Stale = h.now().Sub(*snap.generatedAt) > snapshotStale
+		}
+		return st
+	}
+	return h.firewallExec(ctx)
+}
+
+// firewallExec is the direct-exec read used when no snapshot is available.
+func (h *Host) firewallExec(ctx context.Context) FirewallState {
 	if h.look("ufw") {
 		if out, err := h.run(ctx, "ufw", "status", "verbose"); err == nil {
-			return parseUFW(out)
+			st := parseUFW(out)
+			st.Source = "host"
+			return st
 		}
 	}
 	if h.look("nft") {
 		if out, err := h.run(ctx, "nft", "list", "ruleset"); err == nil {
-			return parseNFT(out)
+			st := parseNFT(out)
+			st.Source = "host"
+			return st
 		}
 	}
 	return FirewallState{Detected: false}
@@ -190,6 +253,98 @@ func parseNFT(out string) FirewallState {
 		}
 	}
 	return state
+}
+
+// hostSnapshot is the parsed host-agent snapshot file.
+type hostSnapshot struct {
+	generatedAt *time.Time
+	fail2ban    Fail2banState
+	firewall    FirewallState
+}
+
+// readSnapshot loads and parses the host-agent snapshot. ok=false when the path
+// is unset or the file is absent/unreadable (then callers fall back to exec).
+func (h *Host) readSnapshot() (hostSnapshot, bool) {
+	if h.snapshotPath == "" {
+		return hostSnapshot{}, false
+	}
+	data, err := os.ReadFile(h.snapshotPath) //nolint:gosec // operator-controlled config path
+	if err != nil {
+		return hostSnapshot{}, false
+	}
+	return parseSnapshot(string(data)), true
+}
+
+// parseSnapshot decodes the sectioned snapshot the host agent writes. The format
+// is a leading "generated_at: <RFC3339>" line followed by "@@@ <section>" markers
+// whose bodies are the verbatim command outputs, so the same parsers used for
+// direct exec apply. Sections:
+//
+//	@@@ fail2ban-status        # presence marker (fail2ban-client status output)
+//	@@@ fail2ban-jail <name>   # one per jail (fail2ban-client status <jail>)
+//	@@@ firewall ufw|nftables|none
+func parseSnapshot(content string) hostSnapshot {
+	var snap hostSnapshot
+	var header string
+	var buf []string
+	var f2bDetected bool
+	f2b := Fail2banState{}
+	fw := FirewallState{Detected: false}
+
+	flush := func() {
+		body := strings.Join(buf, "\n")
+		switch {
+		case header == "fail2ban-status":
+			f2bDetected = true
+		case strings.HasPrefix(header, "fail2ban-jail "):
+			name := strings.TrimSpace(strings.TrimPrefix(header, "fail2ban-jail "))
+			if name != "" {
+				f2b.Jails = append(f2b.Jails, parseFail2banJail(name, body))
+			}
+		case strings.HasPrefix(header, "firewall "):
+			switch strings.TrimSpace(strings.TrimPrefix(header, "firewall ")) {
+			case "ufw":
+				fw = parseUFW(body)
+			case "nftables":
+				fw = parseNFT(body)
+			}
+		}
+		buf = nil
+	}
+
+	for _, line := range strings.Split(content, "\n") {
+		if strings.HasPrefix(line, "@@@ ") {
+			flush()
+			header = strings.TrimSpace(strings.TrimPrefix(line, "@@@ "))
+			continue
+		}
+		if header == "" {
+			if ts, ok := parseGeneratedAt(line); ok {
+				snap.generatedAt = &ts
+			}
+			continue
+		}
+		buf = append(buf, line)
+	}
+	flush()
+
+	f2b.Detected = f2bDetected
+	snap.fail2ban = f2b
+	snap.firewall = fw
+	return snap
+}
+
+// parseGeneratedAt reads the "generated_at: <RFC3339>" preamble line.
+func parseGeneratedAt(line string) (time.Time, bool) {
+	v := after(line, "generated_at:")
+	if v == "" {
+		return time.Time{}, false
+	}
+	ts, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return ts, true
 }
 
 // after returns the text following label in line (trimmed), or "" if absent.

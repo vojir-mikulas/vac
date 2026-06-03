@@ -491,6 +491,21 @@ case "$cmd" in
         echo "Container shell disabled." ;;
       *) echo "usage: vac container-shell on|off" >&2; exit 1 ;;
     esac ;;
+  security-check)
+    # Opt in/out of the firewall / fail2ban posture warnings. A box with no
+    # firewall is dangerous, so both warn by default; turn one off if you
+    # deliberately don't run it and don't want the Security tab to flag it.
+    _what="${1:-}"; _state="${2:-}"
+    case "$_what" in
+      firewall) _var=VAC_SECURITY_EXPECT_FIREWALL ;;
+      fail2ban) _var=VAC_SECURITY_EXPECT_FAIL2BAN ;;
+      *) echo "usage: vac security-check firewall|fail2ban on|off" >&2; exit 1 ;;
+    esac
+    case "$_state" in
+      on|true|1)  set_env "$_var" true;  dc up -d vac-api; echo "$_what posture warnings enabled." ;;
+      off|false|0) set_env "$_var" false; dc up -d vac-api; echo "$_what posture warnings disabled." ;;
+      *) echo "usage: vac security-check firewall|fail2ban on|off" >&2; exit 1 ;;
+    esac ;;
   config)    cat "$ENVF" ;;
   version|--version|-v)
     pinned="$(grep '^VAC_VERSION=' "$ENVF" 2>/dev/null | cut -d= -f2-)"
@@ -531,6 +546,8 @@ vac — manage this VAC install ($DIR)
   vac unset-domain                 disable HTTPS dashboard and app subdomains
   vac managed-services on|off      toggle backups, databases & the add-on catalog
   vac container-shell on|off       toggle the in-dashboard container shell (privileged)
+  vac security-check firewall|fail2ban on|off
+                                   toggle the firewall/fail2ban posture warnings
   vac reset-password <username>    set a new password and revoke sessions
   vac up | down | restart [service]
   vac config                       print the .env
@@ -573,6 +590,89 @@ grant_user_access() {
 
   info "Giving ${B}${TARGET_USER}${N} ownership of ${VAC_INSTALL_DIR} (so 'vac' reads .env without sudo)…"
   chown -R "$TARGET_USER" "$VAC_INSTALL_DIR" || warn "  could not chown $VAC_INSTALL_DIR"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Host security agent (read-only fail2ban/firewall collector)
+# ─────────────────────────────────────────────────────────────────────────────
+install_security_agent() {
+  # vac-api runs sandboxed and can't read host firewall/fail2ban state directly,
+  # so a tiny host-side collector writes a read-only snapshot into a shared dir
+  # (bind-mounted into the container). Installed as a systemd timer (~60s), with
+  # a cron fallback. Canonical source: scripts/vac-security-agent.sh.
+  info "Installing the host security agent (read-only fail2ban/firewall snapshot)…"
+  mkdir -p /var/lib/vac/security /usr/local/lib/vac
+
+  # Unexpanded heredoc — the script keeps its own $VARs. Mirror of
+  # scripts/vac-security-agent.sh; keep the two in sync.
+  cat > /usr/local/lib/vac/vac-security-agent.sh <<'AGENTEOF'
+#!/bin/sh
+# vac-security-agent — host-side, read-only security collector for VAC.
+# Writes $VAC_SECURITY_DIR/host.snapshot (fail2ban + firewall state) for vac-api,
+# which is sandboxed and can't read host state directly. Strictly read-only.
+set -eu
+DIR="${VAC_SECURITY_DIR:-/var/lib/vac/security}"
+OUT="$DIR/host.snapshot"
+PATH="/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+mkdir -p "$DIR"
+TMP="$(mktemp "$DIR/.host.snapshot.XXXXXX")"
+trap 'rm -f "$TMP"' EXIT
+printf 'generated_at: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$TMP"
+if command -v fail2ban-client >/dev/null 2>&1; then
+  if status="$(fail2ban-client status 2>/dev/null)"; then
+    printf '@@@ fail2ban-status\n%s\n' "$status" >> "$TMP"
+    jails="$(printf '%s\n' "$status" | sed -n 's/.*Jail list:[[:space:]]*//p' | tr ',' ' ')"
+    for jail in $jails; do
+      [ -n "$jail" ] || continue
+      if jout="$(fail2ban-client status "$jail" 2>/dev/null)"; then
+        printf '@@@ fail2ban-jail %s\n%s\n' "$jail" "$jout" >> "$TMP"
+      fi
+    done
+  fi
+fi
+if command -v ufw >/dev/null 2>&1 && fw="$(ufw status verbose 2>/dev/null)"; then
+  printf '@@@ firewall ufw\n%s\n' "$fw" >> "$TMP"
+elif command -v nft >/dev/null 2>&1 && fw="$(nft list ruleset 2>/dev/null)"; then
+  printf '@@@ firewall nftables\n%s\n' "$fw" >> "$TMP"
+else
+  printf '@@@ firewall none\n' >> "$TMP"
+fi
+chmod 0644 "$TMP"
+mv -f "$TMP" "$OUT"
+trap - EXIT
+AGENTEOF
+  chmod 0755 /usr/local/lib/vac/vac-security-agent.sh
+
+  if command -v systemctl >/dev/null 2>&1; then
+    cat > /etc/systemd/system/vac-security-agent.service <<'UNITEOF'
+[Unit]
+Description=VAC host security collector (read-only fail2ban/firewall snapshot)
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/vac/vac-security-agent.sh
+UNITEOF
+    cat > /etc/systemd/system/vac-security-agent.timer <<'UNITEOF'
+[Unit]
+Description=Run the VAC host security collector periodically
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=10s
+[Install]
+WantedBy=timers.target
+UNITEOF
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable --now vac-security-agent.timer >/dev/null 2>&1 \
+      || warn "  could not enable the vac-security-agent timer"
+  else
+    # No systemd — fall back to cron (every minute).
+    cat > /etc/cron.d/vac-security-agent <<'CRONEOF'
+* * * * * root /usr/local/lib/vac/vac-security-agent.sh >/dev/null 2>&1
+CRONEOF
+  fi
+
+  # Populate the first snapshot immediately so the Security tab isn't empty.
+  /usr/local/lib/vac/vac-security-agent.sh >/dev/null 2>&1 || true
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -654,6 +754,7 @@ main() {
   generate_env
   start_stack
   install_cli
+  install_security_agent
   grant_user_access
   print_summary
 }

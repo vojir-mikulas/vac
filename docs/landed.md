@@ -14,6 +14,24 @@ One or two sentences on what landed and why. (commit `abcdef0`, plan/KB link)
 
 ---
 
+## 2026-06-03 — Security dashboard: host agent, posture checks, request feed
+
+Closed three gaps in the Security tab. (1) **fail2ban/firewall detection now
+works in production.** The sandboxed `vac-api` container can't see host binaries,
+so a tiny read-only host collector (`scripts/vac-security-agent.sh`, installed by
+the installer as a ~60s systemd timer with a cron fallback) writes a snapshot
+into a bind-mounted dir; `security.Host` reads it (and flags it stale when the
+timer stops), falling back to direct exec when VAC runs on the host. (2) **More
+posture checks that light up** — firewall (error if absent/inactive), fail2ban
+(warn if absent), Caddy access-log enabled, and base-domain, plus an at-a-glance
+summary banner that turns red/amber from the worst finding. Missing firewall/
+fail2ban warn by default (a box with no firewall is dangerous) but are
+opt-out-able via `vac security-check firewall|fail2ban off`
+(`VAC_SECURITY_EXPECT_*`). (3) **Traffic panel now shows requests** — a live
+recent-requests feed (status/method/host/path/IP) fed by the existing access-log
+tail, so the panel is populated even on a quiet box. (plan
+`docs/plans/upcoming/15-security-dashboard.md`)
+
 ## 2026-06-03 — Deploy queue: concurrency, cancellation, live panel
 
 Deploys now run through an operator-tunable pool instead of a single hard-coded

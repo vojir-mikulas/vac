@@ -462,12 +462,23 @@ export interface TrafficAnomaly {
   detail: string
 }
 
+export interface RecentRequest {
+  at: string
+  ip: string
+  host: string
+  method: string
+  path: string
+  status: number
+  user_agent: string
+}
+
 export interface TrafficSnapshot {
   window_seconds: number
   tracked_ips: number
   total_requests: number
   total_errors: number
   top_talkers: TopTalker[]
+  recent_requests: RecentRequest[]
   recent_anomalies: TrafficAnomaly[]
 }
 
@@ -481,6 +492,11 @@ export interface Fail2banJail {
 export interface Fail2banState {
   detected: boolean
   jails: Fail2banJail[] | null
+  stale: boolean
+  // Where the read came from: "agent" (host collector snapshot) or "host"
+  // (direct exec). Absent when neither path produced data.
+  source?: string
+  generated_at?: string
 }
 
 export interface FirewallState {
@@ -488,4 +504,7 @@ export interface FirewallState {
   backend: string
   active: boolean
   rules: string[] | null
+  stale: boolean
+  source?: string
+  generated_at?: string
 }

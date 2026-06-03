@@ -120,6 +120,16 @@ type Config struct {
 	SecurityWindow       time.Duration `yaml:"security_window"`
 	SecurityCooldown     time.Duration `yaml:"security_cooldown"`
 
+	// SecurityDir is the directory the host-side security agent
+	// (scripts/vac-security-agent.sh) writes its fail2ban/firewall snapshot into,
+	// bind-mounted read-only into the sandboxed control plane. The posture
+	// checklist warns when no firewall/fail2ban is found unless the operator opts
+	// out via SecurityExpectFirewall / SecurityExpectFail2ban (a box with no
+	// firewall is dangerous, so the warning is on by default).
+	SecurityDir            string `yaml:"security_dir"`
+	SecurityExpectFirewall bool   `yaml:"security_expect_firewall"`
+	SecurityExpectFail2ban bool   `yaml:"security_expect_fail2ban"`
+
 	// Build metadata injected by main() from ldflags vars; surfaced by the
 	// instance-info endpoint. Not read from env/yaml.
 	Version   string `yaml:"-"`
@@ -173,6 +183,10 @@ func Default() Config {
 		SecurityErrThreshold: 100, // 4xx/5xx from one IP within the window
 		SecurityWindow:       time.Minute,
 		SecurityCooldown:     10 * time.Minute,
+
+		SecurityDir:            "/var/lib/vac/security",
+		SecurityExpectFirewall: true,
+		SecurityExpectFail2ban: true,
 	}
 }
 
@@ -402,6 +416,15 @@ func applyEnv(cfg *Config) {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			cfg.SecurityCooldown = d
 		}
+	}
+	if v := os.Getenv("VAC_SECURITY_DIR"); v != "" {
+		cfg.SecurityDir = v
+	}
+	if v := os.Getenv("VAC_SECURITY_EXPECT_FIREWALL"); v != "" {
+		cfg.SecurityExpectFirewall = v == "true" || v == "1"
+	}
+	if v := os.Getenv("VAC_SECURITY_EXPECT_FAIL2BAN"); v != "" {
+		cfg.SecurityExpectFail2ban = v == "true" || v == "1"
 	}
 }
 

@@ -251,6 +251,15 @@ if [ "$PURGE" -eq 1 ]; then
     info "Removing $VAC_CLI_PATH…"
     rm -f "$VAC_CLI_PATH" || warn "  rm $VAC_CLI_PATH failed"
   fi
+  # Host security agent (systemd timer + script + snapshot dir / cron fallback).
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl disable --now vac-security-agent.timer >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/vac-security-agent.timer \
+          /etc/systemd/system/vac-security-agent.service
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+  rm -f /etc/cron.d/vac-security-agent
+  rm -rf /usr/local/lib/vac /var/lib/vac/security
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────--

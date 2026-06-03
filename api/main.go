@@ -229,13 +229,19 @@ func main() {
 		}, notifier, slog.Default())
 		secTraffic = secMonitor
 	}
-	secPosture := security.NewPosture(st, security.PostureConfig{
+	// fail2ban/firewall reader. In the sandboxed container it reads the host
+	// agent's snapshot (scripts/vac-security-agent.sh → SecurityDir); when VAC
+	// runs directly on the host it falls back to read-only exec.
+	secHost := security.NewHost(filepath.Join(cfg.SecurityDir, "host.snapshot"))
+	secPosture := security.NewPosture(st, secHost, security.PostureConfig{
 		Exposure:         cfg.Exposure,
 		MasterKeyPresent: len(cfg.MasterKey) > 0,
 		MetricsTokenSet:  cfg.MetricsToken != "",
 		BaseDomainSet:    cfg.BaseDomain != "",
+		AccessLogEnabled: cfg.CaddyAccessLog != "",
+		ExpectFirewall:   cfg.SecurityExpectFirewall,
+		ExpectFail2ban:   cfg.SecurityExpectFail2ban,
 	})
-	secHost := security.NewHost()
 
 	// Request-rate metrics: tail Caddy's JSON access log and aggregate per
 	// service into the rolling window. When the security monitor is on, it
