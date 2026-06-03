@@ -7,6 +7,7 @@ import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { StatusPill } from '@/components/common/status-pill'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { OverviewPanel } from '@/features/app-detail/overview-panel'
 import { ServicesTable } from '@/features/app-detail/services-table'
 import { TrafficChart } from '@/features/app-detail/traffic-chart'
 import { useAppStatsContext } from '@/features/app-detail/stats-context'
@@ -69,6 +70,8 @@ export function OverviewTab({ appId }: { appId: string }) {
         </div>
 
         <div className="flex flex-col gap-6 lg:w-80 lg:shrink-0">
+          <OverviewPanel appId={appId} />
+
           <div>
             <SectionHeader>Domains</SectionHeader>
             <Card className="gap-0 p-0">
