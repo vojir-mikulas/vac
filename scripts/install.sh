@@ -27,6 +27,7 @@ set -eu
 # Captured before defaults are applied (defaults would mask the distinction).
 [ -n "${VAC_DOMAIN+x}" ]           && DOMAIN_PRESET=1  || DOMAIN_PRESET=0
 [ -n "${VAC_MANAGED_SERVICES+x}" ] && MANAGED_PRESET=1 || MANAGED_PRESET=0
+[ -n "${VAC_ENABLE_SHELL+x}" ]     && SHELL_PRESET=1   || SHELL_PRESET=0
 [ -n "${VAC_GRANT_ACCESS+x}" ]     && GRANT_PRESET=1   || GRANT_PRESET=0
 
 VAC_VERSION="${VAC_VERSION:-latest}"
@@ -230,7 +231,8 @@ run_wizard() {
   if [ "$ASSUME_YES" != 1 ] && [ -r /dev/tty ]; then INTERACTIVE=1; fi
   if [ "$INTERACTIVE" != 1 ]; then
     VAC_MANAGED_SERVICES="$(normalize_bool "${VAC_MANAGED_SERVICES:-false}")"
-    info "Running non-interactively — using defaults (domain: ${VAC_DOMAIN:-none}, managed services: ${VAC_MANAGED_SERVICES})."
+    VAC_ENABLE_SHELL="$(normalize_bool "${VAC_ENABLE_SHELL:-false}")"
+    info "Running non-interactively — using defaults (domain: ${VAC_DOMAIN:-none}, managed services: ${VAC_MANAGED_SERVICES}, container shell: ${VAC_ENABLE_SHELL})."
     return 0
   fi
 
@@ -238,6 +240,7 @@ run_wizard() {
   wizard_system_summary
   wizard_ask_domain
   wizard_ask_managed_services
+  wizard_ask_container_shell
   wizard_ask_grant
   wizard_confirm
 }
@@ -291,6 +294,24 @@ wizard_ask_managed_services() {
   fi
 }
 
+wizard_ask_container_shell() {
+  if [ "$SHELL_PRESET" = 1 ]; then
+    VAC_ENABLE_SHELL="$(normalize_bool "$VAC_ENABLE_SHELL")"
+    return 0
+  fi
+  say ""
+  say "${B}${C}Container shell${N}  (open a terminal into an app's container from the dashboard)"
+  say "  Off by default. When on, a ${B}Shell${N} action on each running service opens a"
+  say "  ${B}root-capable${N} shell inside that container — handy for debugging, but a powerful"
+  say "  one: it's confirm-gated and every session is recorded in the audit log."
+  say "  You can turn it on or off any time with: ${B}vac container-shell on|off${N}"
+  if confirm 'Enable the container shell now?' n; then
+    VAC_ENABLE_SHELL=true
+  else
+    VAC_ENABLE_SHELL=false
+  fi
+}
+
 wizard_ask_grant() {
   # Only meaningful when invoked via sudo from a real user account.
   [ "$GRANT_PRESET" = 1 ] && return 0
@@ -315,6 +336,7 @@ wizard_confirm() {
   say "  install dir:       ${VAC_INSTALL_DIR}"
   say "  domain:            ${VAC_DOMAIN:-none (reach by IP)}"
   say "  managed services:  ${VAC_MANAGED_SERVICES}"
+  say "  container shell:    ${VAC_ENABLE_SHELL}"
   say "  sudo-free access:  ${_grant}"
   say ""
   confirm 'Proceed?' y || die "Aborted — nothing was changed."
