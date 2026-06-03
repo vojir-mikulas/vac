@@ -211,6 +211,8 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/info", handler.InstanceInfo(cfg))
 				r.Get("/base-domain", handler.GetBaseDomain(s, cfg))
 				r.Put("/base-domain", handler.PutBaseDomain(s, cfg, baseDom, routeRec))
+				r.Get("/deploy-concurrency", handler.GetDeployConcurrency(s))
+				r.Put("/deploy-concurrency", handler.PutDeployConcurrency(s))
 				r.Get("/dns-check", handler.DNSCheck(hostIP, dnsResolver))
 				// First-run onboarding checklist (plan 04).
 				r.Get("/onboarding", handler.GetOnboarding(s))
@@ -256,6 +258,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Get("/{id}/deployments/{did}", handler.GetDeployment(s))
 					r.Get("/{id}/deployments/{did}/logs", handler.GetDeploymentLogs(s))
 					r.Post("/{id}/deployments/{did}/rollback", handler.RollbackDeployment(s, worker))
+					r.Post("/{id}/deployments/{did}/cancel", handler.CancelDeployment(s, worker))
 				}
 
 				// Push-to-deploy config (plan 01): trigger rules + the inbound
@@ -344,10 +347,17 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				}
 			}
 
+			// Instance-wide deploy queue (plan 20): the current snapshot of
+			// running + queued deploys across all apps. /active is the REST
+			// snapshot / no-WS fallback; /stream pushes a fresh snapshot on every
+			// deploy state change.
+			r.Get("/deployments/active", handler.ListActiveDeployments(s))
+
 			// Real-time WebSocket streams (Phase 4). Server-push only; gated by
 			// RequireSession above + an Origin check in Accept.
 			if hub != nil {
 				r.Get("/deployments/{did}/logs", handler.BuildLogsWS(s, hub, wsOpts))
+				r.Get("/deployments/stream", handler.DeploymentsWS(s, hub, wsOpts))
 			}
 
 			// Host vitals: JSON snapshot, or a live stream on WS upgrade.

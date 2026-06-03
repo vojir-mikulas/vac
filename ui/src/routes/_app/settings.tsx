@@ -1,5 +1,14 @@
 import { Link, Outlet, createFileRoute } from '@tanstack/react-router'
-import { Bell, Globe, KeyRound, Server, Settings2, ShieldAlert, UserCog } from 'lucide-react'
+import {
+  Bell,
+  Globe,
+  KeyRound,
+  Rocket,
+  Server,
+  Settings2,
+  ShieldAlert,
+  UserCog,
+} from 'lucide-react'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 
@@ -11,6 +20,7 @@ const TABS = [
   { to: 'appearance', label: 'Appearance', icon: Settings2 },
   { to: 'account', label: 'Account & security', icon: UserCog },
   { to: 'notifications', label: 'Notifications', icon: Bell },
+  { to: 'deployments', label: 'Deployments', icon: Rocket },
   { to: 'api-tokens', label: 'API tokens', icon: KeyRound },
   { to: 'domains', label: 'Domains', icon: Globe },
   { to: 'instance', label: 'Instance', icon: Server },

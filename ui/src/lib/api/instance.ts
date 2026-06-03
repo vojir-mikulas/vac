@@ -33,11 +33,20 @@ export interface OnboardingState {
   dismissed: boolean
 }
 
+export interface DeployConcurrency {
+  max_concurrent_deploys: number
+  min: number
+  max: number
+}
+
 export const instanceApi = {
   info: () => api.get<InstanceInfo>('instance/info'),
   getBaseDomain: () => api.get<BaseDomainInfo>('instance/base-domain'),
   setBaseDomain: (baseDomain: string) =>
     api.put<BaseDomainInfo>('instance/base-domain', { base_domain: baseDomain }),
+  getDeployConcurrency: () => api.get<DeployConcurrency>('instance/deploy-concurrency'),
+  setDeployConcurrency: (n: number) =>
+    api.put<DeployConcurrency>('instance/deploy-concurrency', { max_concurrent_deploys: n }),
   dnsCheck: (host: string) =>
     api.get<DnsCheckResult>(`instance/dns-check?host=${encodeURIComponent(host)}`),
   restartControlPlane: () => api.post<{ status: string }>('instance/restart-control-plane'),
@@ -68,6 +77,21 @@ export function useSetBaseDomain() {
   return useMutation({
     mutationFn: (baseDomain: string) => instanceApi.setBaseDomain(baseDomain),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.instance.baseDomain }),
+  })
+}
+
+export function useDeployConcurrency() {
+  return useQuery({
+    queryKey: queryKeys.instance.deployConcurrency,
+    queryFn: () => instanceApi.getDeployConcurrency(),
+  })
+}
+
+export function useSetDeployConcurrency() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (n: number) => instanceApi.setDeployConcurrency(n),
+    onSuccess: (v) => qc.setQueryData(queryKeys.instance.deployConcurrency, v),
   })
 }
 

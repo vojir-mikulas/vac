@@ -24,6 +24,11 @@ export function isDeployFailed(status: string): boolean {
   return status === 'error' || status === 'failed' || status === 'interrupted'
 }
 
+// User-initiated cancellation — distinct from `interrupted` (process restart).
+export function isDeployCanceled(status: string): boolean {
+  return status === 'canceled'
+}
+
 export function isDeployTerminal(status: string): boolean {
-  return isDeploySucceeded(status) || isDeployFailed(status)
+  return isDeploySucceeded(status) || isDeployFailed(status) || isDeployCanceled(status)
 }

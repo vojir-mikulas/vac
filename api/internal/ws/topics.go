@@ -29,11 +29,18 @@ func ParseStatsTopic(topic string) (appID string, ok bool) {
 // HostTopic carries host-level CPU/RAM/disk + aggregate request-rate samples.
 const HostTopic = "host"
 
+// DeploymentsTopic carries instance-wide deploy-queue change notifications (plan
+// 20). Producers publish a payload-less "deployments" frame whenever a
+// deployment is created, transitions, or settles; the queue-panel WS handler
+// re-reads the active list and pushes a fresh snapshot on each one.
+const DeploymentsTopic = "deployments"
+
 // Frame type tokens.
 const (
-	TypeBuild    = "build"
-	TypeBuildEnd = "build-end"
-	TypeLog      = "log"
-	TypeStats    = "stats"
-	TypeHost     = "host"
+	TypeBuild       = "build"
+	TypeBuildEnd    = "build-end"
+	TypeLog         = "log"
+	TypeStats       = "stats"
+	TypeHost        = "host"
+	TypeDeployments = "deployments"
 )

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -191,6 +192,70 @@ func PutBaseDomain(s *store.Store, cfg config.Config, pm BaseDomainSetter, rec R
 			"base_domain": host,
 			"effective":   effective,
 			"source":      baseDomainSource(host, cfg),
+		})
+	}
+}
+
+// deployConcurrencyDTO reports the configured deploy-pool size plus the allowed
+// range so the settings form can bound its input and explain the cap.
+type deployConcurrencyDTO struct {
+	MaxConcurrentDeploys int `json:"max_concurrent_deploys"`
+	Min                  int `json:"min"`
+	Max                  int `json:"max"`
+}
+
+// GetDeployConcurrency returns the configured maximum number of concurrent
+// deploys (across different apps) and the supported range.
+//
+// GET /api/instance/deploy-concurrency
+func GetDeployConcurrency(s *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		settings, err := s.GetInstanceSettings(r.Context())
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not load instance settings")
+			return
+		}
+		n := settings.MaxConcurrentDeploys
+		if n < 1 {
+			n = 1
+		}
+		WriteJSON(w, http.StatusOK, deployConcurrencyDTO{
+			MaxConcurrentDeploys: n,
+			Min:                  1,
+			Max:                  deploy.MaxConcurrency,
+		})
+	}
+}
+
+type deployConcurrencyRequest struct {
+	MaxConcurrentDeploys int `json:"max_concurrent_deploys"`
+}
+
+// PutDeployConcurrency validates (1..deploy.MaxConcurrency) and persists the
+// deploy-pool size. It takes effect on the next vac-api restart — the worker
+// pool is sized at boot.
+//
+// PUT /api/instance/deploy-concurrency
+func PutDeployConcurrency(s *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req deployConcurrencyRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			WriteError(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if req.MaxConcurrentDeploys < 1 || req.MaxConcurrentDeploys > deploy.MaxConcurrency {
+			WriteError(w, http.StatusBadRequest, "max_concurrent_deploys must be between 1 and "+strconv.Itoa(deploy.MaxConcurrency))
+			return
+		}
+		audit.Describe(r.Context(), "set deploy concurrency to "+strconv.Itoa(req.MaxConcurrentDeploys))
+		if err := s.SetMaxConcurrentDeploys(r.Context(), req.MaxConcurrentDeploys); err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not save deploy concurrency")
+			return
+		}
+		WriteJSON(w, http.StatusOK, deployConcurrencyDTO{
+			MaxConcurrentDeploys: req.MaxConcurrentDeploys,
+			Min:                  1,
+			Max:                  deploy.MaxConcurrency,
 		})
 	}
 }

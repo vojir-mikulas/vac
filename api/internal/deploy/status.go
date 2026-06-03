@@ -13,13 +13,18 @@ const (
 	DeploymentStatusRunning        = "running"
 	DeploymentStatusError          = "error"
 	DeploymentStatusInterrupted    = "interrupted"
+	// DeploymentStatusCanceled is a user-initiated cancellation (plan 20).
+	// Distinct from `interrupted` (which means vac-api restarted mid-deploy) so
+	// the timeline reads honestly. Terminal — excluded from the per-app
+	// uniqueness guard, so cancelling frees the app to deploy again immediately.
+	DeploymentStatusCanceled = "canceled"
 )
 
 // IsTerminalDeploymentStatus returns true once a deployment has settled.
 // MarkInProgressDeploymentsInterrupted only sweeps non-terminal rows.
 func IsTerminalDeploymentStatus(s string) bool {
 	switch s {
-	case DeploymentStatusRunning, DeploymentStatusError, DeploymentStatusInterrupted:
+	case DeploymentStatusRunning, DeploymentStatusError, DeploymentStatusInterrupted, DeploymentStatusCanceled:
 		return true
 	}
 	return false

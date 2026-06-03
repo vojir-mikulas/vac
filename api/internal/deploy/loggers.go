@@ -163,3 +163,18 @@ func PublishBuildEnd(pub Publisher, deploymentID string) {
 	}
 	pub.Publish(ws.BuildTopic(deploymentID), frame)
 }
+
+// PublishDeploymentsChanged signals the instance-wide deploy-queue topic that
+// something changed (a deployment was created, transitioned, or settled). It
+// carries no payload — the queue-panel WS handler re-reads the active list on
+// each frame and pushes a fresh snapshot. Cheap and nil-safe.
+func PublishDeploymentsChanged(pub Publisher) {
+	if pub == nil {
+		return
+	}
+	frame, err := ws.Control(ws.TypeDeployments, time.Now())
+	if err != nil {
+		return
+	}
+	pub.Publish(ws.DeploymentsTopic, frame)
+}

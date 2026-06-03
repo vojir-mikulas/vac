@@ -25,6 +25,7 @@ import { Route as AppAppsIndexRouteImport } from './routes/_app/apps/index'
 import { Route as AppSettingsNotificationsRouteImport } from './routes/_app/settings/notifications'
 import { Route as AppSettingsInstanceRouteImport } from './routes/_app/settings/instance'
 import { Route as AppSettingsDomainsRouteImport } from './routes/_app/settings/domains'
+import { Route as AppSettingsDeploymentsRouteImport } from './routes/_app/settings/deployments'
 import { Route as AppSettingsDangerRouteImport } from './routes/_app/settings/danger'
 import { Route as AppSettingsAppearanceRouteImport } from './routes/_app/settings/appearance'
 import { Route as AppSettingsApiTokensRouteImport } from './routes/_app/settings/api-tokens'
@@ -121,6 +122,11 @@ const AppSettingsDomainsRoute = AppSettingsDomainsRouteImport.update({
   path: '/domains',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsDeploymentsRoute = AppSettingsDeploymentsRouteImport.update({
+  id: '/deployments',
+  path: '/deployments',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsDangerRoute = AppSettingsDangerRouteImport.update({
   id: '/danger',
   path: '/danger',
@@ -214,6 +220,7 @@ export interface FileRoutesByFullPath {
   '/settings/api-tokens': typeof AppSettingsApiTokensRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/danger': typeof AppSettingsDangerRoute
+  '/settings/deployments': typeof AppSettingsDeploymentsRoute
   '/settings/domains': typeof AppSettingsDomainsRoute
   '/settings/instance': typeof AppSettingsInstanceRoute
   '/settings/notifications': typeof AppSettingsNotificationsRoute
@@ -244,6 +251,7 @@ export interface FileRoutesByTo {
   '/settings/api-tokens': typeof AppSettingsApiTokensRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/danger': typeof AppSettingsDangerRoute
+  '/settings/deployments': typeof AppSettingsDeploymentsRoute
   '/settings/domains': typeof AppSettingsDomainsRoute
   '/settings/instance': typeof AppSettingsInstanceRoute
   '/settings/notifications': typeof AppSettingsNotificationsRoute
@@ -278,6 +286,7 @@ export interface FileRoutesById {
   '/_app/settings/api-tokens': typeof AppSettingsApiTokensRoute
   '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
   '/_app/settings/danger': typeof AppSettingsDangerRoute
+  '/_app/settings/deployments': typeof AppSettingsDeploymentsRoute
   '/_app/settings/domains': typeof AppSettingsDomainsRoute
   '/_app/settings/instance': typeof AppSettingsInstanceRoute
   '/_app/settings/notifications': typeof AppSettingsNotificationsRoute
@@ -312,6 +321,7 @@ export interface FileRouteTypes {
     | '/settings/api-tokens'
     | '/settings/appearance'
     | '/settings/danger'
+    | '/settings/deployments'
     | '/settings/domains'
     | '/settings/instance'
     | '/settings/notifications'
@@ -342,6 +352,7 @@ export interface FileRouteTypes {
     | '/settings/api-tokens'
     | '/settings/appearance'
     | '/settings/danger'
+    | '/settings/deployments'
     | '/settings/domains'
     | '/settings/instance'
     | '/settings/notifications'
@@ -375,6 +386,7 @@ export interface FileRouteTypes {
     | '/_app/settings/api-tokens'
     | '/_app/settings/appearance'
     | '/_app/settings/danger'
+    | '/_app/settings/deployments'
     | '/_app/settings/domains'
     | '/_app/settings/instance'
     | '/_app/settings/notifications'
@@ -512,6 +524,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsDomainsRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/deployments': {
+      id: '/_app/settings/deployments'
+      path: '/deployments'
+      fullPath: '/settings/deployments'
+      preLoaderRoute: typeof AppSettingsDeploymentsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/settings/danger': {
       id: '/_app/settings/danger'
       path: '/danger'
@@ -625,6 +644,7 @@ interface AppSettingsRouteChildren {
   AppSettingsApiTokensRoute: typeof AppSettingsApiTokensRoute
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsDangerRoute: typeof AppSettingsDangerRoute
+  AppSettingsDeploymentsRoute: typeof AppSettingsDeploymentsRoute
   AppSettingsDomainsRoute: typeof AppSettingsDomainsRoute
   AppSettingsInstanceRoute: typeof AppSettingsInstanceRoute
   AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
@@ -636,6 +656,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsApiTokensRoute: AppSettingsApiTokensRoute,
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
   AppSettingsDangerRoute: AppSettingsDangerRoute,
+  AppSettingsDeploymentsRoute: AppSettingsDeploymentsRoute,
   AppSettingsDomainsRoute: AppSettingsDomainsRoute,
   AppSettingsInstanceRoute: AppSettingsInstanceRoute,
   AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,

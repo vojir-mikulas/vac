@@ -137,6 +137,14 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 	if err != nil {
 		return fmt.Errorf("pipeline: load deployment: %w", err)
 	}
+	// A deploy can be cancelled while still queued: the handler settles the row
+	// terminal (e.g. `canceled`) before any worker picks it up. Honor that —
+	// never run an already-settled deployment.
+	if IsTerminalDeploymentStatus(d.Status) {
+		p.Logger.Info("pipeline: skipping already-settled deployment",
+			"deployment_id", deploymentID, "status", d.Status)
+		return nil
+	}
 	app, err := p.Store.GetApp(ctx, d.AppID)
 	if err != nil {
 		return fmt.Errorf("pipeline: load app: %w", err)
@@ -397,6 +405,9 @@ func (p *Pipeline) setStatus(ctx context.Context, deploymentID, status string) e
 	if err := p.Store.UpdateDeploymentStatus(ctx, deploymentID, status, nil); err != nil {
 		return fmt.Errorf("pipeline: set status %s: %w", status, err)
 	}
+	// Nudge the live deploy-queue panel on every step transition so it reflects
+	// cloning → building → … without waiting for the deploy to settle.
+	PublishDeploymentsChanged(p.Hub)
 	return nil
 }
 

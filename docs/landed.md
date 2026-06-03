@@ -14,6 +14,22 @@ One or two sentences on what landed and why. (commit `abcdef0`, plan/KB link)
 
 ---
 
+## 2026-06-03 — Deploy queue: concurrency, cancellation, live panel
+
+Deploys now run through an operator-tunable pool instead of a single hard-coded
+worker. A new `max_concurrent_deploys` instance setting (default 1, capped at 8;
+Settings → Deployments) sizes the worker pool at boot, so a burst of pushes
+across many apps no longer all rebuild at once on a small VPS. A
+`one_active_deploy_per_app` partial-unique index makes coalescing atomic across
+**every** trigger path (manual/rollback/webhook close the prior check-then-insert
+race) and guarantees two pool workers never race one app's git workdir + compose
+stack. Deploys are cancellable (queued or in-flight) via a new `canceled`
+terminal status and a per-deploy context registry in the worker — cancelling
+aborts the build/up subprocess but never tears down the running stack. A new
+deploy-queue side panel (topbar, with a live count badge) shows running + queued
+deploys across all apps over a `deployments` WS topic, each row cancellable.
+(plan `docs/plans/upcoming/20-deploy-queue-concurrency.md`; migration `00062`)
+
 ## 2026-06-03 — P4 domains (P4.1/P4.2)
 
 The base-domain card no longer reads as empty when the domain comes from

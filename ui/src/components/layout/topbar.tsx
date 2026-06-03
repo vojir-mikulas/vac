@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { SidebarContent } from '@/components/layout/sidebar'
+import { DeployQueueButton } from '@/features/deployments/queue-panel'
 import { ThemeToggle } from '@/components/theme/theme-toggle'
 import { useApps } from '@/lib/api/apps'
 import { useLogout, useMe } from '@/lib/api/auth'
@@ -124,6 +125,7 @@ export function Topbar({ onOpenSearch }: { onOpenSearch: () => void }) {
 
       <span className="h-5 w-px bg-border" aria-hidden="true" />
 
+      <DeployQueueButton />
       <ThemeToggle />
       <UserMenu />
     </header>

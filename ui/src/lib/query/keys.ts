@@ -16,9 +16,14 @@ export const queryKeys = {
   notifications: ['notifications'] as const,
   activity: ['activity'] as const,
   domains: ['domains'] as const,
+  // Instance-wide deploy queue (running + queued across all apps).
+  deployments: {
+    active: ['deployments', 'active'] as const,
+  },
   instance: {
     info: ['instance', 'info'] as const,
     baseDomain: ['instance', 'base-domain'] as const,
+    deployConcurrency: ['instance', 'deploy-concurrency'] as const,
     onboarding: ['instance', 'onboarding'] as const,
   },
   apps: {

@@ -50,10 +50,21 @@ func scanDeployment(row pgx.Row, d *Deployment) error {
 	)
 }
 
+// ErrActiveDeploymentExists is returned by the create-deployment writes when the
+// app already has a non-terminal (active or queued) deployment. The
+// one_active_deploy_per_app partial unique index (migration 00062) enforces this
+// atomically, so it also closes the check-then-insert race the webhook handler's
+// HasActiveDeployment pre-check couldn't. Handlers map it to a coalesced 202
+// (webhook) or 409 (manual / rollback).
+var ErrActiveDeploymentExists = errors.New("store: app already has an active deployment")
+
 // CreateDeployment is the enqueue write — handler-side. The worker picks up
 // the row, runs the pipeline, and writes the rest of the lifecycle fields.
 // triggeredBy records why the deploy happened (see Triggered* constants);
 // rolledBackFrom is set only for rollbacks (plan 02), nil otherwise.
+//
+// Returns ErrActiveDeploymentExists if the app already has a non-terminal
+// deployment (the per-app uniqueness guard).
 func (s *Store) CreateDeployment(ctx context.Context, appID, triggeredBy string, rolledBackFrom *string) (Deployment, error) {
 	if triggeredBy == "" {
 		triggeredBy = TriggeredManual
@@ -65,6 +76,9 @@ func (s *Store) CreateDeployment(ctx context.Context, appID, triggeredBy string,
 		RETURNING `+deploymentColumns,
 		appID, triggeredBy, rolledBackFrom,
 	), &d)
+	if isUniqueViolation(err) {
+		return Deployment{}, ErrActiveDeploymentExists
+	}
 	return d, err
 }
 
@@ -101,6 +115,9 @@ func (s *Store) CreateRollbackDeployment(ctx context.Context, appID, sourceID st
 		RETURNING `+deploymentColumns,
 		appID, TriggeredRollback, sourceID, src.CommitSHA, src.CommitMessage,
 	), &d)
+	if isUniqueViolation(err) {
+		return Deployment{}, ErrActiveDeploymentExists
+	}
 	return d, err
 }
 
@@ -131,6 +148,46 @@ func (s *Store) ListDeploymentsForApp(ctx context.Context, appID string) ([]Depl
 			return nil, err
 		}
 		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// ActiveDeployment is a non-terminal deployment joined to its app's display
+// name and slug — the row shape the instance-wide deploy-queue panel renders.
+type ActiveDeployment struct {
+	Deployment
+	AppName string
+	AppSlug string
+}
+
+// ListActiveDeployments returns every non-terminal deployment across all apps in
+// FIFO order (oldest first), so the queue panel can show what's running and
+// what's waiting. The status set mirrors deploy's non-terminal enum.
+func (s *Store) ListActiveDeployments(ctx context.Context) ([]ActiveDeployment, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT d.id, d.app_id, d.status, d.triggered_at, d.triggered_by,
+		       d.rolled_back_from, d.started_at, d.finished_at, d.compose_hash,
+		       d.commit_sha, d.commit_message, d.error, a.name, a.slug
+		FROM deployments d
+		JOIN apps a ON a.id = d.app_id
+		WHERE d.status IN ('queued','cloning','building','deploying','health-checking')
+		ORDER BY d.triggered_at ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ActiveDeployment, 0)
+	for rows.Next() {
+		var ad ActiveDeployment
+		if err := rows.Scan(
+			&ad.ID, &ad.AppID, &ad.Status, &ad.TriggeredAt, &ad.TriggeredBy,
+			&ad.RolledBackFrom, &ad.StartedAt, &ad.FinishedAt, &ad.ComposeHash,
+			&ad.CommitSHA, &ad.CommitMessage, &ad.Error, &ad.AppName, &ad.AppSlug,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, ad)
 	}
 	return out, rows.Err()
 }

@@ -192,7 +192,13 @@ func main() {
 	pipeline.Router = proxyMgr
 	pipeline.Hub = hub
 	pipeline.Notifier = notifier
-	worker := deploy.NewPipelineWorker(pipeline, 0)
+	// Deploy-pool size is an instance setting (plan 20), applied at boot. Default
+	// 1 (strictly serial); the worker clamps to 1..deploy.MaxConcurrency.
+	deployConcurrency := 1
+	if settings, err := st.GetInstanceSettings(ctx); err == nil && settings.MaxConcurrentDeploys > 0 {
+		deployConcurrency = settings.MaxConcurrentDeploys
+	}
+	worker := deploy.NewPipelineWorker(pipeline, 0, deployConcurrency)
 	worker.Start(ctx)
 
 	// Add-on catalog (Track D / D3). The embedded registry doubles as the deploy

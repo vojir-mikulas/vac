@@ -197,6 +197,14 @@ func Webhook(s *store.Store, box *crypto.Box, worker DeploymentEnqueuer) http.Ha
 		}
 		d, err := s.CreateDeployment(r.Context(), appID, triggeredBy, nil)
 		if err != nil {
+			// Lost the check-then-insert race against a concurrent trigger — the
+			// per-app uniqueness guard caught it. Same outcome as the pre-check
+			// above: coalesce rather than stack a second deploy.
+			if errors.Is(err, store.ErrActiveDeploymentExists) {
+				auditWebhookEntry(s, r, appID, "coalesced "+kind+" "+name+" for "+app.Slug+" (deploy already in progress)", http.StatusAccepted)
+				WriteJSON(w, http.StatusAccepted, map[string]string{"status": "coalesced"})
+				return
+			}
 			WriteError(w, http.StatusInternalServerError, "could not create deployment")
 			return
 		}

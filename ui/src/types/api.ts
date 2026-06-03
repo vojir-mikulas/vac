@@ -123,6 +123,7 @@ export type DeploymentStatus =
   | 'running'
   | 'error'
   | 'interrupted'
+  | 'canceled'
   | string
 
 export type DeploymentTrigger = 'manual' | 'push' | 'tag' | 'rollback' | 'system' | string
@@ -394,7 +395,17 @@ export interface AddonInstallResult {
 }
 
 // ── WebSocket frames ───────────────────────────────────────────────────────
-export type WsFrameType = 'build' | 'build-end' | 'log' | 'stats' | 'host'
+export type WsFrameType = 'build' | 'build-end' | 'log' | 'stats' | 'host' | 'deployments'
+
+/**
+ * ActiveDeployment is one row in the instance-wide deploy-queue snapshot
+ * (GET /deployments/active and the /deployments/stream WS): a Deployment plus
+ * its app's display name and slug.
+ */
+export interface ActiveDeployment extends Deployment {
+  app_name: string
+  app_slug: string
+}
 
 export interface WsFrame<T = unknown> {
   type: WsFrameType

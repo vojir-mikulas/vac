@@ -1,4 +1,4 @@
-<!-- generated from commit 0f94e36 on 2026-05-31 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,compose,dockercli,proxy,caddy}/ changed, treat as possibly stale -->
+<!-- generated from commit 0f94e36 on 2026-05-31, deploy queue/concurrency/cancellation hand-patched on 2026-06-03 (plan 20) — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,compose,dockercli,proxy,caddy}/ changed, treat as possibly stale -->
 
 # Deployment flow — git → build → run → route
 
@@ -10,11 +10,27 @@ deployment shows at each step is in **bold**.
 
 - `POST /api/apps/{id}/deployments` → handler `TriggerDeployment` in
   `server/handler/deployments.go`. It validates the app, inserts a deployment row
-  (**queued**), and calls `deploy.Worker.Enqueue(deploymentID)`. Returns `202` immediately, or
-  `503` if the queue is full (`deploy.ErrQueueFull`).
-- `deploy/worker.go` — a single goroutine drains a bounded channel (default cap 32) and runs
-  the pipeline one deploy at a time. On boot it sweeps any non-terminal deployments from a
-  previous process to **interrupted** (`store.MarkInProgressDeploymentsInterrupted`).
+  (**queued**), and calls `deploy.Worker.Enqueue(deploymentID)`. Returns `202` immediately,
+  `503` if the queue is full (`deploy.ErrQueueFull`), or `409` if the app already has a
+  non-terminal deploy (manual/rollback) — the webhook path coalesces to `202` instead.
+- **Per-app guard.** A partial unique index `one_active_deploy_per_app` (migration 00062)
+  allows at most one non-terminal deployment per app. `store.CreateDeployment` /
+  `CreateRollbackDeployment` translate the unique violation to `ErrActiveDeploymentExists`.
+  This makes coalescing atomic across every trigger path (closing the old check-then-insert
+  race) and guarantees two pool workers never pick up two deploys for the same app.
+- `deploy/worker.go` — a pool of N goroutines (N = `max_concurrent_deploys` instance setting,
+  default 1, clamped to 1..`deploy.MaxConcurrency`=8, sized at boot) drains a bounded channel
+  (default cap 32). N>1 only ever runs deploys for *different* apps concurrently (the per-app
+  guard). On boot it sweeps any non-terminal deployments from a previous process to
+  **interrupted** (`store.MarkInProgressDeploymentsInterrupted`).
+- **Cancellation.** Each in-flight deploy runs under a per-deploy context registered in the
+  worker. `POST .../deployments/{did}/cancel` → `CancelDeployment` aborts the running
+  subprocess (`Worker.Cancel`) and settles the row **canceled** (a terminal status distinct
+  from `interrupted`); a still-queued deploy is settled directly and skipped when dequeued
+  (the pipeline's already-settled guard). The running stack is never torn down.
+- **Live queue.** Producers publish a payload-less change frame to the `deployments` WS topic
+  on every create/transition/settle; `GET /api/deployments/active` is the snapshot and
+  `GET /api/deployments/stream` pushes a fresh snapshot per change (`store.ListActiveDeployments`).
 
 ## 1. Clone / pull (**cloning**)
 
@@ -91,7 +107,7 @@ These run independently of any single deploy, fed by the shared `dockerevents` b
 ## Status vocabulary
 
 - Deployment: `queued → cloning → building → deploying → health-checking → running` (or
-  `error` / `interrupted`). Defined in `deploy/status.go`.
+  terminal `error` / `interrupted` / `canceled`). Defined in `deploy/status.go`.
 - Service: `running / deploying / degraded / crash-loop / stopped / error`, mapped from Docker
   state by `MapPsStateToServiceStatus`.
 - App: collapsed from its services by `DeriveAppStatus` (crash-loop > building > deploying >

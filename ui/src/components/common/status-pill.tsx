@@ -22,6 +22,7 @@ const VARIANTS: Record<string, Variant> = {
   error: { label: 'Failed', tone: 'err' },
   failed: { label: 'Failed', tone: 'err' },
   interrupted: { label: 'Interrupted', tone: 'err' },
+  canceled: { label: 'Canceled', tone: 'muted' },
   stopped: { label: 'Stopped', tone: 'muted' },
   success: { label: 'Success', tone: 'ok' },
 }

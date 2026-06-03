@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -16,6 +17,14 @@ import (
 // Defined as an interface so handler tests can use a fake.
 type DeploymentEnqueuer interface {
 	Enqueue(deploymentID string) error
+}
+
+// DeploymentCanceller is the slice of deploy.Worker the cancel handler needs.
+// Cancel interrupts an in-flight deploy (returns false if it was only queued);
+// NotifyChanged refreshes the live deploy-queue panel after a queued cancel.
+type DeploymentCanceller interface {
+	Cancel(deploymentID string) bool
+	NotifyChanged()
 }
 
 type deploymentDTO struct {
@@ -67,6 +76,10 @@ func TriggerDeployment(s *store.Store, w DeploymentEnqueuer) http.HandlerFunc {
 		}
 		d, err := s.CreateDeployment(r.Context(), app.ID, store.TriggeredManual, nil)
 		if err != nil {
+			if errors.Is(err, store.ErrActiveDeploymentExists) {
+				WriteError(rw, http.StatusConflict, "a deploy for this app is already in progress")
+				return
+			}
 			WriteError(rw, http.StatusInternalServerError, "could not create deployment")
 			return
 		}
@@ -111,6 +124,8 @@ func RollbackDeployment(s *store.Store, w DeploymentEnqueuer) http.HandlerFunc {
 				WriteError(rw, http.StatusNotFound, "deployment not found")
 			case errors.Is(err, store.ErrRollbackSourceInvalid):
 				WriteError(rw, http.StatusUnprocessableEntity, "can only roll back to a successful deployment of this app")
+			case errors.Is(err, store.ErrActiveDeploymentExists):
+				WriteError(rw, http.StatusConflict, "a deploy for this app is already in progress")
 			default:
 				WriteError(rw, http.StatusInternalServerError, "could not create rollback")
 			}
@@ -132,6 +147,66 @@ func RollbackDeployment(s *store.Store, w DeploymentEnqueuer) http.HandlerFunc {
 		audit.Describe(r.Context(), "rolled back "+app.Slug+" to "+shortSHA)
 		WriteJSON(rw, http.StatusAccepted, toDeploymentDTO(d))
 	}
+}
+
+// CancelDeployment stops a queued or in-flight deployment and settles it as
+// `canceled`. For an in-flight deploy, Cancel aborts the running git/docker
+// subprocess (its deploy context dies, so the pipeline's own DB writes no-op);
+// we then record the terminal status on the request context, which is alive. A
+// still-queued deploy isn't in the pool — we settle the row directly, and the
+// worker skips it when it later dequeues (the pipeline's already-settled guard).
+//
+// The prior stack keeps running — cancelling a deploy never tears down what's
+// already serving (the same invariant as a failed deploy). 404 unknown; 422 if
+// the deployment has already settled.
+//
+// POST /api/apps/{id}/deployments/{did}/cancel
+func CancelDeployment(s *store.Store, c DeploymentCanceller) http.HandlerFunc {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		appID := chi.URLParam(r, "id")
+		did := chi.URLParam(r, "did")
+		d, err := s.GetDeployment(r.Context(), did)
+		if err != nil || d.AppID != appID {
+			WriteError(rw, http.StatusNotFound, "deployment not found")
+			return
+		}
+		if deploy.IsTerminalDeploymentStatus(d.Status) {
+			WriteError(rw, http.StatusUnprocessableEntity, "deployment has already finished")
+			return
+		}
+
+		c.Cancel(did) // aborts the subprocess if in-flight; no-op if only queued
+
+		msg := "canceled by user"
+		if err := s.MarkDeploymentFinished(r.Context(), did, deploy.DeploymentStatusCanceled, &msg); err != nil {
+			WriteError(rw, http.StatusInternalServerError, "could not cancel deployment")
+			return
+		}
+		// The build/up was interrupted, so the app's services no longer reflect a
+		// deploy in progress — recompute the stack status from what's actually
+		// there (no services yet → "created"; prior stack still up → "running").
+		recomputeAppStatus(r.Context(), s, appID)
+		c.NotifyChanged()
+
+		audit.SetTarget(r.Context(), "app", appID)
+		audit.Describe(r.Context(), "canceled deployment")
+		WriteJSON(rw, http.StatusOK, map[string]string{"status": deploy.DeploymentStatusCanceled})
+	}
+}
+
+// recomputeAppStatus derives the stack status from the app's current persisted
+// service statuses and writes it. Used after a cancel, when the pipeline's own
+// status writes were interrupted.
+func recomputeAppStatus(ctx context.Context, s *store.Store, appID string) {
+	rows, err := s.ListServicesForApp(ctx, appID)
+	if err != nil {
+		return
+	}
+	statuses := make([]string, 0, len(rows))
+	for _, r := range rows {
+		statuses = append(statuses, r.Status)
+	}
+	_ = s.SetAppStatus(ctx, appID, deploy.DeriveAppStatus(statuses))
 }
 
 // ListDeployments returns the most recent deployments for the app, newest
