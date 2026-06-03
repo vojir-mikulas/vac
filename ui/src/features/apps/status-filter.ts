@@ -28,3 +28,16 @@ export function countByFilter(apps: App[]) {
   }
   return { all: apps.length, running, issues, stopped }
 }
+
+// Tone for the "Running apps" occupancy badge. Occupancy is not utilisation, so
+// it must never read red: all-up is healthy (green), real issues are amber, and
+// intentional stops / no apps stay neutral. Aligns with StatusPill's colours.
+export function appsBadgeVariant(c: {
+  all: number
+  running: number
+  issues: number
+}): 'success' | 'warn' | 'secondary' {
+  if (c.all > 0 && c.running === c.all) return 'success' // all up → green
+  if (c.issues > 0) return 'warn' // something broken → amber
+  return 'secondary' // some stopped / none → neutral
+}

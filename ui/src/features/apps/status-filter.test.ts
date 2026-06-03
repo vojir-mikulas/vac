@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { countByFilter, matchesFilter } from '@/features/apps/status-filter'
+import { appsBadgeVariant, countByFilter, matchesFilter } from '@/features/apps/status-filter'
 import type { App } from '@/types/api'
 
 function app(status: string): App {
@@ -42,5 +42,23 @@ describe('countByFilter', () => {
       issues: 1,
       stopped: 1,
     })
+  })
+})
+
+describe('appsBadgeVariant', () => {
+  it('is green when every app is up', () => {
+    expect(appsBadgeVariant({ all: 2, running: 2, issues: 0 })).toBe('success')
+  })
+
+  it('is amber when something is broken', () => {
+    expect(appsBadgeVariant({ all: 2, running: 1, issues: 1 })).toBe('warn')
+  })
+
+  it('is neutral when apps are merely stopped', () => {
+    expect(appsBadgeVariant({ all: 2, running: 1, issues: 0 })).toBe('secondary')
+  })
+
+  it('is neutral when there are no apps', () => {
+    expect(appsBadgeVariant({ all: 0, running: 0, issues: 0 })).toBe('secondary')
   })
 })

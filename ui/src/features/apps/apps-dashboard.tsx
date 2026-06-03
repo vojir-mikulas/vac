@@ -1,6 +1,15 @@
 import { useDeferredValue, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Blocks, Boxes, Download, GitBranch, MoreHorizontal, Plus, Search } from 'lucide-react'
+import {
+  Blocks,
+  Boxes,
+  Download,
+  GitBranch,
+  Info,
+  MoreHorizontal,
+  Plus,
+  Search,
+} from 'lucide-react'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { BrandIcon, brandFor } from '@/components/common/brand-icon'
@@ -9,6 +18,7 @@ import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { StatusPill } from '@/components/common/status-pill'
 import { Meter } from '@/components/common/meter'
 import { EmptyState } from '@/components/common/empty-state'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -24,7 +34,12 @@ import { cn } from '@/lib/utils'
 import { useApps } from '@/lib/api/apps'
 import { useBoxBudget, useHostStats } from '@/lib/api/metrics'
 import { formatBytes, formatPercent, relativeTime } from '@/lib/format'
-import { countByFilter, matchesFilter, type AppFilter } from '@/features/apps/status-filter'
+import {
+  appsBadgeVariant,
+  countByFilter,
+  matchesFilter,
+  type AppFilter,
+} from '@/features/apps/status-filter'
 import { ImportAppDialog } from '@/features/apps/import-app-dialog'
 import { OnboardingChecklist } from '@/features/onboarding/onboarding-checklist'
 import type { App } from '@/types/api'
@@ -200,12 +215,7 @@ export function AppsDashboard() {
           <SectionHeader>Container budget</SectionHeader>
           <Card className="gap-0 p-5">
             <div className="flex flex-col gap-3.5">
-              <BudgetRow
-                label="Running apps"
-                current={counts.running}
-                total={counts.all || 1}
-                unit=""
-              />
+              <RunningAppsRow running={counts.running} all={counts.all} issues={counts.issues} />
               {host ? (
                 <>
                   <BudgetRow
@@ -236,11 +246,12 @@ export function AppsDashboard() {
                 Apps have reserved more RAM than the box has — over-committed.
               </p>
             ) : budget && budget.apps_total > budget.apps_with_limit ? (
-              <p className="mt-3 text-2xs text-muted-foreground">
+              <Badge variant="info" className="mt-3 text-2xs">
+                <Info className="size-3" aria-hidden />
                 {budget.apps_total - budget.apps_with_limit} app
                 {budget.apps_total - budget.apps_with_limit === 1 ? '' : 's'} without a RAM limit
                 aren&apos;t budgeted.
-              </p>
+              </Badge>
             ) : null}
             {host ? (
               <div className="mt-4 flex items-center justify-between border-t pt-3.5 text-xs text-muted-foreground">
@@ -337,6 +348,30 @@ function FilterChip({
         {count}
       </span>
     </button>
+  )
+}
+
+// Occupancy ("apps up"), not utilisation — a health-toned count badge rather than
+// a meter, so a fully-up box never reads red. See appsBadgeVariant for the mapping.
+function RunningAppsRow({
+  running,
+  all,
+  issues,
+}: {
+  running: number
+  all: number
+  issues: number
+}) {
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-muted-foreground">Running apps</span>
+      <Badge
+        variant={appsBadgeVariant({ running, all, issues })}
+        className="font-mono tabular-nums"
+      >
+        {running}/{all}
+      </Badge>
+    </div>
   )
 }
 

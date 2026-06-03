@@ -74,6 +74,10 @@
   --color-err-foreground: var(--err-fg);
   --color-err-bg: var(--err-bg);
   --color-err-border: var(--err-border);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-fg);
+  --color-info-bg: var(--info-bg);
+  --color-info-border: var(--info-border);
 
   --color-console: var(--console);
   --color-console-muted: var(--console-muted);
@@ -138,6 +142,11 @@
   --err-border: oklch(0.86 0.08 25);
   --destructive: var(--err);
 
+  --info: oklch(0.55 0.16 258);
+  --info-fg: oklch(0.42 0.14 258);
+  --info-bg: oklch(0.97 0.03 258);
+  --info-border: oklch(0.86 0.08 258);
+
   /* Charts — per-service color slots (cycled by index) */
   --chart-1: #f97316;
   --chart-2: oklch(0.62 0.16 240);
@@ -194,6 +203,11 @@
   --err-bg: oklch(0.28 0.08 25);
   --err-border: oklch(0.38 0.12 25);
   --destructive: var(--err);
+
+  --info: oklch(0.65 0.15 258);
+  --info-fg: oklch(0.85 0.12 258);
+  --info-bg: oklch(0.28 0.07 258);
+  --info-border: oklch(0.38 0.1 258);
 
   --chart-1: #f97316;
   --chart-2: oklch(0.62 0.16 240);
