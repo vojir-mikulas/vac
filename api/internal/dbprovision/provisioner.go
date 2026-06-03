@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
@@ -35,7 +36,10 @@ type Store interface {
 	SetManagedDatabaseStatus(ctx context.Context, id, status string, errMsg *string) error
 	GetManagedDatabase(ctx context.Context, id string) (store.ManagedDatabase, error)
 	ListManagedDatabasesForApp(ctx context.Context, appID string) ([]store.ManagedDatabase, error)
+	ListAllManagedDatabases(ctx context.Context) ([]store.ManagedDatabaseWithApp, error)
 	DeleteManagedDatabase(ctx context.Context, appID, id string) error
+	GetBackupConfigForService(ctx context.Context, appID, service string) (store.BackupConfig, error)
+	LatestBackupRun(ctx context.Context, configID string) (store.BackupRun, error)
 	UpsertEnvVar(ctx context.Context, appID, key string, value []byte, sensitive bool) error
 	DeleteEnvVar(ctx context.Context, appID, key string) error
 	CreateBackupConfig(ctx context.Context, appID string, in store.BackupConfigInput) (store.BackupConfig, error)
@@ -58,6 +62,14 @@ type Provisioner struct {
 	engines map[string]Engine
 	order   []string // stable engine order for the catalog
 	logger  *slog.Logger
+	ctrlDB  string // control-plane Postgres DB name (vac), pinned in the inventory
+
+	// Size probe cache (plan 20): disk sizes are expensive to compute, so the
+	// box-wide inventory serves the list/status fresh but caches the size map for
+	// sizeTTL. The mutex doubles as a single-flight guard during recompute.
+	sizeMu    sync.Mutex
+	sizeAt    time.Time
+	sizeCache map[string]map[string]int64 // engine -> dbName -> bytes
 }
 
 // New builds a provisioner with the default engine set (Postgres + MariaDB).
@@ -74,12 +86,17 @@ func New(s Store, box *crypto.Box, pool PGExecutor, docker interface {
 		"postgres": NewPostgresEngine(pool, docker, cfg),
 		"mariadb":  NewMariaDBEngine(docker, cfg),
 	}
+	ctrlDB := cfg.PostgresControlDB
+	if ctrlDB == "" {
+		ctrlDB = "vac"
+	}
 	return &Provisioner{
 		store:   s,
 		box:     box,
 		engines: engines,
 		order:   []string{"postgres", "mariadb"},
 		logger:  logger,
+		ctrlDB:  ctrlDB,
 	}
 }
 

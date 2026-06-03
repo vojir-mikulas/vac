@@ -22,6 +22,7 @@ type DBProvisioner interface {
 	EngineInfoFor(name string) (dbprovision.EngineInfo, bool)
 	Add(ctx context.Context, app store.App, engine, envVarName string) (store.ManagedDatabase, error)
 	Remove(ctx context.Context, appID, id string) error
+	DatabaseInventory(ctx context.Context) (dbprovision.Inventory, error)
 }
 
 type managedDatabaseDTO struct {
@@ -51,6 +52,86 @@ func toManagedDatabaseDTO(m store.ManagedDatabase, info dbprovision.EngineInfo) 
 		CreatedAt:   m.CreatedAt,
 		FootprintMB: info.FootprintMB,
 		Shared:      info.Shared,
+	}
+}
+
+// --- box-wide inventory (plan 20) ---
+
+type dbBackupSummaryDTO struct {
+	Status     string     `json:"status"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	SizeBytes  *int64     `json:"size_bytes,omitempty"`
+}
+
+type dbInventoryEntryDTO struct {
+	ID             string              `json:"id,omitempty"`
+	AppID          string              `json:"app_id,omitempty"`
+	AppSlug        string              `json:"app_slug,omitempty"`
+	AppName        string              `json:"app_name,omitempty"`
+	DBName         string              `json:"db_name"`
+	EnvVarName     string              `json:"env_var_name,omitempty"`
+	Status         string              `json:"status"`
+	SizeBytes      *int64              `json:"size_bytes"`
+	LastBackup     *dbBackupSummaryDTO `json:"last_backup,omitempty"`
+	IsControlPlane bool                `json:"is_control_plane"`
+}
+
+type dbEngineGroupDTO struct {
+	Engine      string                `json:"engine"`
+	FootprintMB int                   `json:"footprint_mb"`
+	Shared      bool                  `json:"shared"`
+	Databases   []dbInventoryEntryDTO `json:"databases"`
+}
+
+type dbInventoryDTO struct {
+	Engines []dbEngineGroupDTO `json:"engines"`
+}
+
+func toInventoryDTO(inv dbprovision.Inventory) dbInventoryDTO {
+	out := dbInventoryDTO{Engines: make([]dbEngineGroupDTO, 0, len(inv.Engines))}
+	for _, g := range inv.Engines {
+		group := dbEngineGroupDTO{
+			Engine:      g.Engine,
+			FootprintMB: g.FootprintMB,
+			Shared:      g.Shared,
+			Databases:   make([]dbInventoryEntryDTO, 0, len(g.Databases)),
+		}
+		for _, d := range g.Databases {
+			entry := dbInventoryEntryDTO{
+				ID:             d.ID,
+				AppID:          d.AppID,
+				AppSlug:        d.AppSlug,
+				AppName:        d.AppName,
+				DBName:         d.DBName,
+				EnvVarName:     d.EnvVarName,
+				Status:         d.Status,
+				SizeBytes:      d.SizeBytes,
+				IsControlPlane: d.IsControlPlane,
+			}
+			if d.LastBackup != nil {
+				entry.LastBackup = &dbBackupSummaryDTO{
+					Status:     d.LastBackup.Status,
+					FinishedAt: d.LastBackup.FinishedAt,
+					SizeBytes:  d.LastBackup.SizeBytes,
+				}
+			}
+			group.Databases = append(group.Databases, entry)
+		}
+		out.Engines = append(out.Engines, group)
+	}
+	return out
+}
+
+// DatabaseInventory returns the box-wide, per-engine database inventory for the
+// Database section. Gated by VAC_MANAGED_SERVICES at the route layer.
+func DatabaseInventory(prov DBProvisioner) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		inv, err := prov.DatabaseInventory(r.Context())
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not load database inventory")
+			return
+		}
+		WriteJSON(w, http.StatusOK, toInventoryDTO(inv))
 	}
 }
 

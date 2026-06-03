@@ -3,6 +3,8 @@ package dbprovision
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -104,6 +106,41 @@ func (e *MariaDBEngine) Deprovision(ctx context.Context, dbName, roleName string
 		return fmt.Errorf("dbprovision: mariadb deprovision: %w", err)
 	}
 	return nil
+}
+
+// SizeBytes sums data_length+index_length per schema from information_schema in a
+// single query. InnoDB rounds allocation to extents, so the figure is approximate
+// — the UI labels it as such. Schemas with no tables don't appear in
+// information_schema.tables, so a freshly-created empty DB is reported as 0 here
+// only if it has at least one table; otherwise it's omitted (unknown).
+func (e *MariaDBEngine) SizeBytes(ctx context.Context, dbNames []string) (map[string]int64, error) {
+	if len(dbNames) == 0 {
+		return map[string]int64{}, nil
+	}
+	// -N (skip column names) -B (batch/tab-separated) gives clean "schema\tbytes" rows.
+	query := "SELECT table_schema, COALESCE(SUM(data_length+index_length),0) FROM information_schema.tables GROUP BY table_schema"
+	cmd := fmt.Sprintf(`mariadb -uroot -p%s -N -B -e "%s"`, e.adminPw, query)
+	stdout, err := execOut(ctx, e.docker, mariadbContainer, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("dbprovision: mariadb size probe: %w", err)
+	}
+	want := make(map[string]bool, len(dbNames))
+	for _, n := range dbNames {
+		want[n] = true
+	}
+	out := make(map[string]int64, len(dbNames))
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || !want[fields[0]] {
+			continue
+		}
+		size, perr := strconv.ParseInt(fields[1], 10, 64)
+		if perr != nil {
+			continue
+		}
+		out[fields[0]] = size
+	}
+	return out, nil
 }
 
 func (e *MariaDBEngine) ConnString(dbName, roleName, password string) string {

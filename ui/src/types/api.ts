@@ -369,6 +369,39 @@ export interface AddDatabaseResult {
   warning?: string
 }
 
+// Box-wide database inventory (plan 20). One group per engine; the control-plane
+// vac-db is a pinned, app-less entry on the Postgres group.
+export interface DBBackupSummary {
+  status: BackupRunStatus
+  finished_at?: string | null
+  size_bytes?: number | null
+}
+
+export interface DBInventoryEntry {
+  id?: string
+  app_id?: string
+  app_slug?: string
+  app_name?: string
+  db_name: string
+  env_var_name?: string
+  status: string
+  /** null = size unknown for this engine (never render as 0). */
+  size_bytes: number | null
+  last_backup?: DBBackupSummary | null
+  is_control_plane: boolean
+}
+
+export interface DBEngineGroup {
+  engine: string
+  footprint_mb: number
+  shared: boolean
+  databases: DBInventoryEntry[]
+}
+
+export interface DatabaseInventory {
+  engines: DBEngineGroup[]
+}
+
 // ── Track D: add-on catalog ────────────────────────────────────────────────
 export interface Addon {
   id: string

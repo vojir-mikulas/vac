@@ -38,6 +38,10 @@ type Engine interface {
 	Provision(ctx context.Context, dbName, roleName, password string) error
 	// Deprovision drops the database + role. Best-effort / idempotent.
 	Deprovision(ctx context.Context, dbName, roleName string) error
+	// SizeBytes returns on-disk size per database name, for the box-wide inventory
+	// (plan 20). A database the engine can't size is omitted from the map (reported
+	// as unknown, never zero). Returns an error if the instance is unreachable.
+	SizeBytes(ctx context.Context, dbNames []string) (map[string]int64, error)
 	// ConnString renders the connection string an app uses to reach the DB over
 	// vac-edge (deterministic from the generated names + password).
 	ConnString(dbName, roleName, password string) string
@@ -65,6 +69,9 @@ type Config struct {
 	// (default user "vac", host alias "vac-db").
 	PostgresAdminUser string
 	PostgresHost      string
+	// PostgresControlDB is the control-plane database name (default "vac") — pinned
+	// as the "VAC system database" card in the box-wide inventory (plan 20).
+	PostgresControlDB string
 }
 
 // roleAlphabet / passwordAlphabet are deliberately quote-free so identifiers and

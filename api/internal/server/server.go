@@ -337,6 +337,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				}
 			})
 
+			// Box-wide database inventory (plan 20). Global surface, gated by the
+			// same managed-services flag as the per-app database routes.
+			if cfg.ManagedServices && dbHandler != nil {
+				r.Get("/databases", handler.DatabaseInventory(dbHandler))
+			}
+
 			// Add-on catalog (Track D / D3). Global surface (installs become
 			// apps); gated by the managed-services flag like backups/databases.
 			if cfg.ManagedServices && addonCatalog != nil {

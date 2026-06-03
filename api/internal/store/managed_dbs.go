@@ -94,6 +94,44 @@ func (s *Store) ListManagedDatabasesForApp(ctx context.Context, appID string) ([
 	return out, rows.Err()
 }
 
+// ManagedDatabaseWithApp is a managed DB joined to its owning app — the shape the
+// box-wide Database section reads (plan 20). The control-plane vac-db has no row
+// here (it has no app); the inventory adds it synthetically.
+type ManagedDatabaseWithApp struct {
+	ManagedDatabase
+	AppSlug string
+	AppName string
+}
+
+// ListAllManagedDatabases returns every managed DB across all apps, joined to its
+// owning app, for the box-wide inventory. Ordered by engine then app slug so the
+// caller can group without re-sorting.
+func (s *Store) ListAllManagedDatabases(ctx context.Context) ([]ManagedDatabaseWithApp, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT m.id, m.app_id, m.engine, m.db_name, m.role_name, m.secret_enc,
+		       m.env_var_name, m.status, m.error, m.created_at, a.slug, a.name
+		FROM managed_databases m
+		JOIN apps a ON a.id = m.app_id
+		ORDER BY m.engine, a.slug, m.created_at
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ManagedDatabaseWithApp
+	for rows.Next() {
+		var m ManagedDatabaseWithApp
+		if err := rows.Scan(
+			&m.ID, &m.AppID, &m.Engine, &m.DBName, &m.RoleName, &m.SecretEnc,
+			&m.EnvVarName, &m.Status, &m.Error, &m.CreatedAt, &m.AppSlug, &m.AppName,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // CountManagedDatabasesByEngine returns how many managed DBs use a given engine
 // — the provisioner uses it to decide whether a shared engine container is still
 // needed after a deprovision.

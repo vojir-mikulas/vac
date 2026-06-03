@@ -322,9 +322,10 @@ func main() {
 		// Managed databases (D2). The provisioner is only built when the gate is
 		// open — its engines hold docker/pool handles but start no goroutines.
 		dbProvisioner = dbprovision.New(st, box, pool, docker, dbprovision.Config{
-			WorkDir:     cfg.WorkDir,
-			EdgeNetwork: cfg.EdgeNetwork,
-			MasterKey:   cfg.MasterKey,
+			WorkDir:           cfg.WorkDir,
+			EdgeNetwork:       cfg.EdgeNetwork,
+			MasterKey:         cfg.MasterKey,
+			PostgresControlDB: controlDBName(cfg.DatabaseURL),
 		}, slog.Default())
 		if cfg.ManagedDBIsolated {
 			slog.Warn("VAC_MANAGED_DB_ISOLATED is set, but isolated managed Postgres is not yet implemented; using shared vac-db (see docs/deviations.md)")
@@ -555,4 +556,18 @@ func printFirstBootBanner(cfg config.Config, setupToken string) {
 	fmt.Fprintln(&b)
 	fmt.Fprintln(&b, bar)
 	fmt.Print(b.String())
+}
+
+// controlDBName extracts the control-plane database name from VAC_DATABASE_URL so
+// the box-wide inventory can pin it (plan 20). Defaults to "vac" when the URL is
+// unparseable or carries no path.
+func controlDBName(databaseURL string) string {
+	u, err := url.Parse(databaseURL)
+	if err != nil {
+		return "vac"
+	}
+	if name := strings.TrimPrefix(u.Path, "/"); name != "" {
+		return name
+	}
+	return "vac"
 }

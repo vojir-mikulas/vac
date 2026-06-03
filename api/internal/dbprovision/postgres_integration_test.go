@@ -55,6 +55,19 @@ func TestPostgresEngine_ProvisionDeprovision_Integration(t *testing.T) {
 		t.Fatalf("Provision: %v", err)
 	}
 
+	// Size probe: the new database and the control DB both report a non-zero size;
+	// a database that doesn't exist is simply absent from the map (not zero).
+	sizes, err := e.SizeBytes(ctx, []string{db, "vac", "does_not_exist"})
+	if err != nil {
+		t.Fatalf("SizeBytes: %v", err)
+	}
+	if sizes[db] <= 0 || sizes["vac"] <= 0 {
+		t.Errorf("sizes = %+v, want positive for %q and vac", sizes, db)
+	}
+	if _, ok := sizes["does_not_exist"]; ok {
+		t.Errorf("absent database should not appear in size map: %+v", sizes)
+	}
+
 	var dbCount, roleCount int
 	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM pg_database WHERE datname = $1", db).Scan(&dbCount); err != nil {
 		t.Fatal(err)

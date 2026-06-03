@@ -16,6 +16,10 @@ export const queryKeys = {
   notifications: ['notifications'] as const,
   activity: ['activity'] as const,
   domains: ['domains'] as const,
+  // Box-wide database inventory (plan 20).
+  databases: {
+    inventory: ['databases', 'inventory'] as const,
+  },
   // Instance-wide deploy queue (running + queued across all apps).
   deployments: {
     active: ['deployments', 'active'] as const,

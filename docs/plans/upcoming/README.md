@@ -20,6 +20,10 @@ trustworthy and effortless," not by what's technically interesting.
 
 ## Plans
 
+> **Newly captured (2026-06-03)** — UX/observability follow-ups from dashboard feedback, not
+> yet fleshed out: **20 database section**, **21 budget-card visual states**, **22 activity
+> change preview**. Overview-level seeds; detail them before building.
+
 > **Shipped** (moved to [`../done/`](../done/)): **01 push-to-deploy** and **02 rollback** are
 > implemented (Track A1/A2). **05 zero-downtime** is **deferred** — detailed design captured in
 > [`A3-zero-downtime-detail.md`](A3-zero-downtime-detail.md), to be evaluated later.
@@ -61,6 +65,9 @@ trustworthy and effortless," not by what's technically interesting.
 | 17 | ✅ [../done/17-installer-overhaul.md](../done/17-installer-overhaul.md) | Trust & UX | Guided installer wizard + readable `main()` + `vac managed-services on\|off` | M |
 | 18 | [18-portability-import-export.md](18-portability-import-export.md) | Trust moat | Portable app spec: import on-ramp (spec/compose/instance) + export exit-ramp (k8s/standalone compose) — no lock-in | L |
 | 19 | [19-scale-to-zero.md](19-scale-to-zero.md) | Reliability / density | Opt-in sleep idle (stateless HTTP) containers + cold-start on first request via Caddy edge wake handler | M–L |
+| 20 | [20-database-section.md](20-database-section.md) | Managed Services / observability | Box-wide Database section: data-driven engine tabs (Postgres/MariaDB live; Redis out of scope), per-DB disk usage + backups + app links, VAC control-plane Postgres highlighted | M |
+| 21 | [21-budget-card-states.md](21-budget-card-states.md) | Observability / UX polish | Fix inverted budget-card colours (all-running = green, not red) + turn unbudgeted-RAM notice into a blue info badge | S |
+| 22 | [22-activity-change-preview.md](22-activity-change-preview.md) | Trust / observability | Activity-feed "Preview" → before/after diff window (env/app-config/base-domain), secrets masked, reusing stored audit snapshots | M |
 
 ## Suggested order
 

@@ -9,9 +9,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// PGExecutor is the slice of *pgxpool.Pool the Postgres engine needs to run DDL.
+// PGExecutor is the slice of *pgxpool.Pool the Postgres engine needs to run DDL
+// and the size probe. *pgxpool.Pool satisfies it.
 type PGExecutor interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // NetAttacher attaches a container to a docker network with an alias.
@@ -84,6 +86,31 @@ func (e *PostgresEngine) Deprovision(ctx context.Context, dbName, roleName strin
 		return fmt.Errorf("dbprovision: drop role: %w", err)
 	}
 	return nil
+}
+
+// SizeBytes reports on-disk size per database via pg_database_size — one query,
+// no per-DB round trips. Databases absent from pg_database (dropped, or never
+// created) are simply not in the returned map.
+func (e *PostgresEngine) SizeBytes(ctx context.Context, dbNames []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(dbNames))
+	if len(dbNames) == 0 {
+		return out, nil
+	}
+	rows, err := e.pool.Query(ctx,
+		`SELECT datname, pg_database_size(datname) FROM pg_database WHERE datname = ANY($1)`, dbNames)
+	if err != nil {
+		return nil, fmt.Errorf("dbprovision: pg size probe: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		var size int64
+		if err := rows.Scan(&name, &size); err != nil {
+			return nil, err
+		}
+		out[name] = size
+	}
+	return out, rows.Err()
 }
 
 func (e *PostgresEngine) ConnString(dbName, roleName, password string) string {

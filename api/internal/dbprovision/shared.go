@@ -1,6 +1,7 @@
 package dbprovision
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -35,6 +36,16 @@ func writeComposeProject(workDir, engine, composeYAML string) (string, error) {
 // (discarding stdout) — used for provisioning DDL and readiness pings.
 func execOK(ctx context.Context, docker DockerController, container string, command string) error {
 	return docker.Exec(ctx, container, []string{command}, io.Discard)
+}
+
+// execOut runs a command in a container and returns its captured stdout — used by
+// size probes that need to read a query result back, unlike execOK.
+func execOut(ctx context.Context, docker DockerController, container string, command string) (string, error) {
+	var buf bytes.Buffer
+	if err := docker.Exec(ctx, container, []string{command}, &buf); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
 // pingUntilReady polls an exec command until it succeeds or the deadline passes.

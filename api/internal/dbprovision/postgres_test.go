@@ -2,9 +2,11 @@ package dbprovision
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -16,6 +18,12 @@ type fakePG struct {
 func (f *fakePG) Exec(_ context.Context, sql string, _ ...any) (pgconn.CommandTag, error) {
 	f.sqls = append(f.sqls, sql)
 	return pgconn.CommandTag{}, f.err
+}
+
+// Query is unused by the unit tests (the size probe is covered by the integration
+// test against a real Postgres); a fake row set isn't worth synthesizing here.
+func (f *fakePG) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	return nil, errors.New("fakePG: Query not implemented")
 }
 
 type fakeNet struct {

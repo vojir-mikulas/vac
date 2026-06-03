@@ -33,6 +33,13 @@ func (e *fakeEngine) Deprovision(context.Context, string, string) error {
 	e.deprovCalled = true
 	return nil
 }
+func (e *fakeEngine) SizeBytes(_ context.Context, dbNames []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(dbNames))
+	for i, n := range dbNames {
+		out[n] = int64((i + 1) * 1000)
+	}
+	return out, nil
+}
 func (e *fakeEngine) ConnString(db, role, pw string) string {
 	return "proto://" + role + ":" + pw + "@host/" + db
 }
@@ -89,6 +96,19 @@ func (s *fakeProvStore) ListManagedDatabasesForApp(_ context.Context, appID stri
 func (s *fakeProvStore) DeleteManagedDatabase(_ context.Context, _, id string) error {
 	delete(s.dbs, id)
 	return nil
+}
+func (s *fakeProvStore) ListAllManagedDatabases(_ context.Context) ([]store.ManagedDatabaseWithApp, error) {
+	var out []store.ManagedDatabaseWithApp
+	for _, m := range s.dbs {
+		out = append(out, store.ManagedDatabaseWithApp{ManagedDatabase: m, AppSlug: s.app.Slug, AppName: s.app.Name})
+	}
+	return out, nil
+}
+func (s *fakeProvStore) GetBackupConfigForService(_ context.Context, _, _ string) (store.BackupConfig, error) {
+	return store.BackupConfig{}, store.ErrNotFound
+}
+func (s *fakeProvStore) LatestBackupRun(_ context.Context, _ string) (store.BackupRun, error) {
+	return store.BackupRun{}, store.ErrNotFound
 }
 func (s *fakeProvStore) UpsertEnvVar(_ context.Context, _, key string, value []byte, _ bool) error {
 	s.envVars[key] = value

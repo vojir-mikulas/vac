@@ -115,6 +115,19 @@ func (s *Store) GetBackupConfig(ctx context.Context, configID string) (BackupCon
 	return c, err
 }
 
+// GetBackupConfigForService returns the backup config for one (app, service) —
+// the box-wide Database inventory uses it to find a managed DB's backup, which is
+// keyed on its engine container (e.g. vac-db) rather than the DB itself.
+func (s *Store) GetBackupConfigForService(ctx context.Context, appID, service string) (BackupConfig, error) {
+	c, err := scanBackupConfig(s.pool.QueryRow(ctx, `
+		SELECT `+backupConfigColumns+` FROM backup_configs WHERE app_id = $1 AND service_name = $2
+	`, appID, service))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return BackupConfig{}, ErrNotFound
+	}
+	return c, err
+}
+
 func (s *Store) ListBackupConfigsForApp(ctx context.Context, appID string) ([]BackupConfig, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+backupConfigColumns+` FROM backup_configs WHERE app_id = $1 ORDER BY service_name
