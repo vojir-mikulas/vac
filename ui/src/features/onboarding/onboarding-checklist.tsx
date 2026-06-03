@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { CheckCircle2, Circle, Rocket, Settings as SettingsIcon, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,6 +14,7 @@ import { useHostStats } from '@/lib/api/metrics'
 // reflects real instance state rather than a stored wizard cursor, so it stays
 // honest if the operator does the work out of order or from the CLI.
 export function OnboardingChecklist() {
+  const { t } = useTranslation('onboarding')
   const { data: onboarding } = useOnboarding()
   const { data: apps } = useApps()
   const { data: baseDomain } = useBaseDomain()
@@ -33,16 +35,14 @@ export function OnboardingChecklist() {
     <Card className="mb-6 gap-4 border-brand/30 bg-brand/[0.03] p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">Get started with VAC</h2>
-          <p className="text-xs text-muted-foreground">
-            A couple of steps to your first live deploy. {done} of 2 done.
-          </p>
+          <h2 className="text-sm font-semibold">{t('heading')}</h2>
+          <p className="text-xs text-muted-foreground">{t('subheading', { done, total: 2 })}</p>
         </div>
         <Button
           variant="ghost"
           size="icon-sm"
           className="text-muted-foreground"
-          aria-label="Dismiss onboarding"
+          aria-label={t('dismiss')}
           disabled={dismiss.isPending}
           onClick={() => dismiss.mutate()}
         >
@@ -53,35 +53,35 @@ export function OnboardingChecklist() {
       <ol className="flex flex-col gap-3">
         <Step
           done={hasBaseDomain}
-          title="Set your base domain"
-          description="Apps get an automatic subdomain under it (e.g. my-app.example.com)."
+          title={t('steps.baseDomain.title')}
+          description={t('steps.baseDomain.description')}
           action={
             <Button variant="outline" size="sm" asChild>
               <Link to="/settings">
                 <SettingsIcon className="size-3.5" />
-                Open settings
+                {t('steps.baseDomain.action')}
               </Link>
             </Button>
           }
         >
           {host?.host_ip ? (
             <p className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
-              Point an A record at this server:
+              {t('steps.baseDomain.aRecordHint')}
               <code className="rounded bg-surface-2 px-1 py-0.5 font-mono">{host.host_ip}</code>
-              <CopyButton value={host.host_ip} label="Copy IP" />
+              <CopyButton value={host.host_ip} label={t('steps.baseDomain.copyIp')} />
             </p>
           ) : null}
         </Step>
 
         <Step
           done={hasApp}
-          title="Deploy your first app"
-          description="Paste a repo URL, pick a branch and domain, and hit deploy."
+          title={t('steps.firstApp.title')}
+          description={t('steps.firstApp.description')}
           action={
             <Button variant="brand" size="sm" asChild>
               <Link to="/apps/new">
                 <Rocket className="size-3.5" />
-                New app
+                {t('steps.firstApp.action')}
               </Link>
             </Button>
           }

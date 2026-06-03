@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { AlertTriangle, Lock, LockOpen, Plus, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -33,6 +34,7 @@ let nextUid = 0
 const newUid = () => ++nextUid
 
 export function EnvTab({ appId }: { appId: string }) {
+  const { t } = useTranslation('app-detail')
   const { data: vars, isLoading } = useEnvVars(appId)
   const replace = useReplaceEnv(appId)
   const stack = useStackControl(appId)
@@ -133,13 +135,13 @@ export function EnvTab({ appId }: { appId: string }) {
     const keys = list.map((r) => r.key.trim())
     const bad = keys.filter((k) => !isValidEnvKey(k))
     if (bad.length) {
-      const msg = `Invalid keys: ${bad.join(', ')}`
+      const msg = t('env.invalidKeys', { keys: bad.join(', ') })
       setSaveError(msg)
       toast.error(msg)
       return
     }
     if (new Set(keys).size !== keys.length) {
-      const msg = 'Duplicate keys are not allowed'
+      const msg = t('env.duplicateKeys')
       setSaveError(msg)
       toast.error(msg)
       return
@@ -160,7 +162,7 @@ export function EnvTab({ appId }: { appId: string }) {
     })
     replace.mutate(payload, {
       onSuccess: (res) => {
-        toast.success(`Saved ${res.saved} variable${res.saved === 1 ? '' : 's'}`)
+        toast.success(t('env.saved', { count: res.saved }))
         setRestartPending(true)
       },
       onError: (e) => toast.error(e.message),
@@ -170,7 +172,7 @@ export function EnvTab({ appId }: { appId: string }) {
   const restart = () =>
     stack.mutate('restart', {
       onSuccess: () => {
-        toast.success('Restarting to apply changes')
+        toast.success(t('env.restarting'))
         setRestartPending(false)
       },
       onError: (e) => toast.error(e.message),
@@ -182,10 +184,10 @@ export function EnvTab({ appId }: { appId: string }) {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warn-border bg-warn-bg px-4 py-3">
           <span className="flex items-center gap-2 text-sm text-warn-foreground">
             <AlertTriangle className="size-4" />
-            Changes saved — restart required to take effect.
+            {t('env.restartBanner')}
           </span>
           <Button variant="brand" size="sm" disabled={stack.isPending} onClick={restart}>
-            Restart now
+            {t('env.restartNow')}
           </Button>
         </div>
       ) : null}
@@ -193,15 +195,15 @@ export function EnvTab({ appId }: { appId: string }) {
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 flex-1">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <SectionHeader className="mb-0">Environment variables</SectionHeader>
+            <SectionHeader className="mb-0">{t('env.title')}</SectionHeader>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => setImportOpen((v) => !v)}>
                 <Upload className="size-3.5" />
-                Import .env
+                {t('env.importEnv')}
               </Button>
               <Button variant="outline" size="sm" onClick={addRow}>
                 <Plus className="size-3.5" />
-                Add variable
+                {t('env.addVariable')}
               </Button>
             </div>
           </div>
@@ -226,8 +228,7 @@ export function EnvTab({ appId }: { appId: string }) {
                 </div>
               ) : list.length === 0 ? (
                 <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                  No variables yet. Use <strong>Add variable</strong> or{' '}
-                  <strong>Import .env</strong>.
+                  <Trans t={t} i18nKey="env.emptyState" components={[<strong />, <strong />]} />
                 </p>
               ) : (
                 list.map((row, i) => (
@@ -255,35 +256,34 @@ export function EnvTab({ appId }: { appId: string }) {
           <div className="mt-4 flex items-center justify-between">
             <span className="text-2xs text-muted-foreground">
               {unsaved > 0 ? (
-                <span className="text-warn-foreground">
-                  {unsaved} unsaved change{unsaved === 1 ? '' : 's'} — applied on next restart
-                </span>
+                <span className="text-warn-foreground">{t('env.unsaved', { count: unsaved })}</span>
               ) : (
-                'No unsaved changes'
+                t('env.noUnsaved')
               )}
             </span>
             <Button variant="brand" disabled={replace.isPending || unsaved === 0} onClick={save}>
-              Save variables
+              {t('env.saveVariables')}
             </Button>
           </div>
         </div>
 
         <div className="lg:w-72 lg:shrink-0">
-          <SectionHeader>About environment</SectionHeader>
+          <SectionHeader>{t('env.aboutTitle')}</SectionHeader>
           <Card className="gap-2 p-5 text-sm text-muted-foreground">
             <p>
-              Variables are <strong>encrypted at rest</strong> with the host master key and injected
-              only when containers start. Changes require a restart to take effect.
+              <Trans t={t} i18nKey="env.about1" components={[<strong />]} />
             </p>
             <p>
-              <strong className="text-foreground">Plain-text</strong> values stay visible and
-              editable inline. <strong className="text-foreground">Write-only</strong> values are
-              masked and never shown again — toggle the lock on any row to switch.
+              <Trans
+                t={t}
+                i18nKey="env.about2"
+                components={[
+                  <strong className="text-foreground" />,
+                  <strong className="text-foreground" />,
+                ]}
+              />
             </p>
-            <p>
-              You can turn a write-only value back to plain-text, but you'll need to type a fresh
-              value: the old one can never be revealed.
-            </p>
+            <p>{t('env.about3')}</p>
           </Card>
         </div>
       </div>
@@ -308,9 +308,10 @@ function EnvRow({
   onToggleMode: () => void
   onRemove: () => void
 }) {
+  const { t } = useTranslation('app-detail')
   // Inputs are placeholder-only by design (a per-row visible label would bloat
   // the grid), so each carries an aria-label naming the field and its row.
-  const named = row.key || `row ${index}`
+  const named = row.key || t('env.rowFallback', { index })
   // A persisted write-only secret we don't hold the plaintext for: the field is
   // empty but the value is set server-side — prompt for a replacement.
   const hidden = row.writeOnly && row.value === null
@@ -323,8 +324,8 @@ function EnvRow({
       <Input
         value={row.key}
         onChange={(e) => onKey(e.target.value)}
-        placeholder="KEY"
-        aria-label={`Variable name, row ${index}`}
+        placeholder={t('env.keyPlaceholder')}
+        aria-label={t('env.variableNameAria', { index })}
         spellCheck={false}
         className="h-8 font-mono text-xs"
       />
@@ -332,8 +333,14 @@ function EnvRow({
         value={row.value ?? ''}
         type={row.writeOnly ? 'password' : 'text'}
         onChange={(e) => onValue(e.target.value)}
-        placeholder={hidden ? 'hidden — type to replace' : row.writeOnly ? 'enter value' : 'value'}
-        aria-label={`Value for ${named}`}
+        placeholder={
+          hidden
+            ? t('env.valuePlaceholderHidden')
+            : row.writeOnly
+              ? t('env.valuePlaceholderWriteOnly')
+              : t('env.valuePlaceholder')
+        }
+        aria-label={t('env.valueAria', { name: named })}
         spellCheck={false}
         className="h-8 font-mono text-xs"
       />
@@ -343,8 +350,8 @@ function EnvRow({
         <IconButton
           label={
             row.writeOnly
-              ? `Make ${named} plain-text (you'll re-enter the value)`
-              : `Make ${named} write-only (hide the value)`
+              ? t('env.makePlainText', { name: named })
+              : t('env.makeWriteOnly', { name: named })
           }
           pressed={row.writeOnly}
           onClick={onToggleMode}
@@ -355,7 +362,7 @@ function EnvRow({
             <LockOpen className="size-3.5" />
           )}
         </IconButton>
-        <IconButton label={`Delete ${named}`} onClick={onRemove}>
+        <IconButton label={t('env.deleteVar', { name: named })} onClick={onRemove}>
           <Trash2 className="size-3.5" />
         </IconButton>
       </div>
@@ -395,6 +402,7 @@ function ImportPanel({
   onImport: (entries: { key: string; value: string; sensitive: boolean }[]) => void
   onCancel: () => void
 }) {
+  const { t } = useTranslation('app-detail')
   const [text, setText] = useState('')
   const [autoDetect, setAutoDetect] = useState(true)
 
@@ -412,21 +420,31 @@ function ImportPanel({
   return (
     <Card className="mb-4 gap-3 p-5">
       <p className="text-sm text-muted-foreground">
-        Paste a <code className="font-mono text-xs">.env</code> file. Rows merge into the editor by
-        key; review which values become write-only before importing.
+        <Trans
+          t={t}
+          i18nKey="env.import.paste"
+          components={[<code className="font-mono text-xs" />]}
+        />
       </p>
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder={'DATABASE_URL=postgres://…\nLOG_LEVEL=info'}
+        placeholder={t('env.import.placeholder')}
         className="min-h-40 font-mono text-xs"
         spellCheck={false}
       />
       <label className="flex items-center gap-2 text-sm">
         <Switch checked={autoDetect} onCheckedChange={setAutoDetect} />
-        Auto-mark secrets write-only (keys like <code className="font-mono text-xs">
-          TOKEN
-        </code>, <code className="font-mono text-xs">PASSWORD</code>)
+        <span>
+          <Trans
+            t={t}
+            i18nKey="env.import.autoMark"
+            components={[
+              <code className="font-mono text-xs" />,
+              <code className="font-mono text-xs" />,
+            ]}
+          />
+        </span>
       </label>
 
       {preview.length > 0 ? (
@@ -442,11 +460,11 @@ function ImportPanel({
               <span className="ml-auto inline-flex items-center gap-1 text-2xs text-muted-foreground">
                 {p.sensitive ? (
                   <>
-                    <Lock className="size-3" /> write-only
+                    <Lock className="size-3" /> {t('env.import.writeOnly')}
                   </>
                 ) : (
                   <>
-                    <LockOpen className="size-3" /> plain-text
+                    <LockOpen className="size-3" /> {t('env.import.plainText')}
                   </>
                 )}
               </span>
@@ -456,17 +474,17 @@ function ImportPanel({
       ) : null}
       {invalid.length > 0 ? (
         <p className="text-xs text-err-foreground">
-          Invalid keys (skipped): {invalid.map((p) => p.key).join(', ')}
+          {t('env.import.invalidKeys', { keys: invalid.map((p) => p.key).join(', ') })}
         </p>
       ) : null}
 
       <div className="flex items-center justify-between">
         <span className="text-2xs text-muted-foreground">
-          {preview.length} variable{preview.length === 1 ? '' : 's'} parsed
+          {t('env.import.parsed', { count: preview.length })}
         </span>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={onCancel}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="brand"
@@ -480,7 +498,9 @@ function ImportPanel({
               )
             }
           >
-            Import {preview.filter((p) => p.valid).length || ''}
+            {preview.filter((p) => p.valid).length > 0
+              ? t('env.import.importBtn', { count: preview.filter((p) => p.valid).length })
+              : t('env.import.importBtnBlank')}
           </Button>
         </div>
       </div>

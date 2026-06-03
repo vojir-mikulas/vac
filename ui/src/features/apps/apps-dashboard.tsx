@@ -2,15 +2,21 @@ import { useDeferredValue, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { m } from 'motion/react'
 import { Link } from '@tanstack/react-router'
+import { toast } from 'sonner'
 import {
   Blocks,
   Boxes,
   Download,
+  ExternalLink,
   GitBranch,
   Info,
   MoreHorizontal,
+  Play,
   Plus,
+  RotateCw,
   Search,
+  Square,
+  Trash2,
 } from 'lucide-react'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
@@ -23,6 +29,23 @@ import { EmptyState } from '@/components/common/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { ListSkeleton } from '@/components/common/list-skeleton'
 import {
   Table,
@@ -46,6 +69,7 @@ import {
 } from '@/features/apps/status-filter'
 import { ImportAppDialog } from '@/features/apps/import-app-dialog'
 import { OnboardingChecklist } from '@/features/onboarding/onboarding-checklist'
+import { useDeleteApp, useStackControl } from '@/lib/api/apps'
 import type { App } from '@/types/api'
 
 export function AppsDashboard() {
@@ -344,11 +368,123 @@ function AppRow({ app, index }: { app: App; index: number }) {
         {relativeTime(app.updated_at)}
       </TableCell>
       <TableCell>
-        <Button variant="ghost" size="icon-sm" className="text-muted-foreground">
-          <MoreHorizontal className="size-4" />
-        </Button>
+        <AppRowActions app={app} />
       </TableCell>
     </m.tr>
+  )
+}
+
+// Per-row actions menu. The lifecycle mutations stay in the row (status-gated
+// like StackControls), and Delete defers to a controlled AlertDialog — kept a
+// sibling of the menu so it survives the menu unmounting on select.
+function AppRowActions({ app }: { app: App }) {
+  const { t } = useTranslation('apps')
+  const stack = useStackControl(app.id)
+  const remove = useDeleteApp()
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
+  const isAddon = app.source === 'template'
+  const busy = stack.isPending || app.status === 'building'
+
+  const run = (action: 'start' | 'stop' | 'restart', message: string) =>
+    stack.mutate(action, {
+      onSuccess: () => toast.success(message),
+      onError: (e) => toast.error(e.message),
+    })
+
+  const deleteApp = () =>
+    remove.mutate(app.id, {
+      onSuccess: () => {
+        toast.success(t('dashboard.rowActions.deleted', { name: app.name }))
+        setConfirmOpen(false)
+      },
+      onError: (e) => toast.error(e.message),
+    })
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
+            aria-label={t('dashboard.rowActions.menuAria', { name: app.name })}
+          >
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem asChild>
+            <Link to="/apps/$appId" params={{ appId: app.id }}>
+              <ExternalLink />
+              {t('dashboard.rowActions.open')}
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {app.status !== 'running' ? (
+            <DropdownMenuItem
+              disabled={busy}
+              onSelect={() => run('start', t('dashboard.rowActions.started', { name: app.name }))}
+            >
+              <Play />
+              {t('dashboard.rowActions.start')}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem
+            disabled={busy || app.status === 'stopped'}
+            onSelect={() => run('restart', t('dashboard.rowActions.restarted', { name: app.name }))}
+          >
+            <RotateCw />
+            {t('dashboard.rowActions.restart')}
+          </DropdownMenuItem>
+          {app.status !== 'stopped' ? (
+            <DropdownMenuItem
+              disabled={busy}
+              onSelect={() => run('stop', t('dashboard.rowActions.stopped', { name: app.name }))}
+            >
+              <Square />
+              {t('dashboard.rowActions.stop')}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onSelect={() => setConfirmOpen(true)}>
+            <Trash2 />
+            {isAddon ? t('dashboard.rowActions.uninstall') : t('dashboard.rowActions.delete')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t(
+                isAddon
+                  ? 'dashboard.rowActions.confirm.uninstallTitle'
+                  : 'dashboard.rowActions.confirm.title',
+                { name: app.name },
+              )}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('dashboard.rowActions.confirm.description')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('dashboard.rowActions.confirm.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={deleteApp}
+              disabled={remove.isPending}
+              className="bg-err text-err-foreground hover:bg-err/90"
+            >
+              {isAddon
+                ? t('dashboard.rowActions.uninstall')
+                : t('dashboard.rowActions.confirm.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 

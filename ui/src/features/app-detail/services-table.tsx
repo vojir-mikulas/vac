@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { RotateCw } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -17,6 +18,7 @@ import { formatBytes, formatDuration, formatPercent } from '@/lib/format'
 import type { Service } from '@/types/api'
 
 export function ServicesTable({ appId, services }: { appId: string; services: Service[] }) {
+  const { t } = useTranslation('app-detail')
   const stats = useAppStatsContext()
   const restart = useRestartService(appId)
 
@@ -25,12 +27,24 @@ export function ServicesTable({ appId, services }: { appId: string; services: Se
       <Table>
         <TableHeader>
           <TableRow className="bg-surface-1 hover:bg-surface-1">
-            <TableHead className="text-2xs uppercase tracking-wider">Service</TableHead>
-            <TableHead className="text-2xs uppercase tracking-wider">Status</TableHead>
-            <TableHead className="text-2xs uppercase tracking-wider">CPU</TableHead>
-            <TableHead className="text-2xs uppercase tracking-wider">Memory</TableHead>
-            <TableHead className="text-2xs uppercase tracking-wider">Uptime</TableHead>
-            <TableHead className="text-right text-2xs uppercase tracking-wider">Actions</TableHead>
+            <TableHead className="text-2xs uppercase tracking-wider">
+              {t('servicesTable.service')}
+            </TableHead>
+            <TableHead className="text-2xs uppercase tracking-wider">
+              {t('servicesTable.status')}
+            </TableHead>
+            <TableHead className="text-2xs uppercase tracking-wider">
+              {t('servicesTable.cpu')}
+            </TableHead>
+            <TableHead className="text-2xs uppercase tracking-wider">
+              {t('servicesTable.memory')}
+            </TableHead>
+            <TableHead className="text-2xs uppercase tracking-wider">
+              {t('servicesTable.uptime')}
+            </TableHead>
+            <TableHead className="text-right text-2xs uppercase tracking-wider">
+              {t('servicesTable.actions')}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -42,7 +56,7 @@ export function ServicesTable({ appId, services }: { appId: string; services: Se
                   {svc.name}
                   {svc.restart_count > 0 ? (
                     <span className="ml-2 text-2xs text-warn-foreground">
-                      ↻ {svc.restart_count}
+                      {t('servicesTable.restartCount', { count: svc.restart_count })}
                     </span>
                   ) : null}
                 </TableCell>
@@ -65,13 +79,14 @@ export function ServicesTable({ appId, services }: { appId: string; services: Se
                     disabled={restart.isPending}
                     onClick={() =>
                       restart.mutate(svc.name, {
-                        onSuccess: () => toast.success(`Restarting ${svc.name}`),
+                        onSuccess: () =>
+                          toast.success(t('servicesTable.restarting', { service: svc.name })),
                         onError: (e) => toast.error(e.message),
                       })
                     }
                   >
                     <RotateCw className="size-3.5" />
-                    Restart
+                    {t('servicesTable.restart')}
                   </Button>
                 </TableCell>
               </TableRow>

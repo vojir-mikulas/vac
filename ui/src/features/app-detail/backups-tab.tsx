@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Database, Download, Pencil, Play, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -48,7 +49,11 @@ import {
 import { useServices } from '@/lib/api/services'
 import type { BackupConfig, BackupConfigInput, BackupFrequency } from '@/types/api'
 
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+type AppDetailT = ReturnType<typeof useTranslation<'app-detail'>>['t']
+
+// 0–6 mirrors JS getDay() / the backend's day_of_week; the translation keys
+// backups.days.0…6 carry the localized weekday names.
+const DAY_INDEXES = [0, 1, 2, 3, 4, 5, 6] as const
 
 function formatBytes(n?: number | null): string {
   if (n == null) return '—'
@@ -63,21 +68,35 @@ function formatBytes(n?: number | null): string {
   return `${v.toFixed(1)} ${units[i]}`
 }
 
-function scheduleSummary(c: BackupConfig): string {
+// Day-of-week (0=Sunday … 6=Saturday) → its catalog key, kept as a literal tuple
+// so t() stays type-safe (a `backups.days.${number}` template would be too wide).
+const DAY_KEYS = [
+  'backups.days.0',
+  'backups.days.1',
+  'backups.days.2',
+  'backups.days.3',
+  'backups.days.4',
+  'backups.days.5',
+  'backups.days.6',
+] as const
+
+function scheduleSummary(c: BackupConfig, t: AppDetailT): string {
   const at = `${String(c.hour_of_day).padStart(2, '0')}:00`
   if (c.frequency === 'weekly' && c.day_of_week != null) {
-    return `Weekly on ${DAYS[c.day_of_week]} at ${at} UTC`
+    const dayKey = DAY_KEYS[c.day_of_week] ?? DAY_KEYS[0]
+    return t('backups.weeklySummary', { day: t(dayKey), at })
   }
-  return `Daily at ${at} UTC`
+  return t('backups.dailySummary', { at })
 }
 
 export function BackupsTab({ appId }: { appId: string }) {
+  const { t } = useTranslation('app-detail')
   const { data: configs, isLoading } = useBackups(appId)
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <SectionHeader className="mb-0">Scheduled backups</SectionHeader>
+        <SectionHeader className="mb-0">{t('backups.title')}</SectionHeader>
         <BackupDialog appId={appId} />
       </div>
 
@@ -93,8 +112,8 @@ export function BackupsTab({ appId }: { appId: string }) {
         ) : (
           <EmptyState
             icon={Database}
-            title="No backups configured"
-            description="Schedule a dump command for a stateful service — VAC runs it in the container and ships the output to your chosen destination."
+            title={t('backups.emptyTitle')}
+            description={t('backups.emptyDescription')}
           />
         )}
       </SwapFade>
@@ -103,6 +122,7 @@ export function BackupsTab({ appId }: { appId: string }) {
 }
 
 function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) {
+  const { t } = useTranslation('app-detail')
   const [showRuns, setShowRuns] = useState(false)
   const run = useRunBackup(appId)
   const remove = useDeleteBackup(appId)
@@ -118,7 +138,9 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
             <StatusPill status="queued" size="sm" />
           )}
           {!config.enabled ? (
-            <span className="text-2xs uppercase tracking-wider text-muted-foreground">paused</span>
+            <span className="text-2xs uppercase tracking-wider text-muted-foreground">
+              {t('backups.paused')}
+            </span>
           ) : null}
         </div>
         <div className="flex gap-2">
@@ -128,13 +150,13 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
             disabled={run.isPending}
             onClick={() =>
               run.mutate(config.id, {
-                onSuccess: () => toast.success('Backup started'),
+                onSuccess: () => toast.success(t('backups.backupStarted')),
                 onError: (e) => toast.error(e.message),
               })
             }
           >
             <Play className="size-3.5" />
-            Back up now
+            {t('backups.backupNow')}
           </Button>
           <BackupDialog appId={appId} config={config} />
           <Button
@@ -142,9 +164,9 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
             size="sm"
             disabled={remove.isPending}
             onClick={() => {
-              if (!confirm(`Delete the backup config for ${config.service_name}?`)) return
+              if (!confirm(t('backups.confirmDelete', { service: config.service_name }))) return
               remove.mutate(config.id, {
-                onSuccess: () => toast.success('Backup config deleted'),
+                onSuccess: () => toast.success(t('backups.configDeleted')),
                 onError: (e) => toast.error(e.message),
               })
             }}
@@ -155,22 +177,29 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
       </div>
 
       <div className="grid gap-x-6 gap-y-1.5 px-5 py-4 text-sm sm:grid-cols-2">
-        <Field label="Schedule" value={scheduleSummary(config)} />
+        <Field label={t('backups.fieldSchedule')} value={scheduleSummary(config, t)} />
         <Field
-          label="Destination"
-          value={config.destination === 's3' ? 'S3-compatible' : 'Local volume'}
+          label={t('backups.fieldDestination')}
+          value={
+            config.destination === 's3' ? t('backups.destinationS3') : t('backups.destinationLocal')
+          }
         />
-        <Field label="Keep" value={`${config.keep_count} most recent`} />
         <Field
-          label="Last run"
+          label={t('backups.fieldKeep')}
+          value={t('backups.keepValue', { count: config.keep_count })}
+        />
+        <Field
+          label={t('backups.fieldLastRun')}
           value={
             config.last_run?.finished_at
               ? `${new Date(config.last_run.finished_at).toLocaleString()} · ${formatBytes(config.last_run.size_bytes)}`
-              : 'never'
+              : t('backups.lastRunNever')
           }
         />
         <div className="sm:col-span-2">
-          <div className="text-2xs uppercase tracking-wider text-muted-foreground">Command</div>
+          <div className="text-2xs uppercase tracking-wider text-muted-foreground">
+            {t('backups.command')}
+          </div>
           <code className="mt-0.5 block truncate font-mono text-xs">{config.command}</code>
         </div>
       </div>
@@ -181,7 +210,7 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
           className="text-xs font-medium text-muted-foreground hover:text-foreground"
           onClick={() => setShowRuns((s) => !s)}
         >
-          {showRuns ? 'Hide' : 'Show'} run history
+          {showRuns ? t('backups.hideRunHistory') : t('backups.showRunHistory')}
         </button>
         {showRuns ? <RunHistory appId={appId} config={config} /> : null}
       </div>
@@ -190,21 +219,24 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
 }
 
 function RunHistory({ appId, config }: { appId: string; config: BackupConfig }) {
+  const { t } = useTranslation('app-detail')
   const { data: runs, isLoading } = useBackupRuns(appId, config.id)
 
   if (isLoading) return <Skeleton className="mt-3 h-24 w-full rounded-lg" />
   if (!runs || runs.length === 0) {
-    return <p className="mt-3 text-sm text-muted-foreground">No runs yet.</p>
+    return (
+      <p className="mt-3 text-sm text-muted-foreground">{t('backups.runHistoryLoadingNone')}</p>
+    )
   }
 
   return (
     <Table className="mt-3">
       <TableHeader>
         <TableRow>
-          <TableHead>Started</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Size</TableHead>
-          <TableHead className="text-right">Artifact</TableHead>
+          <TableHead>{t('backups.runStarted')}</TableHead>
+          <TableHead>{t('backups.runStatus')}</TableHead>
+          <TableHead>{t('backups.runSize')}</TableHead>
+          <TableHead className="text-right">{t('backups.runArtifact')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -228,7 +260,7 @@ function RunHistory({ appId, config }: { appId: string; config: BackupConfig }) 
                   download
                 >
                   <Download className="size-3.5" />
-                  Download
+                  {t('backups.download')}
                 </a>
               ) : (
                 <span className="text-xs text-muted-foreground">—</span>
@@ -251,6 +283,7 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig }) {
+  const { t } = useTranslation('app-detail')
   const isEdit = !!config
   const [open, setOpen] = useState(false)
   const { data: services } = useServices(appId)
@@ -280,7 +313,7 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
 
   const submit = () => {
     if (!serviceName) {
-      toast.error('Pick a service')
+      toast.error(t('backups.dialog.pickService'))
       return
     }
     // On edit, an unchanged S3 destination with a blank secret means "keep the
@@ -300,7 +333,7 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
     }
     const onDone = {
       onSuccess: () => {
-        toast.success(isEdit ? 'Backup updated' : 'Backup configured')
+        toast.success(isEdit ? t('backups.dialog.updated') : t('backups.dialog.configured'))
         setOpen(false)
       },
       onError: (e: Error) => toast.error(e.message),
@@ -316,31 +349,35 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {isEdit ? (
-          <Button variant="outline" size="sm" aria-label="Edit backup">
+          <Button variant="outline" size="sm" aria-label={t('backups.dialog.editButton')}>
             <Pencil className="size-3.5" />
           </Button>
         ) : (
           <Button variant="brand" size="sm">
             <Plus className="size-4" />
-            Add backup
+            {t('backups.dialog.addButton')}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? `Edit backup · ${serviceName}` : 'Schedule a backup'}</DialogTitle>
+          <DialogTitle>
+            {isEdit
+              ? t('backups.dialog.editTitle', { service: serviceName })
+              : t('backups.dialog.newTitle')}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4 py-2">
           {isEdit ? (
-            <Labeled label="Service">
+            <Labeled label={t('backups.dialog.service')}>
               <Input value={serviceName} disabled className="font-mono text-xs" />
             </Labeled>
           ) : (
-            <Labeled label="Service">
+            <Labeled label={t('backups.dialog.service')}>
               <Select value={serviceName} onValueChange={setServiceName}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a service" />
+                  <SelectValue placeholder={t('backups.dialog.selectService')} />
                 </SelectTrigger>
                 <SelectContent>
                   {(services ?? []).map((s) => (
@@ -355,15 +392,12 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
 
           {isEdit ? (
             <label className="flex items-center justify-between gap-3">
-              <span className="text-xs font-medium">Enabled</span>
+              <span className="text-xs font-medium">{t('backups.dialog.enabled')}</span>
               <Switch checked={enabled} onCheckedChange={setEnabled} />
             </label>
           ) : null}
 
-          <Labeled
-            label="Backup command"
-            hint="Run inside the running container; container env vars (e.g. $POSTGRES_USER) are available."
-          >
+          <Labeled label={t('backups.dialog.command')} hint={t('backups.dialog.commandHint')}>
             <Textarea
               value={command}
               onChange={(e) => setCommand(e.target.value)}
@@ -373,18 +407,18 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
           </Labeled>
 
           <div className="grid grid-cols-2 gap-4">
-            <Labeled label="Frequency">
+            <Labeled label={t('backups.dialog.frequency')}>
               <Select value={frequency} onValueChange={(v) => setFrequency(v as BackupFrequency)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="daily">{t('backups.dialog.frequencyDaily')}</SelectItem>
+                  <SelectItem value="weekly">{t('backups.dialog.frequencyWeekly')}</SelectItem>
                 </SelectContent>
               </Select>
             </Labeled>
-            <Labeled label="Hour (UTC)">
+            <Labeled label={t('backups.dialog.hour')}>
               <Input
                 type="number"
                 min={0}
@@ -396,15 +430,15 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
           </div>
 
           {frequency === 'weekly' ? (
-            <Labeled label="Day of week">
+            <Labeled label={t('backups.dialog.dayOfWeek')}>
               <Select value={String(dayOfWeek)} onValueChange={(v) => setDayOfWeek(Number(v))}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {DAYS.map((d, i) => (
-                    <SelectItem key={d} value={String(i)}>
-                      {d}
+                  {DAY_INDEXES.map((i) => (
+                    <SelectItem key={i} value={String(i)}>
+                      {t(`backups.days.${i}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -413,7 +447,7 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
           ) : null}
 
           <div className="grid grid-cols-2 gap-4">
-            <Labeled label="Destination">
+            <Labeled label={t('backups.dialog.destination')}>
               <Select
                 value={destination}
                 onValueChange={(v) => setDestination(v as 'local' | 's3')}
@@ -422,12 +456,12 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="local">Local volume</SelectItem>
-                  <SelectItem value="s3">S3-compatible</SelectItem>
+                  <SelectItem value="local">{t('backups.dialog.destinationLocal')}</SelectItem>
+                  <SelectItem value="s3">{t('backups.dialog.destinationS3')}</SelectItem>
                 </SelectContent>
               </Select>
             </Labeled>
-            <Labeled label="Keep last N">
+            <Labeled label={t('backups.dialog.keepLastN')}>
               <Input
                 type="number"
                 min={1}
@@ -440,45 +474,41 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
           {destination === 's3' ? (
             <div className="flex flex-col gap-3 rounded-lg border bg-surface-1 p-3">
               <div className="grid grid-cols-2 gap-3">
-                <Labeled label="Endpoint">
+                <Labeled label={t('backups.dialog.endpoint')}>
                   <Input
                     placeholder="s3.amazonaws.com"
                     value={s3.endpoint}
                     onChange={(e) => setS3({ ...s3, endpoint: e.target.value })}
                   />
                 </Labeled>
-                <Labeled label="Region">
+                <Labeled label={t('backups.dialog.region')}>
                   <Input
                     value={s3.region}
                     onChange={(e) => setS3({ ...s3, region: e.target.value })}
                   />
                 </Labeled>
               </div>
-              <Labeled label="Bucket">
+              <Labeled label={t('backups.dialog.bucket')}>
                 <Input
                   value={s3.bucket}
                   onChange={(e) => setS3({ ...s3, bucket: e.target.value })}
                 />
               </Labeled>
               <div className="grid grid-cols-2 gap-3">
-                <Labeled label="Access key">
+                <Labeled label={t('backups.dialog.accessKey')}>
                   <Input
                     value={s3.access_key}
                     onChange={(e) => setS3({ ...s3, access_key: e.target.value })}
                   />
                 </Labeled>
                 <Labeled
-                  label="Secret key"
-                  hint={
-                    isEdit
-                      ? 'Leave blank to keep the existing S3 settings & credentials. Re-enter the secret to change any S3 field.'
-                      : undefined
-                  }
+                  label={t('backups.dialog.secretKey')}
+                  hint={isEdit ? t('backups.dialog.secretKeyHint') : undefined}
                 >
                   <Input
                     type="password"
                     value={s3.secret_key}
-                    placeholder={isEdit ? 'unchanged' : undefined}
+                    placeholder={isEdit ? t('backups.dialog.secretKeyUnchanged') : undefined}
                     onChange={(e) => setS3({ ...s3, secret_key: e.target.value })}
                   />
                 </Labeled>
@@ -489,10 +519,10 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button variant="brand" disabled={pending} onClick={submit}>
-            {isEdit ? 'Save changes' : 'Save backup'}
+            {isEdit ? t('common.saveChanges') : t('backups.dialog.saveBackup')}
           </Button>
         </DialogFooter>
       </DialogContent>

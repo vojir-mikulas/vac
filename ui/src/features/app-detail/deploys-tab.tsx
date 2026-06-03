@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
@@ -32,6 +33,7 @@ import { durationBetween, relativeTime, shortSha } from '@/lib/format'
 import type { Deployment } from '@/types/api'
 
 export function DeploysTab({ appId }: { appId: string }) {
+  const { t } = useTranslation('app-detail')
   const { data: deployments, isLoading } = useDeployments(appId)
 
   // The newest successful deployment is the version currently live — rolling
@@ -40,7 +42,7 @@ export function DeploysTab({ appId }: { appId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <SectionHeader className="mb-0">History</SectionHeader>
+      <SectionHeader className="mb-0">{t('deploys.history')}</SectionHeader>
 
       <SwapFade
         id={isLoading ? 'loading' : deployments && deployments.length > 0 ? 'rows' : 'empty'}
@@ -54,10 +56,7 @@ export function DeploysTab({ appId }: { appId: string }) {
             ))}
           </div>
         ) : (
-          <EmptyState
-            title="No deployments yet"
-            description="Trigger a deploy from your configured branch to get started."
-          />
+          <EmptyState title={t('deploys.emptyTitle')} description={t('deploys.emptyDescription')} />
         )}
       </SwapFade>
     </div>
@@ -65,6 +64,7 @@ export function DeploysTab({ appId }: { appId: string }) {
 }
 
 function DeployRow({ deployment, isCurrent }: { deployment: Deployment; isCurrent: boolean }) {
+  const { t } = useTranslation('app-detail')
   const [open, setOpen] = useState(false)
   // Offer rollback on prior successful deployments only — never the live one
   // (that would redeploy the same commit) and never a failed attempt.
@@ -85,13 +85,13 @@ function DeployRow({ deployment, isCurrent }: { deployment: Deployment; isCurren
         />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">
-            {deployment.commit_message ?? 'Deploy'}
+            {deployment.commit_message ?? t('deploys.deployFallback')}
           </div>
           <div className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
             {deployment.triggered_by === 'rollback' ? (
               <span className="inline-flex items-center gap-1 rounded-sm bg-muted px-1.5 py-0.5 font-sans font-medium text-foreground">
                 <RotateCcw className="size-3" />
-                Rollback
+                {t('deploys.rollback')}
               </span>
             ) : null}
             <span>
@@ -102,7 +102,7 @@ function DeployRow({ deployment, isCurrent }: { deployment: Deployment; isCurren
         </div>
         {isCurrent ? (
           <span className="rounded-sm bg-ok-bg px-1.5 py-0.5 text-2xs font-medium text-ok-foreground">
-            Live
+            {t('deploys.live')}
           </span>
         ) : null}
         <StatusPill status={deployment.status} size="sm" />
@@ -125,39 +125,40 @@ function DeployRow({ deployment, isCurrent }: { deployment: Deployment; isCurren
 }
 
 function RollBackAction({ deployment }: { deployment: Deployment }) {
+  const { t } = useTranslation('app-detail')
   const rollback = useRollbackDeploy(deployment.app_id)
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
       <p className="text-xs text-muted-foreground">
-        Redeploy this commit{deployment.commit_sha ? ` (${shortSha(deployment.commit_sha)})` : ''}.
+        {deployment.commit_sha
+          ? t('deploys.rollbackPromptWithSha', { sha: shortSha(deployment.commit_sha) })
+          : t('deploys.rollbackPrompt')}
       </p>
       <AlertDialog>
         <AlertDialogTrigger asChild>
           <Button variant="outline" size="sm" disabled={rollback.isPending}>
             <RotateCcw className="size-3.5" />
-            Roll back
+            {t('deploys.rollBack')}
           </Button>
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Roll back to this deployment?</AlertDialogTitle>
+            <AlertDialogTitle>{t('deploys.rollbackDialogTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This rebuilds and redeploys commit {shortSha(deployment.commit_sha)} as a new
-              deployment. Only the code is rolled back — environment variables are left unchanged.
-              The current version keeps serving until the rollback is healthy.
+              {t('deploys.rollbackDialogDescription', { sha: shortSha(deployment.commit_sha) })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() =>
                 rollback.mutate(deployment.id, {
-                  onSuccess: () => toast.success('Rollback triggered'),
+                  onSuccess: () => toast.success(t('deploys.rollbackTriggered')),
                   onError: (e) => toast.error(e.message),
                 })
               }
             >
-              Roll back
+              {t('deploys.rollBack')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -167,6 +168,7 @@ function RollBackAction({ deployment }: { deployment: Deployment }) {
 }
 
 function BuildLogs({ appId, did }: { appId: string; did: string }) {
+  const { t } = useTranslation('app-detail')
   const qc = useQueryClient()
   // When the build stream terminates, settle the deployment list so the row's
   // status flips to its terminal value immediately rather than on the next poll.
@@ -177,8 +179,8 @@ function BuildLogs({ appId, did }: { appId: string; did: string }) {
     <LogViewer
       lines={lines}
       className="h-80"
-      emptyLabel="No build output."
-      label="Deployment logs"
+      emptyLabel={t('deploys.buildLogsEmpty')}
+      label={t('deploys.buildLogsLabel')}
     />
   )
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ArrowRight } from 'lucide-react'
 
 import {
@@ -22,21 +23,22 @@ import type { AuditEntry } from '@/lib/api/audit'
  * sensitive/write-only env values as `••••`. Fetched lazily when opened.
  */
 export function ActivityDiffDialog({ entry, onClose }: { entry: AuditEntry; onClose: () => void }) {
+  const { t } = useTranslation('activity')
   const { data, isLoading, error } = useActivityDiff(entry.id)
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Change preview</DialogTitle>
-          <DialogDescription>{entry.summary || 'What this change did.'}</DialogDescription>
+          <DialogTitle>{t('diff.title')}</DialogTitle>
+          <DialogDescription>{entry.summary || t('diff.descriptionFallback')}</DialogDescription>
         </DialogHeader>
 
         {isLoading ? (
           <Skeleton className="h-32 w-full rounded-lg" />
         ) : error ? (
           <p className="py-6 text-center text-sm text-err-foreground">
-            {error.message || 'Could not load preview.'}
+            {error.message || t('diff.loadError')}
           </p>
         ) : data ? (
           <DiffRows diff={data} />
@@ -45,14 +47,14 @@ export function ActivityDiffDialog({ entry, onClose }: { entry: AuditEntry; onCl
         <DialogFooter className="sm:items-center sm:justify-between">
           {data ? (
             <p className="text-2xs text-muted-foreground">
-              {data.changed_since ? '⚠ changed again since this action · ' : ''}Compared against
-              current state ({relativeTime(data.current_as_of)})
+              {data.changed_since ? t('diff.changedAgain') : ''}
+              {t('diff.comparedAgainst', { time: relativeTime(data.current_as_of) })}
             </p>
           ) : (
             <span />
           )}
           <Button variant="outline" size="sm" onClick={onClose}>
-            Close
+            {t('diff.close')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -65,12 +67,13 @@ export function ActivityDiffDialog({ entry, onClose }: { entry: AuditEntry; onCl
 // masked rows render `••••` and never the underlying value. Unchanged env rows
 // collapse behind a toggle to keep large env sets readable.
 export function DiffRows({ diff }: { diff: ActivityDiff }) {
+  const { t } = useTranslation('activity')
   const [showUnchanged, setShowUnchanged] = useState(false)
   const unchanged = diff.rows.filter((r) => r.status === 'unchanged')
   const changed = diff.rows.filter((r) => r.status !== 'unchanged')
 
   if (diff.rows.length === 0) {
-    return <p className="py-6 text-center text-sm text-muted-foreground">No changes recorded.</p>
+    return <p className="py-6 text-center text-sm text-muted-foreground">{t('diff.noChanges')}</p>
   }
 
   const visible = showUnchanged ? diff.rows : changed
@@ -86,12 +89,12 @@ export function DiffRows({ diff }: { diff: ActivityDiff }) {
           onClick={() => setShowUnchanged(true)}
           className="mt-1 self-start text-2xs text-muted-foreground underline-offset-2 hover:underline"
         >
-          Show {unchanged.length} unchanged
+          {t('diff.showUnchanged', { count: unchanged.length })}
         </button>
       ) : null}
       {changed.length === 0 && !showUnchanged ? (
         <p className="py-4 text-center text-sm text-muted-foreground">
-          No changes to display — {unchanged.length} key(s) unchanged.
+          {t('diff.noChangesToDisplay', { count: unchanged.length })}
         </p>
       ) : null}
     </div>
@@ -120,6 +123,7 @@ function DiffRowItem({ row }: { row: DiffRow }) {
 // (no before) or a remove (no after) — absent sides read as `—`. A masked value
 // is shown as `••••`; the underlying value is never sent for masked rows.
 function Cell({ row, side }: { row: DiffRow; side: 'before' | 'after' }) {
+  const { t } = useTranslation('activity')
   const exists = side === 'before' ? row.status !== 'added' : row.status !== 'removed'
   if (!exists) return <span className="text-muted-foreground">—</span>
   const text = row.masked ? '••••' : ((side === 'before' ? row.before : row.after) ?? '••••')
@@ -129,21 +133,22 @@ function Cell({ row, side }: { row: DiffRow; side: 'before' | 'after' }) {
         'truncate rounded bg-surface-2 px-1.5 py-0.5',
         side === 'before' && row.status === 'changed' && 'text-muted-foreground line-through',
       )}
-      title={row.masked ? 'hidden (sensitive)' : text}
+      title={row.masked ? t('diff.maskedTitle') : text}
     >
       {text || '∅'}
     </span>
   )
 }
 
-const PILL: Record<DiffStatus, { label: string; className: string }> = {
-  added: { label: 'added', className: 'bg-ok-bg text-ok-foreground' },
-  removed: { label: 'removed', className: 'bg-err-bg text-err-foreground' },
-  changed: { label: 'changed', className: 'bg-warn-bg text-warn-foreground' },
-  unchanged: { label: 'same', className: 'bg-muted text-muted-foreground' },
-}
+const PILL = {
+  added: { labelKey: 'diff.status.added', className: 'bg-ok-bg text-ok-foreground' },
+  removed: { labelKey: 'diff.status.removed', className: 'bg-err-bg text-err-foreground' },
+  changed: { labelKey: 'diff.status.changed', className: 'bg-warn-bg text-warn-foreground' },
+  unchanged: { labelKey: 'diff.status.unchanged', className: 'bg-muted text-muted-foreground' },
+} as const satisfies Record<DiffStatus, { labelKey: string; className: string }>
 
 function StatusPill({ status }: { status: DiffStatus }) {
+  const { t } = useTranslation('activity')
   const p = PILL[status]
   return (
     <span
@@ -152,7 +157,7 @@ function StatusPill({ status }: { status: DiffStatus }) {
         p.className,
       )}
     >
-      {p.label}
+      {t(p.labelKey)}
     </span>
   )
 }

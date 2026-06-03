@@ -2,21 +2,23 @@ import { useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useMutation } from '@tanstack/react-query'
-import { Check, CheckCircle2, ChevronLeft, ChevronRight, Rocket, XCircle } from 'lucide-react'
+import { AnimatePresence, m } from 'motion/react'
+import { ArrowRight, Check, ChevronLeft, Loader2, Rocket } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageContainer } from '@/components/layout/app-shell'
-import { SectionHeader } from '@/components/common/section-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { NotificationBar } from '@/components/common/notification-bar'
 import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
 import { BuildSourcePicker, type BuildSourceValue } from '@/features/apps/build-source'
 import { appsApi, useCreateApp } from '@/lib/api/apps'
 import { deploymentsApi } from '@/lib/api/deployments'
 import { ApiError } from '@/lib/api/client'
 import { cn } from '@/lib/utils'
+import { RISE, transition } from '@/lib/motion'
 import type { App, CreateAppInput, TestConnectionResult } from '@/types/api'
 
 // The four wizard steps, by id; labels are translated at render (see Stepper).
@@ -25,45 +27,58 @@ const STEPS = ['source', 'build', 'domain', 'deploy'] as const
 // t() scoped to the `apps` namespace, for helpers that render outside a hook.
 type AppsTFunction = ReturnType<typeof useTranslation<'apps'>>['t']
 
+function isSshUrl(url: string): boolean {
+  return url.trim().startsWith('git@') || url.trim().startsWith('ssh://')
+}
+
+// Directional slide+fade for step transitions. `custom` carries the travel
+// direction (+1 forward, -1 back) so steps enter from the side you're heading.
+const stepVariants = {
+  enter: (dir: number) => ({ opacity: 0, x: dir * 16 }),
+  center: { opacity: 1, x: 0, transition: transition.base },
+  exit: (dir: number) => ({ opacity: 0, x: dir * -16, transition: transition.fast }),
+}
+
 export function NewApp() {
-  const { t } = useTranslation('apps')
-  const [created, setCreated] = useState<App | null>(null)
   return (
     <PageContainer>
       <div className="mx-auto max-w-2xl">
-        {created ? (
-          <>
-            <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t('new.created.title')}</h1>
-            <p className="mb-6 text-sm text-muted-foreground">
-              {t('new.created.subtitle', { name: created.name })}
-            </p>
-            <ConnectStep app={created} />
-          </>
-        ) : (
-          <Wizard onCreated={setCreated} />
-        )}
+        <Wizard />
       </div>
     </PageContainer>
   )
 }
 
-function Wizard({ onCreated }: { onCreated: (app: App) => void }) {
+function Wizard() {
   const { t } = useTranslation('apps')
   const navigate = useNavigate()
   const create = useCreateApp()
 
-  const [step, setStep] = useState(0)
+  // [step, direction] — direction drives which way the step slides.
+  const [[step, dir], setStepState] = useState<[number, number]>([0, 1])
   const [name, setName] = useState('')
   const [gitUrl, setGitUrl] = useState('')
   const [branch, setBranch] = useState('main')
   const [domain, setDomain] = useState('')
   const [build, setBuild] = useState<BuildSourceValue>({ build_kind: 'auto', build_config: {} })
+  const [created, setCreated] = useState<App | null>(null)
+
+  const goTo = (next: number) => setStepState([next, next > step ? 1 : -1])
 
   const effectiveName = name.trim() || repoName(gitUrl)
-
+  const ssh = isSshUrl(gitUrl)
   const canContinue = step === 0 ? Boolean(gitUrl.trim() && effectiveName) : true
 
-  const submit = () => {
+  const deployNow = useMutation({
+    mutationFn: (appId: string) => deploymentsApi.trigger(appId),
+    onSuccess: (_, appId) => {
+      toast.success(t('new.toast.deployTriggered'))
+      navigate({ to: '/apps/$appId/deploys', params: { appId } })
+    },
+    onError: (e) => toast.error(e.message),
+  })
+
+  const createApp = (thenDeploy: boolean) => {
     const input: CreateAppInput = {
       name: effectiveName,
       git_url: gitUrl.trim(),
@@ -78,76 +93,134 @@ function Wizard({ onCreated }: { onCreated: (app: App) => void }) {
     create.mutate(input, {
       onSuccess: (app) => {
         toast.success(t('new.toast.created'))
-        onCreated(app)
+        setCreated(app)
+        if (thenDeploy) deployNow.mutate(app.id)
       },
       onError: (e) => toast.error(e.message),
     })
   }
+
+  const busy = create.isPending || deployNow.isPending
 
   return (
     <div>
       <button
         type="button"
         onClick={() => navigate({ to: '/apps' })}
-        className="mb-3 flex cursor-pointer items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        className="mb-3 flex cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
         <ChevronLeft className="size-3.5" /> {t('new.backToApps')}
       </button>
       <h1 className="text-2xl font-semibold tracking-tight">{t('new.title')}</h1>
       <p className="mt-1 mb-6 text-sm text-muted-foreground">{t('new.subtitle')}</p>
 
-      <Stepper step={step} />
+      <Stepper step={step} done={Boolean(created)} />
 
-      <Card className="gap-5 p-6">
-        {step === 0 ? (
-          <SourceStep
-            name={name}
-            setName={setName}
-            gitUrl={gitUrl}
-            setGitUrl={setGitUrl}
-            branch={branch}
-            setBranch={setBranch}
-          />
-        ) : null}
-
-        {step === 1 ? (
-          <div>
-            <StepHeading title={t('new.build.title')} subtitle={t('new.build.subtitle')} />
-            <BuildSourcePicker value={build} onChange={setBuild} />
-          </div>
-        ) : null}
-
-        {step === 2 ? (
-          <DomainStep domain={domain} setDomain={setDomain} fallback={effectiveName} />
-        ) : null}
-
-        {step === 3 ? (
-          <ReviewStep
-            name={effectiveName}
-            gitUrl={gitUrl}
-            branch={branch}
-            build={build}
-            domain={domain}
-          />
-        ) : null}
-
-        <div className="flex items-center justify-between border-t pt-4">
-          <Button
-            variant="outline"
-            onClick={() => (step > 0 ? setStep(step - 1) : navigate({ to: '/apps' }))}
+      <Card className="overflow-hidden p-6">
+        <AnimatePresence mode="wait" custom={dir} initial={false}>
+          <m.div
+            key={step}
+            custom={dir}
+            variants={stepVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
           >
-            {step > 0 ? t('actions.back') : t('actions.cancel')}
-          </Button>
+            {step === 0 ? (
+              <SourceStep
+                name={name}
+                setName={setName}
+                gitUrl={gitUrl}
+                setGitUrl={setGitUrl}
+                branch={branch}
+                setBranch={setBranch}
+              />
+            ) : null}
+
+            {step === 1 ? (
+              <div>
+                <StepHeading title={t('new.build.title')} subtitle={t('new.build.subtitle')} />
+                <BuildSourcePicker value={build} onChange={setBuild} />
+              </div>
+            ) : null}
+
+            {step === 2 ? (
+              <DomainStep domain={domain} setDomain={setDomain} fallback={effectiveName} />
+            ) : null}
+
+            {step === 3 ? (
+              <ReviewDeployStep
+                app={created}
+                name={effectiveName}
+                gitUrl={gitUrl}
+                branch={branch}
+                build={build}
+                domain={domain}
+                ssh={ssh}
+              />
+            ) : null}
+          </m.div>
+        </AnimatePresence>
+
+        <div className="mt-5 flex items-center justify-between gap-3 border-t pt-4">
           {step < STEPS.length - 1 ? (
-            <Button variant="brand" disabled={!canContinue} onClick={() => setStep(step + 1)}>
-              {t('actions.continue')}
-              <ChevronRight className="size-4" />
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={() => (step > 0 ? goTo(step - 1) : navigate({ to: '/apps' }))}
+              >
+                {step > 0 ? t('actions.back') : t('actions.cancel')}
+              </Button>
+              <Button variant="brand" disabled={!canContinue} onClick={() => goTo(step + 1)}>
+                {t('actions.continue')}
+                <ArrowRight className="size-4" />
+              </Button>
+            </>
+          ) : created ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => navigate({ to: '/apps/$appId', params: { appId: created.id } })}
+              >
+                {t('new.connect.goToApp')}
+              </Button>
+              <Button
+                variant="brand"
+                disabled={deployNow.isPending}
+                onClick={() => deployNow.mutate(created.id)}
+              >
+                {deployNow.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Rocket className="size-4" />
+                )}
+                {t('new.connect.deployNow')}
+              </Button>
+            </>
           ) : (
-            <Button variant="brand" disabled={create.isPending} onClick={submit}>
-              <Rocket className="size-4" />
-              {t('new.create')}
-            </Button>
+            <>
+              <Button variant="outline" disabled={busy} onClick={() => goTo(step - 1)}>
+                {t('actions.back')}
+              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" disabled={busy} onClick={() => createApp(false)}>
+                  {create.isPending && !deployNow.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Check className="size-4" />
+                  )}
+                  {t('new.createOnly')}
+                </Button>
+                <Button variant="brand" disabled={busy} onClick={() => createApp(true)}>
+                  {busy ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Rocket className="size-4" />
+                  )}
+                  {t('new.createAndDeploy')}
+                </Button>
+              </div>
+            </>
           )}
         </div>
       </Card>
@@ -155,7 +228,7 @@ function Wizard({ onCreated }: { onCreated: (app: App) => void }) {
   )
 }
 
-function Stepper({ step }: { step: number }) {
+function Stepper({ step, done }: { step: number; done: boolean }) {
   const { t } = useTranslation('apps')
   const labels = [
     t('new.steps.source'),
@@ -165,33 +238,69 @@ function Stepper({ step }: { step: number }) {
   ]
   return (
     <div className="mb-6 flex items-center gap-3">
-      {labels.map((label, i) => (
-        <div key={label} className="flex flex-1 items-center gap-3 last:flex-none">
-          <div className="flex items-center gap-2">
-            <div
-              className={cn(
-                'grid size-6 place-items-center rounded-full border font-mono text-xs font-semibold',
-                i < step && 'border-brand bg-brand text-brand-foreground',
-                i === step && 'border-brand text-brand',
-                i > step && 'border-border text-muted-foreground',
-              )}
-            >
-              {i < step ? <Check className="size-3" /> : i + 1}
+      {labels.map((label, i) => {
+        // The final step counts as complete once the app is created.
+        const complete = i < step || (done && i === STEPS.length - 1)
+        const current = i === step && !complete
+        return (
+          <div key={label} className="flex flex-1 items-center gap-3 last:flex-none">
+            <div className="flex items-center gap-2">
+              <m.div
+                animate={current ? { scale: [1, 1.08, 1] } : { scale: 1 }}
+                transition={transition.base}
+                className={cn(
+                  'grid size-6 place-items-center rounded-full border font-mono text-xs font-semibold transition-colors',
+                  complete && 'border-brand bg-brand text-brand-foreground',
+                  current && 'border-brand text-brand',
+                  !complete && !current && 'border-border text-muted-foreground',
+                )}
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  {complete ? (
+                    <m.span
+                      key="check"
+                      initial={{ opacity: 0, scale: 0.5 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.5 }}
+                      transition={transition.fast}
+                    >
+                      <Check className="size-3" strokeWidth={3} />
+                    </m.span>
+                  ) : (
+                    <m.span
+                      key="num"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={transition.fast}
+                    >
+                      {i + 1}
+                    </m.span>
+                  )}
+                </AnimatePresence>
+              </m.div>
+              <span
+                className={cn(
+                  'text-sm font-medium transition-colors',
+                  i <= step || complete ? 'text-foreground' : 'text-muted-foreground',
+                )}
+              >
+                {label}
+              </span>
             </div>
-            <span
-              className={cn(
-                'text-sm font-medium',
-                i <= step ? 'text-foreground' : 'text-muted-foreground',
-              )}
-            >
-              {label}
-            </span>
+            {i < STEPS.length - 1 ? (
+              <div className="relative h-px flex-1 overflow-hidden bg-border">
+                <m.div
+                  className="absolute inset-0 origin-left bg-brand"
+                  initial={false}
+                  animate={{ scaleX: i < step ? 1 : 0 }}
+                  transition={transition.layout}
+                />
+              </div>
+            ) : null}
           </div>
-          {i < STEPS.length - 1 ? (
-            <div className={cn('h-px flex-1', i < step ? 'bg-brand' : 'bg-border')} />
-          ) : null}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -301,23 +410,32 @@ function DomainStep({
   )
 }
 
-function ReviewStep({
+// ReviewDeployStep is the merged final step: before creation it summarises the
+// config (plus an SSH deploy-key heads-up); after creation it morphs in place to
+// surface the deploy key and a connection test, so the operator never leaves the
+// wizard to verify access.
+function ReviewDeployStep({
+  app,
   name,
   gitUrl,
   branch,
   build,
   domain,
+  ssh,
 }: {
+  app: App | null
   name: string
   gitUrl: string
   branch: string
   build: BuildSourceValue
   domain: string
+  ssh: boolean
 }) {
   const { t } = useTranslation('apps')
   return (
     <div>
       <StepHeading title={t('new.review.title')} subtitle={t('new.review.subtitle')} />
+
       <div className="flex flex-col gap-2 rounded-lg border p-4">
         <ReviewLine k={t('new.review.name')} v={name || '—'} />
         <ReviewLine k={t('new.review.source')} v={gitUrl || '—'} mono />
@@ -325,7 +443,86 @@ function ReviewStep({
         <ReviewLine k={t('new.review.build')} v={buildSummary(build, t)} />
         {domain ? <ReviewLine k={t('new.review.domain')} v={domain} mono /> : null}
       </div>
+
+      <AnimatePresence mode="wait" initial={false}>
+        {app ? (
+          <m.div
+            key="created"
+            initial={{ opacity: 0, y: RISE }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={transition.base}
+            className="mt-4 flex flex-col gap-4"
+          >
+            <NotificationBar tone="success" title={t('new.notices.created', { name: app.name })} />
+            {ssh ? <DeployKeyCard appId={app.id} gitUrl={app.git_url} /> : null}
+            <ConnectionTest app={app} />
+          </m.div>
+        ) : ssh ? (
+          <m.div
+            key="ssh-hint"
+            initial={{ opacity: 0, y: RISE }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -RISE }}
+            transition={transition.base}
+            className="mt-4"
+          >
+            <NotificationBar tone="info" title={t('new.notices.sshKey.title')}>
+              {t('new.notices.sshKey.body')}
+            </NotificationBar>
+          </m.div>
+        ) : null}
+      </AnimatePresence>
     </div>
+  )
+}
+
+function ConnectionTest({ app }: { app: App }) {
+  const { t } = useTranslation('apps')
+  const test = useMutation({
+    mutationFn: () => appsApi.testConnection(app.id),
+  })
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+          <Trans
+            t={t}
+            i18nKey="new.connect.reach"
+            values={{ url: app.git_url }}
+            components={[<span className="font-mono text-foreground" />]}
+          />
+        </p>
+        <Button variant="outline" size="sm" disabled={test.isPending} onClick={() => test.mutate()}>
+          {test.isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+          {t('new.connect.testConnection')}
+        </Button>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {test.data ? (
+          <TestResultBar key="result" result={test.data} />
+        ) : test.error ? (
+          <NotificationBar key="error" tone="error" title={t('new.connect.testFailed')}>
+            {test.error instanceof ApiError
+              ? test.error.message
+              : t('new.connect.connectionFailed')}
+          </NotificationBar>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function TestResultBar({ result }: { result: TestConnectionResult }) {
+  const { t } = useTranslation('apps')
+  if (result.ok) {
+    return <NotificationBar tone="success" title={t('new.connect.succeeded')} />
+  }
+  return (
+    <NotificationBar tone="error" title={t('new.connect.connectionFailed')}>
+      {result.error_message ?? result.error_code ?? t('new.connect.testFailed')}
+    </NotificationBar>
   )
 }
 
@@ -359,90 +556,4 @@ function buildSummary(build: BuildSourceValue, t: AppsTFunction): string {
 function repoName(gitUrl: string): string {
   const last = gitUrl.trim().split('/').pop() ?? ''
   return last.replace(/\.git$/, '')
-}
-
-// ConnectStep is the post-create surface: deploy key (for SSH), connection test,
-// and the first deploy. Unchanged behaviour from the prior two-step flow.
-function ConnectStep({ app }: { app: App }) {
-  const { t } = useTranslation('apps')
-  const navigate = useNavigate()
-
-  const test = useMutation({
-    mutationFn: () => appsApi.testConnection(app.id),
-  })
-
-  const deployNow = useMutation({
-    mutationFn: () => deploymentsApi.trigger(app.id),
-    onSuccess: () => {
-      toast.success(t('new.toast.deployTriggered'))
-      navigate({ to: '/apps/$appId/deploys', params: { appId: app.id } })
-    },
-    onError: (e) => toast.error(e.message),
-  })
-
-  return (
-    <div className="flex flex-col gap-6">
-      <DeployKeyCard appId={app.id} gitUrl={app.git_url} />
-
-      <div>
-        <SectionHeader>{t('new.connect.verifyAccess')}</SectionHeader>
-        <Card className="gap-3 p-5">
-          <p className="text-sm text-muted-foreground">
-            <Trans
-              t={t}
-              i18nKey="new.connect.reach"
-              values={{ url: app.git_url }}
-              components={[<span className="font-mono text-xs" />]}
-            />
-          </p>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={test.isPending}
-              onClick={() => test.mutate()}
-            >
-              {t('new.connect.testConnection')}
-            </Button>
-            {test.data ? <TestResult result={test.data} /> : null}
-            {test.error ? (
-              <span className="text-xs text-err-foreground">
-                {test.error instanceof ApiError ? test.error.message : t('new.connect.testFailed')}
-              </span>
-            ) : null}
-          </div>
-        </Card>
-      </div>
-
-      <div className="flex justify-end gap-2">
-        <Button
-          variant="outline"
-          onClick={() => navigate({ to: '/apps/$appId', params: { appId: app.id } })}
-        >
-          {t('new.connect.goToApp')}
-        </Button>
-        <Button variant="brand" disabled={deployNow.isPending} onClick={() => deployNow.mutate()}>
-          {t('new.connect.deployNow')}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-function TestResult({ result }: { result: TestConnectionResult }) {
-  const { t } = useTranslation('apps')
-  if (result.ok) {
-    return (
-      <span className="flex items-center gap-1.5 text-xs text-ok-foreground">
-        <CheckCircle2 className="size-4" />
-        {t('new.connect.succeeded')}
-      </span>
-    )
-  }
-  return (
-    <span className="flex items-center gap-1.5 text-xs text-err-foreground">
-      <XCircle className="size-4" />
-      {result.error_message ?? result.error_code ?? t('new.connect.connectionFailed')}
-    </span>
-  )
 }

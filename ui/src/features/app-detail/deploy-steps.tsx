@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Check, Loader2, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -6,12 +7,12 @@ import type { DeploymentStatus } from '@/types/api'
 
 // The pipeline stages in order. `status` maps onto the active stage.
 const STEPS = [
-  { key: 'queued', label: 'Queue' },
-  { key: 'cloning', label: 'Clone' },
-  { key: 'building', label: 'Build' },
-  { key: 'deploying', label: 'Deploy' },
-  { key: 'health-checking', label: 'Health' },
-  { key: 'success', label: 'Done' },
+  { key: 'queued', labelKey: 'queued' },
+  { key: 'cloning', labelKey: 'cloning' },
+  { key: 'building', labelKey: 'building' },
+  { key: 'deploying', labelKey: 'deploying' },
+  { key: 'health-checking', labelKey: 'healthChecking' },
+  { key: 'success', labelKey: 'done' },
 ] as const
 
 const ORDER: Record<string, number> = {
@@ -23,6 +24,7 @@ const ORDER: Record<string, number> = {
 }
 
 export function DeploySteps({ status }: { status: DeploymentStatus }) {
+  const { t } = useTranslation('app-detail')
   const failed = isDeployFailed(status)
   const succeeded = isDeploySucceeded(status)
   // On success every step (including the final "Done") reads as complete;
@@ -49,7 +51,7 @@ export function DeploySteps({ status }: { status: DeploymentStatus }) {
               {done ? <Check className="size-3" /> : null}
               {active ? <Loader2 className="size-3 animate-spin" /> : null}
               {isFailMarker ? <X className="size-3" /> : null}
-              {step.label}
+              {t(`deploySteps.${step.labelKey}`)}
             </span>
             {i < STEPS.length - 1 ? <span className="text-muted-foreground">→</span> : null}
           </div>

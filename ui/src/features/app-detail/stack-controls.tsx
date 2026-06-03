@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Play, RotateCw, Square } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -6,6 +7,12 @@ import { useStackControl } from '@/lib/api/apps'
 import type { AppStatus } from '@/types/api'
 
 type StackAction = 'start' | 'stop' | 'restart'
+
+const ACTION_TOAST = {
+  start: 'stackControls.started',
+  stop: 'stackControls.stopped',
+  restart: 'stackControls.restarted',
+} as const satisfies Record<StackAction, string>
 
 // Shared start/stop/restart-all cluster. Rendered both compact (icon-only) in
 // the app-detail header and labelled in the Services tab, so the mutation logic
@@ -20,11 +27,12 @@ export function StackControls({
   status?: AppStatus
   compact?: boolean
 }) {
+  const { t } = useTranslation('app-detail')
   const stack = useStackControl(appId)
 
   const run = (action: StackAction) =>
     stack.mutate(action, {
-      onSuccess: () => toast.success(`Stack ${action}ed`),
+      onSuccess: () => toast.success(t(ACTION_TOAST[action])),
       onError: (e) => toast.error(e.message),
     })
 
@@ -39,8 +47,8 @@ export function StackControls({
         <Button
           variant="outline"
           size="icon-sm"
-          title="Start"
-          aria-label="Start stack"
+          title={t('stackControls.startTitle')}
+          aria-label={t('stackControls.startAria')}
           disabled={startDisabled}
           onClick={() => run('start')}
         >
@@ -49,8 +57,8 @@ export function StackControls({
         <Button
           variant="outline"
           size="icon-sm"
-          title="Restart all"
-          aria-label="Restart stack"
+          title={t('stackControls.restartTitle')}
+          aria-label={t('stackControls.restartAria')}
           disabled={restartDisabled}
           onClick={() => run('restart')}
         >
@@ -59,8 +67,8 @@ export function StackControls({
         <Button
           variant="danger"
           size="icon-sm"
-          title="Stop"
-          aria-label="Stop stack"
+          title={t('stackControls.stopTitle')}
+          aria-label={t('stackControls.stopAria')}
           disabled={stopDisabled}
           onClick={() => run('stop')}
         >
@@ -74,15 +82,15 @@ export function StackControls({
     <div className="flex gap-2">
       <Button variant="outline" size="sm" disabled={startDisabled} onClick={() => run('start')}>
         <Play className="size-3.5" />
-        Start
+        {t('stackControls.start')}
       </Button>
       <Button variant="outline" size="sm" disabled={restartDisabled} onClick={() => run('restart')}>
         <RotateCw className="size-3.5" />
-        Restart
+        {t('stackControls.restart')}
       </Button>
       <Button variant="danger" size="sm" disabled={stopDisabled} onClick={() => run('stop')}>
         <Square className="size-3.5" />
-        Stop
+        {t('stackControls.stop')}
       </Button>
     </div>
   )

@@ -3,5 +3,255 @@
     "heading": "Language",
     "label": "Display language",
     "hint": "Sets the dashboard language. More languages are on the way."
+  },
+  "instance": {
+    "version": {
+      "heading": "Version",
+      "current": "Current",
+      "value": "vac · {{version}}",
+      "builtAt": "Built {{date}}"
+    },
+    "channel": {
+      "label": "Update channel",
+      "hint": "Switching channels is not available yet."
+    },
+    "autoUpdate": {
+      "label": "Auto update",
+      "hint": "Pull and self-update during the maintenance window (Sun 04:00 UTC).",
+      "ariaLabel": "Auto update (coming soon)"
+    },
+    "comingSoon": "Coming soon"
+  },
+  "apiTokens": {
+    "heading": "API tokens",
+    "created": "created {{time}}",
+    "lastUsed": "last used {{time}}",
+    "neverUsed": "never used",
+    "expires": "expires {{time}}",
+    "revoke": "Revoke",
+    "empty": "No API tokens yet.",
+    "newToken": "New token",
+    "toast": {
+      "revoked": "Token revoked"
+    },
+    "dialog": {
+      "createTitle": "Create API token",
+      "createdTitle": "Token created",
+      "copyHint": "Copy this token now — it won't be shown again.",
+      "nameLabel": "Name",
+      "namePlaceholder": "CI pipeline",
+      "expiresLabel": "Expires in (days)",
+      "submit": "Create token"
+    }
+  },
+  "sessions": {
+    "heading": "Active sessions",
+    "revokeAllOthers": "Revoke all others",
+    "unknownDevice": "Unknown device",
+    "thisDevice": "This device",
+    "active": "active {{time}}",
+    "revoke": "Revoke",
+    "toast": {
+      "revoked": "Session revoked",
+      "revokedOthers_one": "Revoked {{count}} session",
+      "revokedOthers_other": "Revoked {{count}} sessions"
+    }
+  },
+  "deployments": {
+    "heading": "Deployments",
+    "maxLabel": "Maximum concurrent deploys",
+    "hint": "How many app deploys run at the same time when several are queued (e.g. a burst of pushes). Different apps only — VAC never runs two deploys for the <0>same</0> app at once. Higher values finish a backlog faster but use more CPU, RAM, and disk I/O during builds; keep it low on a small VPS. Allowed range {{min}}–{{max}}. Takes effect after the next control-plane restart.",
+    "save": "Save",
+    "toast": {
+      "saved": "Deploy concurrency saved — applies after the next restart"
+    }
+  },
+  "notifications": {
+    "heading": "Notifications",
+    "discordWebhook": "Discord webhook",
+    "slackWebhook": "Slack webhook",
+    "events": "Events",
+    "sendTest": "Send test",
+    "save": "Save",
+    "configuredPlaceholder": "Configured ({{hint}}) — leave blank to keep",
+    "toast": {
+      "tested_one": "Sent {{count}} test message",
+      "tested_other": "Sent {{count}} test messages",
+      "saved": "Notification settings saved"
+    }
+  },
+  "totp": {
+    "heading": "Two-factor authentication",
+    "enabled": "2FA is enabled",
+    "disabled": "2FA is disabled",
+    "hint": "Require a time-based code in addition to your password.",
+    "enable": "Enable",
+    "disable": "Disable",
+    "enableFlow": {
+      "recoveryTitle": "Save your recovery codes",
+      "setupTitle": "Set up two-factor authentication",
+      "recoveryHint": "Store these somewhere safe. Each code can be used once if you lose your device.",
+      "copyCodes": "Copy codes",
+      "codeLabel": "Enter the 6-digit code",
+      "submit": "Verify & enable"
+    },
+    "disableDialog": {
+      "title": "Disable two-factor authentication",
+      "passwordLabel": "Confirm your password",
+      "submit": "Disable 2FA"
+    },
+    "toast": {
+      "disabled": "2FA disabled"
+    }
+  },
+  "dangerZone": {
+    "heading": "Danger zone",
+    "cancel": "Cancel",
+    "restart": {
+      "title": "Restart control plane",
+      "description": "Restarts vac-api and vac-proxy. Apps keep running.",
+      "action": "Restart",
+      "reconnecting": "Reconnecting…",
+      "confirmTitle": "Restart control plane?",
+      "confirmDescription": "vac-api and vac-proxy will restart. The dashboard will briefly disconnect and reconnect. Running apps are unaffected.",
+      "toast": "Control plane restarting — reconnecting…"
+    },
+    "stopAll": {
+      "title": "Stop all applications",
+      "description": "Stops every container managed by VAC.",
+      "action": "Stop all",
+      "confirmTitle": "Stop all applications?",
+      "confirmDescription": "Every VAC-managed app stack will be stopped. They can be started again individually. The control plane keeps running.",
+      "toast_one": "Stopped {{count}} app",
+      "toast_other": "Stopped {{count}} apps"
+    },
+    "reset": {
+      "title": "Reset instance",
+      "description": "Wipes apps, deployments, and databases. Requires typed confirmation.",
+      "action": "Reset…",
+      "confirmTitle": "Reset this instance?",
+      "confirmDescription": "This permanently removes every app, its deployments, and its data volumes. This cannot be undone. Type <0>{{phrase}}</0> to confirm.",
+      "confirmAction": "Reset instance",
+      "resetting": "Resetting…",
+      "toast_one": "Reset complete — removed {{count}} app",
+      "toast_other": "Reset complete — removed {{count}} apps"
+    }
+  },
+  "domains": {
+    "fields": {
+      "hostname": "Hostname",
+      "app": "App",
+      "appOptional": "App (optional)",
+      "service": "Service",
+      "unassigned": "Unassigned",
+      "selectService": "Select service…"
+    },
+    "dnsRecord": {
+      "type": "Type",
+      "name": "Name",
+      "value": "Value"
+    },
+    "status": {
+      "checking": "Checking",
+      "awaiting_dns": "Awaiting DNS",
+      "misconfigured": "Misconfigured",
+      "issuing": "Issuing cert",
+      "active": "Valid",
+      "error": "Error"
+    },
+    "base": {
+      "heading": "Base domain",
+      "intro": "Apps get an automatic subdomain under this domain (e.g. <0>my-app.{{example}}</0>). Leave blank to disable automatic subdomains.",
+      "currentlyEffective": "Currently effective:",
+      "none": "No base domain configured — apps get no automatic subdomain.",
+      "domainLabel": "Domain",
+      "save": "Save",
+      "inheritHint": "Leave blank to keep inheriting from {{origin}}; type a value to override it here.",
+      "source": {
+        "override": {
+          "suffix": "override set here",
+          "origin": ""
+        },
+        "env": {
+          "suffix": "from the VAC_BASE_DOMAIN environment variable",
+          "origin": "the VAC_BASE_DOMAIN environment variable"
+        },
+        "file": {
+          "suffix": "from the config file",
+          "origin": "the config file"
+        },
+        "unset": {
+          "suffix": "",
+          "origin": ""
+        }
+      },
+      "confirm": {
+        "title": "Change the base domain?",
+        "body_one": "{{count}} app will move their automatic subdomain from <0>*.{{from}}</0> to <0>*.{{to}}</0>. The old URLs stop working immediately.",
+        "body_other": "{{count}} apps will move their automatic subdomain from <0>*.{{from}}</0> to <0>*.{{to}}</0>. The old URLs stop working immediately.",
+        "disabled": "(disabled)",
+        "clearWarning": "Clearing the base domain stops every app’s automatic subdomain from resolving. Custom domains are unaffected.",
+        "cancel": "Cancel",
+        "continue": "Continue"
+      },
+      "toast": {
+        "saved": "Base domain saved — routes are reconciling"
+      }
+    },
+    "add": {
+      "heading": "Add a domain",
+      "hint": "You can add a domain now and assign it to a service later — it’ll verify DNS either way.",
+      "submit": "Add domain",
+      "toast": {
+        "added": "Domain added"
+      }
+    },
+    "list": {
+      "heading": "Domains",
+      "empty": "No domains configured yet.",
+      "primary": "Primary",
+      "redirectsTo": "Redirects to <0>{{target}}</0>",
+      "managed": "managed",
+      "custom": "custom",
+      "hide": "Hide",
+      "configure": "Configure",
+      "auto": "Auto",
+      "autoTitle": "Managed automatically — change the slug or base domain",
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {{hostname}}? Its route is removed immediately.",
+      "toast": {
+        "deleted": "Domain deleted"
+      }
+    },
+    "config": {
+      "valid": "Valid configuration",
+      "certValid": "· certificate valid, renews automatically",
+      "createRecord": "Create this record at your DNS provider so <0>{{hostname}}</0> points at this VPS.",
+      "apexNote": "An apex domain must use an A record (a CNAME at the apex is invalid).",
+      "cnameAlt": "Alternatively, point a <0>CNAME</0> from <0>{{hostname}}</0> to <0>{{baseHost}}</0>.",
+      "propagation": "DNS changes can take up to your record’s TTL to show here. HTTPS is issued automatically within ~60s once DNS resolves to this server.",
+      "refresh": "Refresh",
+      "checking": "Checking…",
+      "checked": "Checked {{time}}"
+    },
+    "edit": {
+      "title": "Edit domain",
+      "description": "Re-point this domain to another service or app, or rename it. Routing swaps in place.",
+      "redirectLabel": "Redirect to (optional)",
+      "redirectHint": "Send all traffic for this host to another domain with a permanent (308) redirect — e.g. point <0>www.example.com</0> at <0>example.com</0>. The redirect target becomes the primary domain. Leave blank to serve the app directly.",
+      "cancel": "Cancel",
+      "save": "Save changes",
+      "toast": {
+        "updated": "Domain updated"
+      }
+    },
+    "wildcard": {
+      "intro": "Want every app to get an automatic subdomain? Add a wildcard <0>*.{{baseDomain}}</0> record pointing at this VPS.",
+      "check": "Check DNS",
+      "checking": "Checking…",
+      "pointsHere": "Wildcard points at this server",
+      "notResolving": "Not resolving here yet — add the record above and recheck"
+    }
   }
 }

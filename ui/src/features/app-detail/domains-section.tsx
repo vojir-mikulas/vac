@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -26,6 +27,7 @@ const selectClass =
  * (status badge + DNS-record config panel) from the global Domains screen.
  */
 export function AppDomainsSection({ appId }: { appId: string }) {
+  const { t } = useTranslation('app-detail')
   const { data: domains, isLoading } = useDomains(appId)
 
   return (
@@ -41,9 +43,7 @@ export function AppDomainsSection({ appId }: { appId: string }) {
           </Card>
         ) : (
           <Card className="p-5">
-            <p className="text-center text-sm text-muted-foreground">
-              No custom domains. This app is reachable at its automatic subdomain.
-            </p>
+            <p className="text-center text-sm text-muted-foreground">{t('domains.noCustom')}</p>
           </Card>
         )}
       </SwapFade>
@@ -62,13 +62,14 @@ function AppDomainRow({
   domain: Domain
   border: boolean
 }) {
+  const { t } = useTranslation('app-detail')
   const [open, setOpen] = useState(false)
   const del = useDeleteDomain(appId)
 
   const onDelete = () => {
-    if (!confirm(`Delete ${domain.hostname}? Its route is removed immediately.`)) return
+    if (!confirm(t('domains.confirmDelete', { hostname: domain.hostname }))) return
     del.mutate(domain.id, {
-      onSuccess: () => toast.success('Domain deleted'),
+      onSuccess: () => toast.success(t('domains.deleted')),
       onError: (e) => toast.error(e.message),
     })
   }
@@ -79,16 +80,16 @@ function AppDomainRow({
         <div className="min-w-0 flex-1">
           <span className="truncate font-mono text-sm">{domain.hostname}</span>
           <div className="text-2xs text-muted-foreground">
-            {domain.service_name} · {domain.managed ? 'managed' : 'custom'}
+            {domain.service_name} · {domain.managed ? t('domains.managed') : t('domains.custom')}
           </div>
         </div>
         <DomainStatusBadge status={domain.status} />
         <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
-          {open ? 'Hide' : 'Configure'}
+          {open ? t('domains.hide') : t('domains.configure')}
         </Button>
         {domain.managed ? (
-          <Badge variant="outline" title="Managed automatically — change the slug or base domain">
-            Auto
+          <Badge variant="outline" title={t('domains.autoTitle')}>
+            {t('domains.auto')}
           </Badge>
         ) : (
           <Button
@@ -98,7 +99,7 @@ function AppDomainRow({
             disabled={del.isPending}
             onClick={onDelete}
           >
-            Delete
+            {t('domains.delete')}
           </Button>
         )}
       </div>
@@ -108,6 +109,7 @@ function AppDomainRow({
 }
 
 function AddAppDomain({ appId }: { appId: string }) {
+  const { t } = useTranslation('app-detail')
   const { data: services } = useServices(appId)
   const create = useCreateDomain(appId)
   const [hostname, setHostname] = useState('')
@@ -123,7 +125,7 @@ function AddAppDomain({ appId }: { appId: string }) {
       { service, hostname: trimmed },
       {
         onSuccess: () => {
-          toast.success('Domain added')
+          toast.success(t('domains.added'))
           setHostname('')
         },
         onError: (e) => toast.error(e.message),
@@ -135,22 +137,22 @@ function AddAppDomain({ appId }: { appId: string }) {
     <Card className="gap-4 p-5">
       <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
         <div className="grid gap-2">
-          <Label>Hostname</Label>
+          <Label>{t('domains.hostname')}</Label>
           <Input
             value={hostname}
             onChange={(e) => setHostname(e.target.value)}
-            placeholder="app.example.com"
+            placeholder={t('domains.hostnamePlaceholder')}
             className="font-mono text-xs"
           />
         </div>
         <div className="grid gap-2">
-          <Label>Service</Label>
+          <Label>{t('domains.service')}</Label>
           <select
             className={selectClass}
             value={service}
             onChange={(e) => setService(e.target.value)}
           >
-            <option value="">Select service…</option>
+            <option value="">{t('domains.selectService')}</option>
             {(services ?? []).map((s) => (
               <option key={s.id} value={s.name}>
                 {s.name}
@@ -161,7 +163,7 @@ function AddAppDomain({ appId }: { appId: string }) {
       </div>
       <div className="flex justify-end">
         <Button variant="brand" size="sm" disabled={!canSubmit} onClick={onSubmit}>
-          Add domain
+          {t('domains.addDomain')}
         </Button>
       </div>
     </Card>

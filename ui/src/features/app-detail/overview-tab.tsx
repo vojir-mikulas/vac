@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
 import { ExternalLink, Lock, ShieldAlert } from 'lucide-react'
 
@@ -18,6 +19,7 @@ import { useDeployments } from '@/lib/api/deployments'
 import { durationBetween, formatBytes, formatPercent, relativeTime, shortSha } from '@/lib/format'
 
 export function OverviewTab({ appId }: { appId: string }) {
+  const { t } = useTranslation('app-detail')
   const { data: services, isLoading } = useServices(appId)
   const { data: domains } = useDomains(appId)
   const { data: deployments } = useDeployments(appId)
@@ -44,25 +46,33 @@ export function OverviewTab({ appId }: { appId: string }) {
     <div className="flex flex-col gap-6">
       <StatStrip>
         <StatTile
-          label="Total CPU"
+          label={t('overview.totalCpu')}
           value={formatPercent(aggregate.cpu)}
-          sub="across services"
+          sub={t('overview.totalCpuSub')}
           accent
         />
-        <StatTile label="Total memory" value={formatBytes(aggregate.mem)} sub="resident" />
         <StatTile
-          label="Services"
-          value={`${aggregate.running} / ${aggregate.total}`}
-          sub="running"
+          label={t('overview.totalMemory')}
+          value={formatBytes(aggregate.mem)}
+          sub={t('overview.totalMemorySub')}
         />
-        <StatTile label="Domains" value={String(domains?.length ?? 0)} sub="configured" />
+        <StatTile
+          label={t('overview.services')}
+          value={`${aggregate.running} / ${aggregate.total}`}
+          sub={t('overview.servicesSub')}
+        />
+        <StatTile
+          label={t('overview.domains')}
+          value={String(domains?.length ?? 0)}
+          sub={t('overview.domainsSub')}
+        />
       </StatStrip>
 
       <TrafficChart appId={appId} />
 
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 flex-1">
-          <SectionHeader>Services</SectionHeader>
+          <SectionHeader>{t('overview.servicesSection')}</SectionHeader>
           <SwapFade id={isLoading ? 'loading' : 'table'}>
             {isLoading ? (
               <ListSkeleton header rows={4} />
@@ -76,7 +86,7 @@ export function OverviewTab({ appId }: { appId: string }) {
           <OverviewPanel appId={appId} />
 
           <div>
-            <SectionHeader>Domains</SectionHeader>
+            <SectionHeader>{t('overview.domainsSection')}</SectionHeader>
             <Card className="gap-0 p-0">
               {domains && domains.length > 0 ? (
                 domains.map((d, i) => (
@@ -105,7 +115,7 @@ export function OverviewTab({ appId }: { appId: string }) {
                 ))
               ) : (
                 <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  No domains configured.
+                  {t('overview.noDomains')}
                 </p>
               )}
             </Card>
@@ -119,11 +129,11 @@ export function OverviewTab({ appId }: { appId: string }) {
                   params={{ appId }}
                   className="text-2xs font-medium text-muted-foreground hover:text-foreground"
                 >
-                  View all
+                  {t('overview.viewAll')}
                 </Link>
               }
             >
-              Recent deploys
+              {t('overview.recentDeploys')}
             </SectionHeader>
             <Card className="gap-0 p-0">
               {recentDeploys.length > 0 ? (
@@ -134,7 +144,7 @@ export function OverviewTab({ appId }: { appId: string }) {
                   >
                     <div className="min-w-0">
                       <div className="truncate text-xs font-medium">
-                        {d.commit_message ?? 'Deploy'}
+                        {d.commit_message ?? t('overview.deployFallback')}
                       </div>
                       <div className="font-mono text-2xs text-muted-foreground">
                         {shortSha(d.commit_sha)} · {relativeTime(d.triggered_at)} ·{' '}
@@ -146,7 +156,7 @@ export function OverviewTab({ appId }: { appId: string }) {
                 ))
               ) : (
                 <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  No deployments yet.
+                  {t('overview.noDeployments')}
                 </p>
               )}
             </Card>

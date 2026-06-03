@@ -18,26 +18,26 @@ const RANGES = [
   { value: '24h', label: '24h' },
 ] as const
 
-const chartConfig = {
-  requests: { label: 'Requests', color: 'var(--chart-2)' },
-  errors: { label: 'Errors', color: 'var(--chart-1)' },
-} satisfies ChartConfig
-
 function formatTick(ts: string, locale: string): string {
   const d = new Date(ts)
   return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 }
 
 export function TrafficChart({ appId }: { appId: string }) {
-  const { i18n } = useTranslation()
+  const { t, i18n } = useTranslation('app-detail')
   const locale = i18n.resolvedLanguage ?? 'en'
   const [range, setRange] = useState<string>('6h')
   const { data, isLoading } = useAppMetrics(appId, range)
 
+  const chartConfig = {
+    requests: { label: t('traffic.requests'), color: 'var(--chart-2)' },
+    errors: { label: t('traffic.errors'), color: 'var(--chart-1)' },
+  } satisfies ChartConfig
+
   return (
     <div className="rounded-xl border p-5">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-medium">Request traffic</h2>
+        <h2 className="text-sm font-medium">{t('traffic.title')}</h2>
         <div className="flex gap-1">
           {RANGES.map((r) => (
             <button
@@ -61,7 +61,7 @@ export function TrafficChart({ appId }: { appId: string }) {
         <Skeleton className="h-56 w-full" />
       ) : !data || data.length === 0 ? (
         <div className="grid h-56 place-items-center text-sm text-muted-foreground">
-          No traffic recorded in this range.
+          {t('traffic.empty')}
         </div>
       ) : (
         <figure className="m-0">
@@ -110,12 +110,12 @@ export function TrafficChart({ appId }: { appId: string }) {
             </AreaChart>
           </ChartContainer>
           <table className="sr-only">
-            <caption>Request traffic over the selected range</caption>
+            <caption>{t('traffic.caption')}</caption>
             <thead>
               <tr>
-                <th scope="col">Time</th>
-                <th scope="col">Requests</th>
-                <th scope="col">Errors</th>
+                <th scope="col">{t('traffic.time')}</th>
+                <th scope="col">{t('traffic.requests')}</th>
+                <th scope="col">{t('traffic.errors')}</th>
               </tr>
             </thead>
             <tbody>

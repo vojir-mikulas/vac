@@ -1,1 +1,42 @@
-{}
+{
+  "page": {
+    "title": "Deployments",
+    "description": "Build activity across all apps.",
+    "stats": {
+      "deploysToday": "Deploys today",
+      "deploysTodaySub": "triggered",
+      "successRate": "Success rate",
+      "successRateSub": "recent deploys",
+      "avgBuildTime": "Avg build time",
+      "avgBuildTimeSub": "successful",
+      "inProgress": "In progress",
+      "inProgressSub": "running now"
+    },
+    "timeline": "Timeline",
+    "table": {
+      "app": "App",
+      "commit": "Commit",
+      "status": "Status"
+    },
+    "deployFallback": "Deploy",
+    "empty": {
+      "title": "No deployments yet",
+      "description": "Deploys across all apps will appear here."
+    }
+  },
+  "queue": {
+    "inProgress": "In progress",
+    "queued": "Queued",
+    "rollbackBadge": "rollback",
+    "latestCommit": "latest commit",
+    "startedAt": "started {{time}}",
+    "queuedAt": "queued {{time}}"
+  },
+  "cancel": {
+    "ariaLabel": "Cancel deploy of {{app}}",
+    "title": "Cancel this deploy?",
+    "description": "Stops the {{app}} deploy. The currently running version keeps serving — cancelling never tears down what's already live.",
+    "keepDeploying": "Keep deploying",
+    "confirm": "Cancel deploy"
+  }
+}

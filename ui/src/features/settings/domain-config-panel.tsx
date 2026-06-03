@@ -1,4 +1,5 @@
 import { CheckCircle2, RotateCw } from 'lucide-react'
+import { Trans, useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/common/copy-button'
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,7 @@ import type { Domain } from '@/types/api'
  * status with its reason, and a manual Refresh that force-probes the host.
  */
 export function DomainConfigPanel({ domain }: { domain: Domain }) {
+  const { t } = useTranslation('settings')
   const { data: host } = useHostStats()
   const { data: base } = useBaseDomain()
   const refresh = useRefreshDomainStatus()
@@ -30,26 +32,30 @@ export function DomainConfigPanel({ domain }: { domain: Domain }) {
       {active ? (
         <div className="flex items-center gap-2 font-medium text-ok-foreground">
           <CheckCircle2 className="size-4" />
-          Valid configuration
+          {t('domains.config.valid')}
           {domain.cert_not_after ? (
             <span className="text-2xs font-normal text-muted-foreground">
-              · certificate valid, renews automatically
+              {t('domains.config.certValid')}
             </span>
           ) : null}
         </div>
       ) : (
         <>
           <p className="text-xs text-muted-foreground">
-            Create this record at your DNS provider so{' '}
-            <span className="font-mono">{domain.hostname}</span> points at this VPS.
-            {isApex ? ' An apex domain must use an A record (a CNAME at the apex is invalid).' : ''}
+            <Trans
+              t={t}
+              i18nKey="domains.config.createRecord"
+              values={{ hostname: domain.hostname }}
+              components={[<span className="font-mono" />]}
+            />
+            {isApex ? ` ${t('domains.config.apexNote')}` : ''}
           </p>
 
           <div className="overflow-hidden rounded-md border">
             <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b bg-surface-2 px-3 py-1.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-              <span>Type</span>
-              <span>Name</span>
-              <span>Value</span>
+              <span>{t('domains.dnsRecord.type')}</span>
+              <span>{t('domains.dnsRecord.name')}</span>
+              <span>{t('domains.dnsRecord.value')}</span>
             </div>
             <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-2 font-mono text-xs">
               <span className="rounded bg-surface-2 px-1.5 py-0.5">A</span>
@@ -63,9 +69,12 @@ export function DomainConfigPanel({ domain }: { domain: Domain }) {
 
           {!isApex && baseHost ? (
             <p className="text-2xs text-muted-foreground">
-              Alternatively, point a <span className="font-mono">CNAME</span> from{' '}
-              <span className="font-mono">{domain.hostname}</span> to{' '}
-              <span className="font-mono">{baseHost}</span>.
+              <Trans
+                t={t}
+                i18nKey="domains.config.cnameAlt"
+                values={{ hostname: domain.hostname, baseHost }}
+                components={[<span className="font-mono" />]}
+              />
             </p>
           ) : null}
 
@@ -73,10 +82,7 @@ export function DomainConfigPanel({ domain }: { domain: Domain }) {
             <p className="text-2xs text-warn-foreground">{domain.status_detail}</p>
           ) : null}
 
-          <p className="text-2xs text-muted-foreground">
-            DNS changes can take up to your record&rsquo;s TTL to show here. HTTPS is issued
-            automatically within ~60s once DNS resolves to this server.
-          </p>
+          <p className="text-2xs text-muted-foreground">{t('domains.config.propagation')}</p>
         </>
       )}
 
@@ -88,11 +94,11 @@ export function DomainConfigPanel({ domain }: { domain: Domain }) {
           onClick={() => refresh.mutate(domain.hostname)}
         >
           <RotateCw className={cn('size-3.5', refresh.isPending && 'animate-spin')} />
-          {refresh.isPending ? 'Checking…' : 'Refresh'}
+          {refresh.isPending ? t('domains.config.checking') : t('domains.config.refresh')}
         </Button>
         {domain.last_checked ? (
           <span className="text-2xs text-muted-foreground">
-            Checked {relativeTime(domain.last_checked)}
+            {t('domains.config.checked', { time: relativeTime(domain.last_checked) })}
           </span>
         ) : null}
       </div>

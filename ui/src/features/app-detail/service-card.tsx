@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
 import { Cog, Play, RotateCw, ScrollText, ShieldAlert, Square } from 'lucide-react'
 import { toast } from 'sonner'
@@ -37,6 +38,7 @@ export function ServiceCard({
   service: Service
   noBackupWarning?: boolean
 }) {
+  const { t } = useTranslation('app-detail')
   const stats = useAppStatsContext()
   const live = stats[service.name]
   const restart = useRestartService(appId)
@@ -57,10 +59,10 @@ export function ServiceCard({
           {noBackupWarning ? (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-warn-border bg-warn-bg px-2 py-0.5 text-2xs font-medium text-warn-foreground"
-              title="No backup is configured for this service — set one up on the Backups tab."
+              title={t('serviceCard.noBackupTitle')}
             >
               <ShieldAlert className="size-3" />
-              No backup
+              {t('serviceCard.noBackup')}
             </span>
           ) : null}
         </div>
@@ -72,7 +74,7 @@ export function ServiceCard({
           <Button variant="ghost" size="sm" asChild>
             <Link to="/apps/$appId/logs" params={{ appId }} search={{ service: service.name }}>
               <ScrollText className="size-3.5" />
-              View logs
+              {t('serviceCard.viewLogs')}
             </Link>
           </Button>
           {stopped ? (
@@ -82,13 +84,14 @@ export function ServiceCard({
               disabled={busy}
               onClick={() =>
                 start.mutate(service.name, {
-                  onSuccess: () => toast.success(`Starting ${service.name}`),
+                  onSuccess: () =>
+                    toast.success(t('serviceCard.starting', { service: service.name })),
                   onError: (e) => toast.error(e.message),
                 })
               }
             >
               <Play className="size-3.5" />
-              Start
+              {t('serviceCard.start')}
             </Button>
           ) : (
             <>
@@ -98,13 +101,14 @@ export function ServiceCard({
                 disabled={busy}
                 onClick={() =>
                   restart.mutate(service.name, {
-                    onSuccess: () => toast.success(`Restarting ${service.name}`),
+                    onSuccess: () =>
+                      toast.success(t('serviceCard.restarting', { service: service.name })),
                     onError: (e) => toast.error(e.message),
                   })
                 }
               >
                 <RotateCw className="size-3.5" />
-                Restart
+                {t('serviceCard.restart')}
               </Button>
               <Button
                 variant="ghost"
@@ -112,13 +116,14 @@ export function ServiceCard({
                 disabled={busy}
                 onClick={() =>
                   stop.mutate(service.name, {
-                    onSuccess: () => toast.success(`Stopping ${service.name}`),
+                    onSuccess: () =>
+                      toast.success(t('serviceCard.stopping', { service: service.name })),
                     onError: (e) => toast.error(e.message),
                   })
                 }
               >
                 <Square className="size-3.5" />
-                Stop
+                {t('serviceCard.stop')}
               </Button>
             </>
           )}
@@ -126,21 +131,28 @@ export function ServiceCard({
       </div>
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 px-5 py-4 sm:grid-cols-4">
-        <Metric label="CPU" value={live ? formatPercent(live.cpu_percent) : '—'} />
-        <Metric label="Memory" value={live ? formatBytes(live.mem_bytes) : '—'} />
-        <Metric label="Uptime" value={live ? formatDuration(live.uptime_seconds) : '—'} />
-        <Metric label="Restarts" value={String(service.restart_count)} />
+        <Metric label={t('serviceCard.cpu')} value={live ? formatPercent(live.cpu_percent) : '—'} />
+        <Metric label={t('serviceCard.memory')} value={live ? formatBytes(live.mem_bytes) : '—'} />
+        <Metric
+          label={t('serviceCard.uptime')}
+          value={live ? formatDuration(live.uptime_seconds) : '—'}
+        />
+        <Metric label={t('serviceCard.restarts')} value={String(service.restart_count)} />
       </dl>
 
       <div className="flex flex-wrap gap-x-6 gap-y-1 border-t px-5 py-3 font-mono text-2xs text-muted-foreground">
-        <span>port {service.exposed_port ?? service.internal_port ?? '—'}</span>
-        <span>health {service.health_path ?? '—'}</span>
+        <span>
+          {t('serviceCard.port', { port: service.exposed_port ?? service.internal_port ?? '—' })}
+        </span>
+        <span>{t('serviceCard.health', { path: service.health_path ?? '—' })}</span>
         {service.last_exit_code != null ? (
-          <span className="text-err-foreground">exit {service.last_exit_code}</span>
+          <span className="text-err-foreground">
+            {t('serviceCard.exit', { code: service.last_exit_code })}
+          </span>
         ) : null}
         {service.oom_killed_count > 0 ? (
-          <span className="text-err-foreground" title="Killed for exceeding its memory limit">
-            OOM-killed ×{service.oom_killed_count}
+          <span className="text-err-foreground" title={t('serviceCard.oomTitle')}>
+            {t('serviceCard.oomKilled', { count: service.oom_killed_count })}
           </span>
         ) : null}
       </div>
@@ -158,6 +170,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ConfigureDialog({ appId, service }: { appId: string; service: Service }) {
+  const { t } = useTranslation('app-detail')
   const [open, setOpen] = useState(false)
   const [exposedPort, setExposedPort] = useState(service.exposed_port?.toString() ?? '')
   const [internalPort, setInternalPort] = useState(service.internal_port?.toString() ?? '')
@@ -176,7 +189,7 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
       },
       {
         onSuccess: () => {
-          toast.success('Service updated')
+          toast.success(t('serviceCard.serviceUpdated'))
           setOpen(false)
         },
         onError: (e) => toast.error(e.message),
@@ -189,42 +202,36 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
           <Cog className="size-3.5" />
-          Configure
+          {t('serviceCard.configure')}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Configure {service.name}</DialogTitle>
+          <DialogTitle>{t('serviceCard.configureTitle', { service: service.name })}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="exposed">Exposed port</Label>
+            <Label htmlFor="exposed">{t('serviceCard.exposedPort')}</Label>
             <Input
               id="exposed"
               inputMode="numeric"
               value={exposedPort}
               onChange={(e) => setExposedPort(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
-              Host-published port — diagnostic only; HTTP services are reached over the internal
-              network, not a host port.
-            </p>
+            <p className="text-xs text-muted-foreground">{t('serviceCard.exposedPortHint')}</p>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="internal">Internal port</Label>
+            <Label htmlFor="internal">{t('serviceCard.internalPort')}</Label>
             <Input
               id="internal"
               inputMode="numeric"
               value={internalPort}
               onChange={(e) => setInternalPort(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
-              The port the container actually serves on. Saving re-routes traffic to it immediately
-              — no restart needed.
-            </p>
+            <p className="text-xs text-muted-foreground">{t('serviceCard.internalPortHint')}</p>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="health">Health check path</Label>
+            <Label htmlFor="health">{t('serviceCard.healthPath')}</Label>
             <Input
               id="health"
               placeholder="/"
@@ -235,7 +242,7 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
         </div>
         <DialogFooter>
           <Button variant="brand" disabled={update.isPending} onClick={submit}>
-            Save changes
+            {t('common.saveChanges')}
           </Button>
         </DialogFooter>
       </DialogContent>

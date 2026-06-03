@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { m } from 'motion/react'
 import { Bot, Eye, Undo2, User } from 'lucide-react'
 import { toast } from 'sonner'
@@ -16,6 +17,7 @@ import { relativeTime } from '@/lib/format'
 import { ActivityDiffDialog } from './activity-diff-dialog'
 
 export function ActivityFeed() {
+  const { t } = useTranslation('activity')
   const { data, isLoading } = useActivity()
   const revert = useRevertActivity()
   const [preview, setPreview] = useState<AuditEntry | null>(null)
@@ -23,27 +25,21 @@ export function ActivityFeed() {
 
   const onRevert = (e: AuditEntry) => {
     revert.mutate(e.id, {
-      onSuccess: (res) => toast.success(res.summary || 'Reverted'),
+      onSuccess: (res) => toast.success(res.summary || t('revertToast.success')),
       onError: (err) => toast.error(err.message),
     })
   }
 
   return (
     <PageContainer>
-      <PageHeader
-        title="Activity"
-        description="Who changed what on this box. Safely-invertible changes can be reverted."
-      />
+      <PageHeader title={t('page.title')} description={t('page.description')} />
 
-      <SectionHeader>Recent activity</SectionHeader>
+      <SectionHeader>{t('sectionHeader')}</SectionHeader>
       <SwapFade id={isLoading ? 'loading' : entries.length === 0 ? 'empty' : 'feed'}>
         {isLoading ? (
           <ListSkeleton rows={6} avatar />
         ) : entries.length === 0 ? (
-          <EmptyState
-            title="No activity yet"
-            description="Changes to apps, env vars, domains, and settings will appear here."
-          />
+          <EmptyState title={t('empty.title')} description={t('empty.description')} />
         ) : (
           <Card className="gap-0 p-0">
             {entries.map((e, i) => (
@@ -78,6 +74,7 @@ function ActivityRow({
   onPreview: () => void
   reverting: boolean
 }) {
+  const { t } = useTranslation('activity')
   const failed = entry.status_code >= 400
   return (
     <m.div
@@ -90,26 +87,28 @@ function ActivityRow({
       <ActorIcon type={entry.actor_type} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm">
-          {entry.summary || humanizeAction(entry.action)}
-          {failed ? <span className="ml-2 text-2xs text-err-foreground">failed</span> : null}
+          {entry.summary || humanizeAction(entry.action, t)}
+          {failed ? (
+            <span className="ml-2 text-2xs text-err-foreground">{t('row.failed')}</span>
+          ) : null}
         </div>
         <div className="font-mono text-2xs text-muted-foreground">
-          {actorLabel(entry)} · {relativeTime(entry.created_at)}
+          {actorLabel(entry, t)} · {relativeTime(entry.created_at)}
         </div>
       </div>
       {/* Preview stays available even after an entry is reverted; Revert does not. */}
       {entry.has_preview ? (
         <Button variant="ghost" size="sm" onClick={onPreview}>
           <Eye className="size-3.5" />
-          Preview
+          {t('row.preview')}
         </Button>
       ) : null}
       {entry.reverted_at ? (
-        <span className="shrink-0 text-2xs text-muted-foreground">reverted</span>
+        <span className="shrink-0 text-2xs text-muted-foreground">{t('row.reverted')}</span>
       ) : entry.revertable ? (
         <Button variant="outline" size="sm" disabled={reverting} onClick={onRevert}>
           <Undo2 className="size-3.5" />
-          Revert
+          {t('row.revert')}
         </Button>
       ) : null}
     </m.div>
@@ -125,30 +124,32 @@ function ActorIcon({ type }: { type: AuditEntry['actor_type'] }) {
   )
 }
 
-function actorLabel(e: AuditEntry): string {
+type ActT = ReturnType<typeof useTranslation<'activity'>>['t']
+
+function actorLabel(e: AuditEntry, t: ActT): string {
   switch (e.actor_type) {
     case 'user':
-      return e.actor || 'operator'
+      return e.actor || t('actor.operator')
     case 'api_token':
-      return `${e.actor || 'token'} (API)`
+      return t('actor.token', { name: e.actor || t('actor.tokenFallback') })
     case 'system':
-      return 'VAC (automated)'
+      return t('actor.system')
     default:
-      return 'unauthenticated'
+      return t('actor.unauthenticated')
   }
 }
 
 // humanizeAction turns "PUT /api/apps/{id}/env" into a readable fallback when a
 // handler didn't supply a summary.
-function humanizeAction(action: string): string {
+function humanizeAction(action: string, t: ActT): string {
   const [method, path = ''] = action.split(' ')
   const verb =
     method === 'POST'
-      ? 'Created'
+      ? t('action.created')
       : method === 'DELETE'
-        ? 'Deleted'
+        ? t('action.deleted')
         : method === 'PATCH' || method === 'PUT'
-          ? 'Updated'
+          ? t('action.updated')
           : method
   const resource = path.replace(/^\/api\//, '').replace(/\{[^}]+\}/g, '…')
   return `${verb} ${resource}`

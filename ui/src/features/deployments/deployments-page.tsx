@@ -1,6 +1,7 @@
 import { m } from 'motion/react'
 import { Link } from '@tanstack/react-router'
 import { useQueries } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { SectionHeader } from '@/components/common/section-header'
@@ -24,6 +25,7 @@ interface Row extends Deployment {
 }
 
 export function DeploymentsPage() {
+  const { t } = useTranslation('deployments')
   const { data: apps } = useApps()
   const appList = apps ?? []
   const { data: queue } = useActiveDeployments()
@@ -51,34 +53,48 @@ export function DeploymentsPage() {
 
   return (
     <PageContainer>
-      <PageHeader title="Deployments" description="Build activity across all apps." />
+      <PageHeader title={t('page.title')} description={t('page.description')} />
 
       <div className="mb-6">
         <StatStrip>
-          <StatTile label="Deploys today" value={String(metrics.today)} sub="triggered" accent />
-          <StatTile label="Success rate" value={`${metrics.successRate}%`} sub="recent deploys" />
-          <StatTile label="Avg build time" value={metrics.avgBuild} sub="successful" />
-          <StatTile label="In progress" value={String(activeCount)} sub="running now" />
+          <StatTile
+            label={t('page.stats.deploysToday')}
+            value={String(metrics.today)}
+            sub={t('page.stats.deploysTodaySub')}
+            accent
+          />
+          <StatTile
+            label={t('page.stats.successRate')}
+            value={`${metrics.successRate}%`}
+            sub={t('page.stats.successRateSub')}
+          />
+          <StatTile
+            label={t('page.stats.avgBuildTime')}
+            value={metrics.avgBuild}
+            sub={t('page.stats.avgBuildTimeSub')}
+          />
+          <StatTile
+            label={t('page.stats.inProgress')}
+            value={String(activeCount)}
+            sub={t('page.stats.inProgressSub')}
+          />
         </StatStrip>
       </div>
 
       <DeployQueue />
 
-      <SectionHeader>Timeline</SectionHeader>
+      <SectionHeader>{t('page.timeline')}</SectionHeader>
       <SwapFade id={isLoading ? 'loading' : rows.length === 0 ? 'empty' : 'timeline'}>
         {isLoading ? (
           <ListSkeleton header rows={6} />
         ) : rows.length === 0 ? (
-          <EmptyState
-            title="No deployments yet"
-            description="Deploys across all apps will appear here."
-          />
+          <EmptyState title={t('page.empty.title')} description={t('page.empty.description')} />
         ) : (
           <Card className="gap-0 p-0">
             <div className="flex items-center gap-4 border-b bg-surface-1 px-5 py-2.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-              <span className="w-32 shrink-0">App</span>
-              <span className="flex-1">Commit</span>
-              <span className="shrink-0">Status</span>
+              <span className="w-32 shrink-0">{t('page.table.app')}</span>
+              <span className="flex-1">{t('page.table.commit')}</span>
+              <span className="shrink-0">{t('page.table.status')}</span>
             </div>
             {rows.slice(0, 50).map((d, i) => (
               <m.div
@@ -97,7 +113,9 @@ export function DeploymentsPage() {
                   {d.appName}
                 </Link>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm">{d.commit_message ?? 'Deploy'}</div>
+                  <div className="truncate text-sm">
+                    {d.commit_message ?? t('page.deployFallback')}
+                  </div>
                   <div className="font-mono text-2xs text-muted-foreground">
                     {shortSha(d.commit_sha)} · {relativeTime(d.triggered_at)} ·{' '}
                     {durationBetween(d.started_at, d.finished_at)}

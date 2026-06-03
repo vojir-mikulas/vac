@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
@@ -45,23 +46,14 @@ export function DomainsSection() {
 }
 
 // Where the effective base domain comes from, so the operator can tell a
-// config-supplied value apart from a UI override. `suffix` completes the
-// "Currently effective: … {suffix}" line; `origin` names the inherited source
-// for the "keep inheriting from {origin}" hint (env/file only).
-const SOURCE_COPY: Record<
-  NonNullable<BaseDomainInfo['source']>,
-  { suffix: string; origin: string }
-> = {
-  override: { suffix: 'override set here', origin: '' },
-  env: {
-    suffix: 'from the VAC_BASE_DOMAIN environment variable',
-    origin: 'the VAC_BASE_DOMAIN environment variable',
-  },
-  file: { suffix: 'from the config file', origin: 'the config file' },
-  unset: { suffix: '', origin: '' },
-}
+// config-supplied value apart from a UI override. The "suffix" completes the
+// "Currently effective: … {suffix}" line; the "origin" names the inherited
+// source for the "keep inheriting from {origin}" hint (env/file only). Both are
+// keyed by the type-safe source union into the catalog (base.source.*).
+type BaseDomainSource = NonNullable<BaseDomainInfo['source']>
 
 function BaseDomainCard() {
+  const { t } = useTranslation('settings')
   const { data, isLoading } = useBaseDomain()
   const { data: apps } = useApps()
   const save = useSetBaseDomain()
@@ -73,14 +65,14 @@ function BaseDomainCard() {
   // the placeholder + the "Currently effective" line instead.
   const current = value ?? data?.base_domain ?? ''
   const effective = data?.effective ?? ''
-  const source = data?.source ?? 'unset'
+  const source: BaseDomainSource = data?.source ?? 'unset'
   const changed = current.trim() !== (data?.base_domain ?? '')
   const appNames = (apps ?? []).map((a) => a.name)
 
   const doSave = () =>
     save.mutate(current.trim(), {
       onSuccess: () => {
-        toast.success('Base domain saved — routes are reconciling')
+        toast.success(t('domains.base.toast.saved'))
         setValue(null)
         setConfirm(false)
       },
@@ -95,12 +87,15 @@ function BaseDomainCard() {
 
   return (
     <section>
-      <SectionHeader>Base domain</SectionHeader>
+      <SectionHeader>{t('domains.base.heading')}</SectionHeader>
       <Card className="gap-4 p-5">
         <p className="text-xs text-muted-foreground">
-          Apps get an automatic subdomain under this domain (e.g.{' '}
-          <span className="font-mono">my-app.{effective || 'example.com'}</span>). Leave blank to
-          disable automatic subdomains.
+          <Trans
+            t={t}
+            i18nKey="domains.base.intro"
+            values={{ example: effective || 'example.com' }}
+            components={[<span className="font-mono" />]}
+          />
         </p>
         {isLoading ? (
           <Skeleton className="h-9 w-full" />
@@ -111,19 +106,22 @@ function BaseDomainCard() {
             <p className="text-xs">
               {effective ? (
                 <>
-                  <span className="text-muted-foreground">Currently effective: </span>
+                  <span className="text-muted-foreground">
+                    {t('domains.base.currentlyEffective')}{' '}
+                  </span>
                   <span className="font-mono">{effective}</span>
-                  <span className="text-muted-foreground"> — {SOURCE_COPY[source].suffix}</span>
+                  <span className="text-muted-foreground">
+                    {' '}
+                    — {t(`domains.base.source.${source}.suffix`)}
+                  </span>
                 </>
               ) : (
-                <span className="text-muted-foreground">
-                  No base domain configured — apps get no automatic subdomain.
-                </span>
+                <span className="text-muted-foreground">{t('domains.base.none')}</span>
               )}
             </p>
             <div className="flex items-end gap-2">
               <div className="grid flex-1 gap-2">
-                <Label>Domain</Label>
+                <Label>{t('domains.base.domainLabel')}</Label>
                 <Input
                   value={current}
                   onChange={(e) => setValue(e.target.value)}
@@ -137,13 +135,14 @@ function BaseDomainCard() {
                 disabled={save.isPending || !changed}
                 onClick={onSave}
               >
-                Save
+                {t('domains.base.save')}
               </Button>
             </div>
             {source !== 'override' && effective ? (
               <p className="text-2xs text-muted-foreground">
-                Leave blank to keep inheriting from {SOURCE_COPY[source].origin}; type a value to
-                override it here.
+                {t('domains.base.inheritHint', {
+                  origin: t(`domains.base.source.${source}.origin`),
+                })}
               </p>
             ) : null}
           </>
@@ -155,28 +154,36 @@ function BaseDomainCard() {
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Change the base domain?</AlertDialogTitle>
+            <AlertDialogTitle>{t('domains.base.confirm.title')}</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2">
                 <p>
-                  {appNames.length} app{appNames.length === 1 ? '' : 's'} will move their automatic
-                  subdomain from <span className="font-mono">*.{data?.base_domain}</span> to{' '}
-                  <span className="font-mono">*.{current.trim() || '(disabled)'}</span>. The old
-                  URLs stop working immediately.
+                  <Trans
+                    t={t}
+                    i18nKey="domains.base.confirm.body"
+                    count={appNames.length}
+                    values={{
+                      count: appNames.length,
+                      from: data?.base_domain ?? '',
+                      to: current.trim() || t('domains.base.confirm.disabled'),
+                    }}
+                    components={[<span className="font-mono" />]}
+                  />
                 </p>
                 <p className="text-xs text-muted-foreground">{appNames.join(', ')}</p>
                 {!current.trim() ? (
                   <p className="text-xs text-warn-foreground">
-                    Clearing the base domain stops every app&rsquo;s automatic subdomain from
-                    resolving. Custom domains are unaffected.
+                    {t('domains.base.confirm.clearWarning')}
                   </p>
                 ) : null}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={doSave}>Continue</AlertDialogAction>
+            <AlertDialogCancel>{t('domains.base.confirm.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={doSave}>
+              {t('domains.base.confirm.continue')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -188,6 +195,7 @@ const selectClass =
   'h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50'
 
 function AddDomainCard() {
+  const { t } = useTranslation('settings')
   const { data: apps } = useApps()
   const appList = apps ?? []
   const [appId, setAppId] = useState('')
@@ -209,7 +217,7 @@ function AddDomainCard() {
       { hostname: trimmed, assign },
       {
         onSuccess: () => {
-          toast.success('Domain added')
+          toast.success(t('domains.add.toast.added'))
           setHostname('')
         },
         onError: (e) => toast.error(e.message),
@@ -219,10 +227,10 @@ function AddDomainCard() {
 
   return (
     <section>
-      <SectionHeader>Add a domain</SectionHeader>
+      <SectionHeader>{t('domains.add.heading')}</SectionHeader>
       <Card className="gap-4 p-5">
         <div className="grid gap-2">
-          <Label>Hostname</Label>
+          <Label>{t('domains.fields.hostname')}</Label>
           <Input
             value={hostname}
             onChange={(e) => setHostname(e.target.value)}
@@ -232,7 +240,7 @@ function AddDomainCard() {
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-2">
-            <Label>App (optional)</Label>
+            <Label>{t('domains.fields.appOptional')}</Label>
             <select
               className={selectClass}
               value={appId}
@@ -241,7 +249,7 @@ function AddDomainCard() {
                 setService('')
               }}
             >
-              <option value="">Unassigned</option>
+              <option value="">{t('domains.fields.unassigned')}</option>
               {appList.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
@@ -250,14 +258,14 @@ function AddDomainCard() {
             </select>
           </div>
           <div className="grid gap-2">
-            <Label>Service</Label>
+            <Label>{t('domains.fields.service')}</Label>
             <select
               className={selectClass}
               value={service}
               onChange={(e) => setService(e.target.value)}
               disabled={!appId}
             >
-              <option value="">Select service…</option>
+              <option value="">{t('domains.fields.selectService')}</option>
               {(services ?? []).map((s) => (
                 <option key={s.id} value={s.name}>
                   {s.name}
@@ -266,13 +274,10 @@ function AddDomainCard() {
             </select>
           </div>
         </div>
-        <p className="text-2xs text-muted-foreground">
-          You can add a domain now and assign it to a service later — it&rsquo;ll verify DNS either
-          way.
-        </p>
+        <p className="text-2xs text-muted-foreground">{t('domains.add.hint')}</p>
         <div className="flex justify-end">
           <Button variant="brand" size="sm" disabled={!canSubmit} onClick={onSubmit}>
-            Add domain
+            {t('domains.add.submit')}
           </Button>
         </div>
       </Card>
@@ -285,6 +290,7 @@ interface DomainRow extends Domain {
 }
 
 function DomainList() {
+  const { t } = useTranslation('settings')
   const { data: domains, isLoading } = useAllDomains()
   const { data: apps } = useApps()
   const appName = useMemo(() => {
@@ -305,14 +311,14 @@ function DomainList() {
 
   return (
     <section>
-      <SectionHeader>Domains</SectionHeader>
+      <SectionHeader>{t('domains.list.heading')}</SectionHeader>
       {isLoading ? (
         <Card className="p-5">
           <Skeleton className="h-20 w-full" />
         </Card>
       ) : rows.length === 0 ? (
         <Card className="p-5">
-          <p className="text-center text-sm text-muted-foreground">No domains configured yet.</p>
+          <p className="text-center text-sm text-muted-foreground">{t('domains.list.empty')}</p>
         </Card>
       ) : (
         <Card className="gap-0 p-0">
@@ -339,19 +345,22 @@ function DomainRowItem({
   border: boolean
   isPrimary: boolean
 }) {
+  const { t } = useTranslation('settings')
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const del = useDeleteDomainById()
 
   const onDelete = () => {
-    if (!confirm(`Delete ${domain.hostname}? Its route is removed immediately.`)) return
+    if (!confirm(t('domains.list.deleteConfirm', { hostname: domain.hostname }))) return
     del.mutate(domain.id, {
-      onSuccess: () => toast.success('Domain deleted'),
+      onSuccess: () => toast.success(t('domains.list.toast.deleted')),
       onError: (e) => toast.error(e.message),
     })
   }
 
-  const binding = domain.app_id ? `${domain.appName} · ${domain.service_name}` : 'Unassigned'
+  const binding = domain.app_id
+    ? `${domain.appName} · ${domain.service_name}`
+    : t('domains.fields.unassigned')
 
   return (
     <div className={cn('flex flex-col gap-3 px-5 py-3.5', border && 'border-t')}>
@@ -361,34 +370,37 @@ function DomainRowItem({
             <span className="truncate font-mono text-sm">{domain.hostname}</span>
             {isPrimary ? (
               <Badge variant="secondary" className="shrink-0">
-                Primary
+                {t('domains.list.primary')}
               </Badge>
             ) : null}
           </div>
           <div className="text-2xs text-muted-foreground">
             {domain.redirect_to ? (
-              <>
-                Redirects to <span className="font-mono">{domain.redirect_to}</span>
-              </>
+              <Trans
+                t={t}
+                i18nKey="domains.list.redirectsTo"
+                values={{ target: domain.redirect_to }}
+                components={[<span className="font-mono" />]}
+              />
             ) : (
               <>
-                {binding} · {domain.managed ? 'managed' : 'custom'}
+                {binding} · {domain.managed ? t('domains.list.managed') : t('domains.list.custom')}
               </>
             )}
           </div>
         </div>
         <DomainStatusBadge status={domain.status} />
         <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
-          {open ? 'Hide' : 'Configure'}
+          {open ? t('domains.list.hide') : t('domains.list.configure')}
         </Button>
         {domain.managed ? (
-          <Badge variant="outline" title="Managed automatically — change the slug or base domain">
-            Auto
+          <Badge variant="outline" title={t('domains.list.autoTitle')}>
+            {t('domains.list.auto')}
           </Badge>
         ) : (
           <>
             <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-              Edit
+              {t('domains.list.edit')}
             </Button>
             <Button
               variant="ghost"
@@ -397,7 +409,7 @@ function DomainRowItem({
               disabled={del.isPending}
               onClick={onDelete}
             >
-              Delete
+              {t('domains.list.delete')}
             </Button>
           </>
         )}

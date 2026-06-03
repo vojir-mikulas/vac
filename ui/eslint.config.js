@@ -46,20 +46,13 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
-  // i18n guard against new hardcoded user-facing strings, scoped to feature code.
-  // OFF by default; flipped to 'error' per feature folder below as each is
-  // migrated to t() (i18n plan, Phase C). Tests are exempt (they assert on text).
+  // i18n guard against new hardcoded user-facing strings. All feature folders and
+  // the shared log components are migrated to t() (i18n plan, Phase C), so the
+  // guard is live. Tests are exempt — they assert on rendered English.
   {
-    files: ['src/features/**/*.{ts,tsx}'],
+    files: ['src/features/**/*.{ts,tsx}', 'src/components/common/log-*.tsx'],
+    ignores: ['src/features/**/*.test.{ts,tsx}'],
     plugins: { i18next },
-    rules: {
-      'i18next/no-literal-string': 'off',
-    },
-  },
-  // Migrated features — guard is live. Add a folder here once it's fully on t().
-  {
-    files: ['src/features/apps/**/*.{ts,tsx}'],
-    ignores: ['src/features/apps/**/*.test.{ts,tsx}'],
     rules: {
       'i18next/no-literal-string': 'error',
     },

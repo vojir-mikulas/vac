@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Monitor } from 'lucide-react'
 import { toast } from 'sonner'
@@ -12,6 +13,7 @@ import { queryKeys } from '@/lib/query/keys'
 import { relativeTime } from '@/lib/format'
 
 export function SessionsSection() {
+  const { t } = useTranslation('settings')
   const { data: sessions, isLoading } = useSessions()
   const qc = useQueryClient()
 
@@ -20,7 +22,7 @@ export function SessionsSection() {
   const revoke = useMutation({
     mutationFn: (id: string) => authApi.revokeSession(id),
     onSuccess: () => {
-      toast.success('Session revoked')
+      toast.success(t('sessions.toast.revoked'))
       invalidate()
     },
     onError: (e) => toast.error(e.message),
@@ -29,7 +31,7 @@ export function SessionsSection() {
   const revokeOthers = useMutation({
     mutationFn: () => authApi.revokeOtherSessions(),
     onSuccess: (r) => {
-      toast.success(`Revoked ${r.revoked} session${r.revoked === 1 ? '' : 's'}`)
+      toast.success(t('sessions.toast.revokedOthers', { count: r.revoked }))
       invalidate()
     },
     onError: (e) => toast.error(e.message),
@@ -45,11 +47,11 @@ export function SessionsSection() {
             disabled={revokeOthers.isPending}
             onClick={() => revokeOthers.mutate()}
           >
-            Revoke all others
+            {t('sessions.revokeAllOthers')}
           </Button>
         }
       >
-        Active sessions
+        {t('sessions.heading')}
       </SectionHeader>
       <Card className="gap-0 p-0">
         {isLoading ? (
@@ -65,15 +67,15 @@ export function SessionsSection() {
               <Monitor className="size-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="truncate">{s.user_agent ?? 'Unknown device'}</span>
+                  <span className="truncate">{s.user_agent ?? t('sessions.unknownDevice')}</span>
                   {s.is_current ? (
                     <Badge variant="success" className="px-1.5 py-0 text-2xs">
-                      This device
+                      {t('sessions.thisDevice')}
                     </Badge>
                   ) : null}
                 </div>
                 <div className="font-mono text-2xs text-muted-foreground">
-                  {s.ip ?? '—'} · active {relativeTime(s.last_seen_at)}
+                  {s.ip ?? '—'} · {t('sessions.active', { time: relativeTime(s.last_seen_at) })}
                 </div>
               </div>
               {!s.is_current ? (
@@ -83,7 +85,7 @@ export function SessionsSection() {
                   disabled={revoke.isPending}
                   onClick={() => revoke.mutate(s.id)}
                 >
-                  Revoke
+                  {t('sessions.revoke')}
                 </Button>
               ) : null}
             </div>

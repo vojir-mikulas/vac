@@ -1,1 +1,24 @@
-{}
+{
+  "viewer": {
+    "label": "Logs",
+    "empty": "Waiting for logs…",
+    "jumpToLatest": "Jump to latest",
+    "jumpToLatestAria": "Jump to latest log line"
+  },
+  "panel": {
+    "allServices": "All services",
+    "levels": {
+      "all": "All levels",
+      "info": "Info",
+      "warn": "Warn",
+      "error": "Error"
+    },
+    "autoScroll": "Auto-scroll",
+    "lineCount_one": "{{count}} line",
+    "lineCount_other": "{{count}} lines",
+    "export": "Export",
+    "exportText": "Plain text",
+    "exportJson": "JSON",
+    "viewerLabel": "Runtime logs"
+  }
+}

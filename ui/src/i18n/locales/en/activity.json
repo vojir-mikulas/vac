@@ -1,1 +1,51 @@
-{}
+{
+  "page": {
+    "title": "Activity",
+    "description": "Who changed what on this box. Safely-invertible changes can be reverted."
+  },
+  "sectionHeader": "Recent activity",
+  "empty": {
+    "title": "No activity yet",
+    "description": "Changes to apps, env vars, domains, and settings will appear here."
+  },
+  "row": {
+    "failed": "failed",
+    "preview": "Preview",
+    "reverted": "reverted",
+    "revert": "Revert"
+  },
+  "actor": {
+    "operator": "operator",
+    "token": "{{name}} (API)",
+    "tokenFallback": "token",
+    "system": "VAC (automated)",
+    "unauthenticated": "unauthenticated"
+  },
+  "action": {
+    "created": "Created",
+    "deleted": "Deleted",
+    "updated": "Updated"
+  },
+  "revertToast": {
+    "success": "Reverted"
+  },
+  "diff": {
+    "title": "Change preview",
+    "descriptionFallback": "What this change did.",
+    "loadError": "Could not load preview.",
+    "noChanges": "No changes recorded.",
+    "changedAgain": "⚠ changed again since this action · ",
+    "comparedAgainst": "Compared against current state ({{time}})",
+    "close": "Close",
+    "showUnchanged_one": "Show {{count}} unchanged",
+    "showUnchanged_other": "Show {{count}} unchanged",
+    "noChangesToDisplay": "No changes to display — {{count}} key(s) unchanged.",
+    "maskedTitle": "hidden (sensitive)",
+    "status": {
+      "added": "added",
+      "removed": "removed",
+      "changed": "changed",
+      "unchanged": "same"
+    }
+  }
+}

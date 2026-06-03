@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { ShieldCheck } from 'lucide-react'
@@ -23,11 +24,12 @@ import { queryKeys } from '@/lib/query/keys'
 import type { TotpSetup } from '@/types/api'
 
 export function TotpSection() {
+  const { t } = useTranslation('settings')
   const { data: me } = useMe()
 
   return (
     <section>
-      <SectionHeader>Two-factor authentication</SectionHeader>
+      <SectionHeader>{t('totp.heading')}</SectionHeader>
       <Card className="gap-4 p-5">
         <div className="flex items-center gap-3">
           <ShieldCheck
@@ -35,11 +37,9 @@ export function TotpSection() {
           />
           <div className="flex-1">
             <div className="text-sm font-medium">
-              {me?.totp_enabled ? '2FA is enabled' : '2FA is disabled'}
+              {me?.totp_enabled ? t('totp.enabled') : t('totp.disabled')}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Require a time-based code in addition to your password.
-            </p>
+            <p className="text-xs text-muted-foreground">{t('totp.hint')}</p>
           </div>
           {me?.totp_enabled ? <DisableDialog /> : <EnableFlow />}
         </div>
@@ -49,6 +49,7 @@ export function TotpSection() {
 }
 
 function EnableFlow() {
+  const { t } = useTranslation('settings')
   const qc = useQueryClient()
   const [setup, setSetup] = useState<TotpSetup | null>(null)
   const [code, setCode] = useState('')
@@ -82,26 +83,24 @@ function EnableFlow() {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <Button variant="brand" size="sm" disabled={begin.isPending} onClick={() => begin.mutate()}>
-        Enable
+        {t('totp.enable')}
       </Button>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {recovery ? 'Save your recovery codes' : 'Set up two-factor authentication'}
+            {recovery ? t('totp.enableFlow.recoveryTitle') : t('totp.enableFlow.setupTitle')}
           </DialogTitle>
         </DialogHeader>
 
         {recovery ? (
           <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">
-              Store these somewhere safe. Each code can be used once if you lose your device.
-            </p>
+            <p className="text-sm text-muted-foreground">{t('totp.enableFlow.recoveryHint')}</p>
             <div className="grid grid-cols-2 gap-2 rounded-md border bg-surface-1 p-3 font-mono text-xs">
               {recovery.map((c) => (
                 <span key={c}>{c}</span>
               ))}
             </div>
-            <CopyButton value={recovery.join('\n')} label="Copy codes" />
+            <CopyButton value={recovery.join('\n')} label={t('totp.enableFlow.copyCodes')} />
           </div>
         ) : setup ? (
           <div className="flex flex-col gap-4">
@@ -113,7 +112,7 @@ function EnableFlow() {
               <CopyButton value={setup.secret} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="totp-code">Enter the 6-digit code</Label>
+              <Label htmlFor="totp-code">{t('totp.enableFlow.codeLabel')}</Label>
               <Input
                 id="totp-code"
                 inputMode="numeric"
@@ -133,7 +132,7 @@ function EnableFlow() {
               disabled={enable.isPending || code.length < 6}
               onClick={() => enable.mutate()}
             >
-              Verify & enable
+              {t('totp.enableFlow.submit')}
             </Button>
           </DialogFooter>
         ) : null}
@@ -143,6 +142,7 @@ function EnableFlow() {
 }
 
 function DisableDialog() {
+  const { t } = useTranslation('settings')
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
@@ -150,7 +150,7 @@ function DisableDialog() {
   const disable = useMutation({
     mutationFn: () => authApi.totpDisable(password),
     onSuccess: () => {
-      toast.success('2FA disabled')
+      toast.success(t('totp.toast.disabled'))
       qc.invalidateQueries({ queryKey: queryKeys.auth.me })
       setOpen(false)
       setPassword('')
@@ -162,15 +162,15 @@ function DisableDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="danger" size="sm">
-          Disable
+          {t('totp.disable')}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Disable two-factor authentication</DialogTitle>
+          <DialogTitle>{t('totp.disableDialog.title')}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-2">
-          <Label htmlFor="pw">Confirm your password</Label>
+          <Label htmlFor="pw">{t('totp.disableDialog.passwordLabel')}</Label>
           <Input
             id="pw"
             type="password"
@@ -185,7 +185,7 @@ function DisableDialog() {
             disabled={disable.isPending || !password}
             onClick={() => disable.mutate()}
           >
-            Disable 2FA
+            {t('totp.disableDialog.submit')}
           </Button>
         </DialogFooter>
       </DialogContent>

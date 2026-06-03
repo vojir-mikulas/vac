@@ -36,6 +36,26 @@
       "installedFrom": "Installed from {{name}}",
       "addonFallback": "add-on"
     },
+    "rowActions": {
+      "menuAria": "Actions for {{name}}",
+      "open": "Open",
+      "start": "Start",
+      "restart": "Restart",
+      "stop": "Stop",
+      "delete": "Delete app",
+      "uninstall": "Uninstall",
+      "started": "{{name}} started",
+      "restarted": "Restarting {{name}}",
+      "stopped": "{{name}} stopped",
+      "deleted": "{{name}} deleted",
+      "confirm": {
+        "title": "Delete {{name}}?",
+        "uninstallTitle": "Uninstall {{name}}?",
+        "description": "This permanently removes the app, its services, configuration, and data volumes — plus any managed database it owns. This action cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Delete"
+      }
+    },
     "empty": {
       "title": "No apps yet",
       "description": "Connect a repository to deploy your first app, or import an existing vac.app.yaml spec."
@@ -62,7 +82,8 @@
     "backToApps": "Back to apps",
     "title": "New application",
     "subtitle": "Connect a Git repository — VAC handles build, deploy, HTTPS and routing.",
-    "create": "Create application",
+    "createOnly": "Create app",
+    "createAndDeploy": "Create & deploy",
     "source": {
       "title": "Connect a repository",
       "subtitle": "Paste a Git URL. VAC creates a read-only deploy key for private repos.",
@@ -83,8 +104,8 @@
       "note": "Point a <0>CNAME</0> (or A record) at this VPS, then add the domain from the app's <1>Domains</1> tab after the first deploy — certificates are issued on the first request."
     },
     "review": {
-      "title": "Review and deploy",
-      "subtitle": "VAC will create the app, then run the pipeline.",
+      "title": "Review & deploy",
+      "subtitle": "Create the app, verify access, then run the first deploy — all here.",
       "name": "Name",
       "source": "Source",
       "branch": "Branch",
@@ -98,15 +119,17 @@
       "framework": "Framework: {{name}}",
       "static": "Static ({{path}})"
     },
-    "created": {
-      "title": "Almost there",
-      "subtitle": "{{name}} is created. Verify access, then run the first deploy."
+    "notices": {
+      "created": "{{name}} created",
+      "sshKey": {
+        "title": "A deploy key will be generated",
+        "body": "This is an SSH repo — once the app is created, add its read-only deploy key to your Git host so VAC can clone. Deploying before then will fail to clone."
+      }
     },
     "connect": {
-      "verifyAccess": "Verify access",
       "reach": "Confirm VAC can reach <0>{{url}}</0> before the first deploy.",
       "testConnection": "Test connection",
-      "testFailed": "Failed",
+      "testFailed": "Connection test failed",
       "succeeded": "Connection succeeded",
       "connectionFailed": "Connection failed",
       "goToApp": "Go to app",

@@ -1,1 +1,51 @@
-{}
+{
+  "page": {
+    "title": "Add-ons",
+    "description": "A curated catalog for this box: one-click apps that deploy with backups, routing, and HTTPS, plus managed databases you add to your apps.",
+    "empty": "No add-ons available"
+  },
+  "card": {
+    "installed": "Installed",
+    "footprint": "~{{mb}} MB",
+    "provisionsDb": "Provisions a managed {{engine}} database",
+    "active_one": "Active · {{count}} database",
+    "active_other": "Active · {{count}} databases",
+    "shared": "One shared instance serves every app",
+    "perApp": "Provisioned per app"
+  },
+  "installed": {
+    "open": "Open",
+    "uninstallAria": "Uninstall {{name}}",
+    "confirmTitle": "Uninstall {{name}}?",
+    "confirmDescription": "This removes the app and permanently deletes its data — its containers and volumes. This cannot be undone.",
+    "confirmDescriptionWithDb": "This removes the app and permanently deletes its data — its containers and volumes, plus its managed {{engine}} database. This cannot be undone.",
+    "cancel": "Cancel",
+    "uninstall": "Uninstall",
+    "toastUninstalled": "Uninstalled {{name}}"
+  },
+  "addToApp": {
+    "trigger": "Add to an app",
+    "noApps": "No apps yet",
+    "title": "Add {{name}} to an app",
+    "appLabel": "App",
+    "appPlaceholder": "Choose an app",
+    "warningShared": "The first {{name}} database starts a shared instance (~{{mb}} MB) on this box. Later databases reuse it.",
+    "warningPerApp": "Uses roughly {{mb}} MB of RAM on this box.",
+    "note": "VAC injects the connection string as an env var and schedules a nightly backup. Redeploy the app to pick it up.",
+    "cancel": "Cancel",
+    "provision": "Provision",
+    "manage": "Manage",
+    "toastProvisioning": "Provisioning {{name}} for the app"
+  },
+  "install": {
+    "trigger": "Install",
+    "title": "Install {{name}}",
+    "appName": "App name",
+    "warning": "Runs on this box and uses roughly {{mb}} MB of RAM.",
+    "warningWithDb": "Runs on this box and uses roughly {{mb}} MB of RAM, plus a managed {{engine}} database.",
+    "cancel": "Cancel",
+    "install": "Install",
+    "toastSaveSecrets": "Installed. Save these now: {{secrets}}",
+    "toastInstalling": "Add-on installing"
+  }
+}

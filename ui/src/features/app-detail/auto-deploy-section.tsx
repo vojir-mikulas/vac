@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -44,14 +45,12 @@ export function AutoDeploySection({
   appId: string
   defaultBranch: string
 }) {
+  const { t } = useTranslation('app-detail')
   return (
     <section>
-      <SectionHeader>Auto-deploy</SectionHeader>
+      <SectionHeader>{t('autoDeploy.title')}</SectionHeader>
       <Card className="gap-5 p-5">
-        <p className="text-xs text-muted-foreground">
-          Deploy automatically when your Git host posts to the webhook below and the pushed ref
-          matches one of these rules. With no rules, pushes are received but never deploy.
-        </p>
+        <p className="text-xs text-muted-foreground">{t('autoDeploy.intro')}</p>
         <TriggerRules appId={appId} defaultBranch={defaultBranch} />
         <div className="border-t" />
         <WebhookConfigCard appId={appId} />
@@ -61,6 +60,7 @@ export function AutoDeploySection({
 }
 
 function TriggerRules({ appId, defaultBranch }: { appId: string; defaultBranch: string }) {
+  const { t } = useTranslation('app-detail')
   const { data: triggers } = useTriggers(appId)
   const create = useCreateTrigger(appId)
   const remove = useDeleteTrigger(appId)
@@ -74,7 +74,7 @@ function TriggerRules({ appId, defaultBranch }: { appId: string; defaultBranch: 
       {
         onSuccess: () => {
           setFilter('')
-          toast.success('Trigger added')
+          toast.success(t('autoDeploy.triggerAdded'))
         },
         onError: (e) => toast.error(e.message),
       },
@@ -82,26 +82,28 @@ function TriggerRules({ appId, defaultBranch }: { appId: string; defaultBranch: 
 
   return (
     <div className="grid gap-3">
-      <Label>Trigger rules</Label>
+      <Label>{t('autoDeploy.triggerRules')}</Label>
       {triggers && triggers.length > 0 ? (
         <ul className="flex flex-col gap-2">
-          {triggers.map((t) => (
+          {triggers.map((tr) => (
             <li
-              key={t.id}
+              key={tr.id}
               className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2"
             >
               <Badge variant="secondary" className="uppercase">
-                {t.event}
+                {tr.event}
               </Badge>
               <span className="flex-1 truncate font-mono text-xs">
-                {t.filter || <span className="text-muted-foreground">any ref</span>}
+                {tr.filter || (
+                  <span className="text-muted-foreground">{t('autoDeploy.anyRef')}</span>
+                )}
               </span>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Delete trigger"
+                aria-label={t('autoDeploy.deleteTrigger')}
                 disabled={remove.isPending}
-                onClick={() => remove.mutate(t.id, { onError: (e) => toast.error(e.message) })}
+                onClick={() => remove.mutate(tr.id, { onError: (e) => toast.error(e.message) })}
               >
                 <Trash2 className="size-3.5" />
               </Button>
@@ -109,25 +111,25 @@ function TriggerRules({ appId, defaultBranch }: { appId: string; defaultBranch: 
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-muted-foreground">No rules yet.</p>
+        <p className="text-xs text-muted-foreground">{t('autoDeploy.noRules')}</p>
       )}
 
       <div className="flex flex-wrap items-end gap-2">
         <div className="grid gap-1.5">
-          <Label className="text-2xs text-muted-foreground">Event</Label>
+          <Label className="text-2xs text-muted-foreground">{t('autoDeploy.event')}</Label>
           <Select value={event} onValueChange={(v) => setEvent(v as TriggerEvent)}>
             <SelectTrigger size="sm" className="w-28">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="push">push</SelectItem>
-              <SelectItem value="tag">tag</SelectItem>
+              <SelectItem value="push">{t('autoDeploy.eventPush')}</SelectItem>
+              <SelectItem value="tag">{t('autoDeploy.eventTag')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="grid flex-1 gap-1.5">
           <Label className="text-2xs text-muted-foreground">
-            Filter — glob, blank = any {event === 'tag' ? 'tag' : 'branch'}
+            {event === 'tag' ? t('autoDeploy.filterLabelTag') : t('autoDeploy.filterLabelBranch')}
           </Label>
           <Input
             value={filter}
@@ -137,7 +139,7 @@ function TriggerRules({ appId, defaultBranch }: { appId: string; defaultBranch: 
           />
         </div>
         <Button variant="brand" size="sm" disabled={create.isPending} onClick={addRule}>
-          Add rule
+          {t('autoDeploy.addRule')}
         </Button>
       </div>
     </div>
@@ -145,6 +147,7 @@ function TriggerRules({ appId, defaultBranch }: { appId: string; defaultBranch: 
 }
 
 function WebhookConfigCard({ appId }: { appId: string }) {
+  const { t } = useTranslation('app-detail')
   const { data: config } = useWebhookConfig(appId)
   const regenerate = useRegenerateWebhook(appId)
   const disable = useDisableWebhook(appId)
@@ -158,16 +161,16 @@ function WebhookConfigCard({ appId }: { appId: string }) {
     regenerate.mutate(undefined, {
       onSuccess: (res) => {
         setRevealed(res.secret)
-        toast.success('Webhook secret generated')
+        toast.success(t('autoDeploy.secretGenerated'))
       },
       onError: (e) => toast.error(e.message),
     })
 
   return (
     <div className="grid gap-3">
-      <Label>Webhook</Label>
+      <Label>{t('autoDeploy.webhook')}</Label>
       <div className="grid gap-1.5">
-        <Label className="text-2xs text-muted-foreground">Payload URL</Label>
+        <Label className="text-2xs text-muted-foreground">{t('autoDeploy.payloadUrl')}</Label>
         <div className="flex items-center gap-2">
           <Input readOnly value={config.url} className="font-mono text-xs" />
           <CopyButton value={config.url} />
@@ -176,9 +179,7 @@ function WebhookConfigCard({ appId }: { appId: string }) {
 
       {revealed ? (
         <div className="grid gap-1.5 rounded-md border border-brand/40 bg-brand/5 p-3">
-          <Label className="text-2xs font-medium">
-            Secret — copy it now, it won't be shown again
-          </Label>
+          <Label className="text-2xs font-medium">{t('autoDeploy.secretReveal')}</Label>
           <div className="flex items-center gap-2">
             <Input readOnly value={revealed} className="font-mono text-xs" />
             <CopyButton value={revealed} />
@@ -188,7 +189,7 @@ function WebhookConfigCard({ appId }: { appId: string }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted-foreground">
-          {config.configured ? 'A secret is set.' : 'No secret yet — generate one to enable.'}
+          {config.configured ? t('autoDeploy.secretSet') : t('autoDeploy.secretNone')}
         </span>
         <div className="flex-1" />
         <Button
@@ -197,37 +198,36 @@ function WebhookConfigCard({ appId }: { appId: string }) {
           disabled={regenerate.isPending}
           onClick={doRegenerate}
         >
-          {config.configured ? 'Regenerate secret' : 'Generate secret'}
+          {config.configured ? t('autoDeploy.regenerateSecret') : t('autoDeploy.generateSecret')}
         </Button>
         {config.configured ? (
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="ghost" size="sm" disabled={disable.isPending}>
-                Disable
+                {t('autoDeploy.disable')}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Disable auto-deploy webhook?</AlertDialogTitle>
+                <AlertDialogTitle>{t('autoDeploy.disableDialogTitle')}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  The current secret is cleared and incoming webhook calls stop deploying until you
-                  generate a new secret. Trigger rules are kept.
+                  {t('autoDeploy.disableDialogDescription')}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() =>
                     disable.mutate(undefined, {
                       onSuccess: () => {
                         setRevealed(null)
-                        toast.success('Webhook disabled')
+                        toast.success(t('autoDeploy.webhookDisabled'))
                       },
                       onError: (e) => toast.error(e.message),
                     })
                   }
                 >
-                  Disable
+                  {t('autoDeploy.disable')}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

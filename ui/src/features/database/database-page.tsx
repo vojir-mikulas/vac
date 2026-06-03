@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { Database, HardDrive, Info, ShieldCheck } from 'lucide-react'
+import { Trans, useTranslation } from 'react-i18next'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { StatStrip, StatTile } from '@/components/common/stat-tile'
@@ -28,14 +29,12 @@ import { formatBytes, relativeTime } from '@/lib/format'
 import type { DBEngineGroup, DBInventoryEntry } from '@/types/api'
 
 export function DatabasePage() {
+  const { t } = useTranslation('database')
   const { data: instance } = useInstanceInfo()
 
   return (
     <PageContainer>
-      <PageHeader
-        title="Database"
-        description="Every database VAC manages on this box — disk usage, backups, and the app that owns each one."
-      />
+      <PageHeader title={t('page.title')} description={t('page.description')} />
       <SwapFade
         id={instance == null ? 'loading' : instance.managed_services ? 'inventory' : 'control'}
       >
@@ -82,6 +81,7 @@ function engineTotal(g: DBEngineGroup): { total: number; unknown: number } {
 }
 
 function InventoryView() {
+  const { t } = useTranslation('database')
   const { data, isLoading } = useDatabaseInventory()
   const { data: host } = useHostStats()
 
@@ -96,22 +96,33 @@ function InventoryView() {
   return (
     <div className="flex flex-col gap-6">
       <StatStrip>
-        <StatTile label="Engines" value={String(engines.length)} sub="live on this box" accent />
-        <StatTile label="Databases" value={String(dbCount)} sub="managed by VAC" />
-        <StatTile label="Managed disk" value={formatBytes(grandTotal)} sub="across all databases" />
         <StatTile
-          label="Host disk"
+          label={t('stats.engines')}
+          value={String(engines.length)}
+          sub={t('stats.enginesSub')}
+          accent
+        />
+        <StatTile
+          label={t('stats.databases')}
+          value={String(dbCount)}
+          sub={t('stats.databasesSub')}
+        />
+        <StatTile
+          label={t('stats.managedDisk')}
+          value={formatBytes(grandTotal)}
+          sub={t('stats.managedDiskSub')}
+        />
+        <StatTile
+          label={t('stats.hostDisk')}
           value={host ? formatBytes(host.disk_used_bytes) : '—'}
-          sub={host ? `of ${formatBytes(host.disk_total_bytes)}` : undefined}
+          sub={
+            host ? t('stats.hostDiskSub', { size: formatBytes(host.disk_total_bytes) }) : undefined
+          }
         />
       </StatStrip>
 
       {engines.length === 0 ? (
-        <EmptyState
-          icon={Database}
-          title="No managed databases"
-          description="Add a database from any app's Databases tab — VAC provisions it, injects the connection string, and schedules a nightly backup."
-        />
+        <EmptyState icon={Database} title={t('empty.title')} description={t('empty.description')} />
       ) : (
         <Tabs defaultValue={engines[0]?.engine}>
           <TabsList>
@@ -135,6 +146,7 @@ function InventoryView() {
 }
 
 function EngineTab({ group }: { group: DBEngineGroup }) {
+  const { t } = useTranslation('database')
   const control = group.databases.find((d) => d.is_control_plane)
   const users = group.databases.filter((d) => !d.is_control_plane)
   const { total, unknown } = engineTotal(group)
@@ -143,12 +155,15 @@ function EngineTab({ group }: { group: DBEngineGroup }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="text-muted-foreground">
-          Total disk: <span className="font-medium text-foreground">{formatBytes(total)}</span>
-          {unknown > 0 ? <span className="text-muted-foreground"> · {unknown} unknown</span> : null}
+          {t('engine.totalDisk')}{' '}
+          <span className="font-medium text-foreground">{formatBytes(total)}</span>
+          {unknown > 0 ? (
+            <span className="text-muted-foreground">{t('engine.unknown', { count: unknown })}</span>
+          ) : null}
         </span>
         {group.shared ? (
           <span className="text-2xs text-muted-foreground">
-            Shared {group.engine} instance · ~{group.footprint_mb} MB
+            {t('engine.sharedInstance', { engine: group.engine, footprint: group.footprint_mb })}
           </span>
         ) : null}
       </div>
@@ -160,11 +175,21 @@ function EngineTab({ group }: { group: DBEngineGroup }) {
           <Table>
             <TableHeader>
               <TableRow className="bg-surface-1 hover:bg-surface-1">
-                <TableHead className="text-2xs uppercase tracking-wider">Database</TableHead>
-                <TableHead className="text-2xs uppercase tracking-wider">App</TableHead>
-                <TableHead className="text-2xs uppercase tracking-wider">Size</TableHead>
-                <TableHead className="text-2xs uppercase tracking-wider">Status</TableHead>
-                <TableHead className="text-2xs uppercase tracking-wider">Last backup</TableHead>
+                <TableHead className="text-2xs uppercase tracking-wider">
+                  {t('table.database')}
+                </TableHead>
+                <TableHead className="text-2xs uppercase tracking-wider">
+                  {t('table.app')}
+                </TableHead>
+                <TableHead className="text-2xs uppercase tracking-wider">
+                  {t('table.size')}
+                </TableHead>
+                <TableHead className="text-2xs uppercase tracking-wider">
+                  {t('table.status')}
+                </TableHead>
+                <TableHead className="text-2xs uppercase tracking-wider">
+                  {t('table.lastBackup')}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -175,13 +200,12 @@ function EngineTab({ group }: { group: DBEngineGroup }) {
           </Table>
         </Card>
       ) : (
-        <p className="text-sm text-muted-foreground">No databases on this engine yet.</p>
+        <p className="text-sm text-muted-foreground">{t('engine.noDatabases')}</p>
       )}
 
       {group.engine === 'mariadb' ? (
         <p className="text-2xs text-muted-foreground">
-          Sizes are computed from <code className="font-mono">information_schema</code> and are
-          approximate (InnoDB rounds allocation to extents).
+          <Trans t={t} i18nKey="engine.mariadbNote" components={[<code className="font-mono" />]} />
         </p>
       ) : null}
     </div>
@@ -189,6 +213,7 @@ function EngineTab({ group }: { group: DBEngineGroup }) {
 }
 
 function DatabaseRow({ entry: d }: { entry: DBInventoryEntry }) {
+  const { t } = useTranslation('database')
   return (
     <TableRow>
       <TableCell className="font-mono text-xs">{d.db_name}</TableCell>
@@ -221,7 +246,7 @@ function DatabaseRow({ entry: d }: { entry: DBInventoryEntry }) {
             </span>
           </span>
         ) : (
-          <span className="text-xs text-muted-foreground">none</span>
+          <span className="text-xs text-muted-foreground">{t('table.noBackup')}</span>
         )}
       </TableCell>
     </TableRow>
@@ -231,27 +256,25 @@ function DatabaseRow({ entry: d }: { entry: DBInventoryEntry }) {
 // VacCard pins the control-plane Postgres so the operator can never confuse VAC's
 // own store with a user database.
 function VacCard({ entry }: { entry: DBInventoryEntry }) {
+  const { t } = useTranslation('database')
   return (
     <Card className="gap-3 border-brand/30 bg-brand/[0.03] p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <ShieldCheck className="size-4 text-brand" />
           <span className="font-mono text-sm font-semibold">{entry.db_name}</span>
-          <Badge variant="info">VAC system database</Badge>
+          <Badge variant="info">{t('vacCard.systemBadge')}</Badge>
         </div>
         <span className="text-sm tabular-nums text-muted-foreground">
           {sizeLabel(entry.size_bytes)}
         </span>
       </div>
-      <p className="text-xs text-muted-foreground">
-        VAC's own control-plane store. User Postgres databases live inside this same instance by
-        default — don't touch this one.
-      </p>
+      <p className="text-xs text-muted-foreground">{t('vacCard.description')}</p>
       <div className="flex items-center gap-2 border-t pt-3 text-2xs text-muted-foreground">
         <Info className="size-3" />
         {entry.last_backup
-          ? `Last backup ${relativeTime(entry.last_backup.finished_at)}`
-          : 'No backup configured for the control-plane database.'}
+          ? t('vacCard.lastBackup', { time: relativeTime(entry.last_backup.finished_at) })
+          : t('vacCard.noBackup')}
       </div>
     </Card>
   )
@@ -260,44 +283,54 @@ function VacCard({ entry }: { entry: DBInventoryEntry }) {
 // ControlPlaneOnlyView is the degraded view when managed services are off: VAC
 // still runs its own Postgres, so show that plus host disk rather than a blank page.
 function ControlPlaneOnlyView() {
+  const { t } = useTranslation('database')
   const { data: host } = useHostStats()
   const diskPct = host ? (host.disk_used_bytes / host.disk_total_bytes) * 100 : 0
 
   return (
     <div className="flex flex-col gap-6">
       <StatStrip>
-        <StatTile label="Engine" value="Postgres 16" sub="shared instance" accent />
         <StatTile
-          label="Disk used"
-          value={host ? formatBytes(host.disk_used_bytes) : '—'}
-          sub={host ? `of ${formatBytes(host.disk_total_bytes)}` : undefined}
+          label={t('controlPlane.engine')}
+          value="Postgres 16"
+          sub={t('controlPlane.engineSub')}
+          accent
         />
-        <StatTile label="Connections" value="≤ 50" sub="max_connections" />
+        <StatTile
+          label={t('controlPlane.diskUsed')}
+          value={host ? formatBytes(host.disk_used_bytes) : '—'}
+          sub={
+            host
+              ? t('controlPlane.diskUsedSub', { size: formatBytes(host.disk_total_bytes) })
+              : undefined
+          }
+        />
+        <StatTile label={t('controlPlane.connections')} value="≤ 50" sub="max_connections" />
       </StatStrip>
 
       <div className="flex flex-col gap-6 lg:flex-row">
         <Card className="min-w-0 flex-1 gap-3 p-5">
           <div className="flex items-center gap-2">
             <HardDrive className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Disk</h3>
+            <h3 className="text-sm font-medium">{t('controlPlane.disk')}</h3>
           </div>
           <Meter pct={diskPct} className="h-1.5" tone="brand" />
           <p className="text-xs text-muted-foreground">
             {host
-              ? `${formatBytes(host.disk_used_bytes)} of ${formatBytes(host.disk_total_bytes)} used on the host volume.`
-              : 'Loading host volume usage…'}
+              ? t('controlPlane.diskUsage', {
+                  used: formatBytes(host.disk_used_bytes),
+                  total: formatBytes(host.disk_total_bytes),
+                })
+              : t('controlPlane.diskLoading')}
           </p>
         </Card>
 
         <Card className="gap-3 p-5 lg:w-96 lg:shrink-0">
           <div className="flex items-center gap-2">
             <Database className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">About</h3>
+            <h3 className="text-sm font-medium">{t('controlPlane.about')}</h3>
           </div>
-          <p className="text-xs text-muted-foreground">
-            VAC stores its internal state in a lean shared Postgres tuned for small VPS hosts.
-            Enable managed services to provision databases for your own apps and see them here.
-          </p>
+          <p className="text-xs text-muted-foreground">{t('controlPlane.aboutDescription')}</p>
         </Card>
       </div>
     </div>

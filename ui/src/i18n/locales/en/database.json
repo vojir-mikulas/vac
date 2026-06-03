@@ -1,1 +1,54 @@
-{}
+{
+  "page": {
+    "title": "Database",
+    "description": "Every database VAC manages on this box — disk usage, backups, and the app that owns each one."
+  },
+  "stats": {
+    "engines": "Engines",
+    "enginesSub": "live on this box",
+    "databases": "Databases",
+    "databasesSub": "managed by VAC",
+    "managedDisk": "Managed disk",
+    "managedDiskSub": "across all databases",
+    "hostDisk": "Host disk",
+    "hostDiskSub": "of {{size}}"
+  },
+  "empty": {
+    "title": "No managed databases",
+    "description": "Add a database from any app's Databases tab — VAC provisions it, injects the connection string, and schedules a nightly backup."
+  },
+  "engine": {
+    "totalDisk": "Total disk:",
+    "unknown": " · {{count}} unknown",
+    "sharedInstance": "Shared {{engine}} instance · ~{{footprint}} MB",
+    "noDatabases": "No databases on this engine yet.",
+    "mariadbNote": "Sizes are computed from <0>information_schema</0> and are approximate (InnoDB rounds allocation to extents)."
+  },
+  "table": {
+    "database": "Database",
+    "app": "App",
+    "size": "Size",
+    "status": "Status",
+    "lastBackup": "Last backup",
+    "noBackup": "none"
+  },
+  "vacCard": {
+    "systemBadge": "VAC system database",
+    "description": "VAC's own control-plane store. User Postgres databases live inside this same instance by default — don't touch this one.",
+    "lastBackup": "Last backup {{time}}",
+    "noBackup": "No backup configured for the control-plane database."
+  },
+  "controlPlane": {
+    "engine": "Engine",
+    "engineSub": "shared instance",
+    "diskUsed": "Disk used",
+    "diskUsedSub": "of {{size}}",
+    "connections": "Connections",
+    "connectionsSub": "max_connections",
+    "disk": "Disk",
+    "diskUsage": "{{used}} of {{total}} used on the host volume.",
+    "diskLoading": "Loading host volume usage…",
+    "about": "About",
+    "aboutDescription": "VAC stores its internal state in a lean shared Postgres tuned for small VPS hosts. Enable managed services to provision databases for your own apps and see them here."
+  }
+}

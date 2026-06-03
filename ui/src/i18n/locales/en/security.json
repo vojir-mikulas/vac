@@ -1,1 +1,103 @@
-{}
+{
+  "page": {
+    "title": "Security",
+    "description": "Read-only posture and traffic signals. VAC shows and alerts — it never mutates host state."
+  },
+  "posture": {
+    "heading": "Posture",
+    "empty": {
+      "title": "No posture checks",
+      "description": "The posture checklist is unavailable."
+    },
+    "summary": {
+      "needAttention_one": "{{count}} issue needs attention",
+      "needAttention_other": "{{count}} issues need attention",
+      "warnings_one": "{{count}} warning",
+      "warnings_other": "{{count}} warnings",
+      "allPassing": "All checks passing",
+      "checksPassing_one": "{{count}} check passing",
+      "checksPassing_other": "{{count}} checks passing",
+      "errors_one": "{{count}} error",
+      "errors_other": "{{count}} errors"
+    }
+  },
+  "traffic": {
+    "heading": "Traffic",
+    "windowLabel": "{{seconds}}s window",
+    "live": "live",
+    "stats": {
+      "trackedIps": "Tracked IPs",
+      "requests": "Requests",
+      "errors": "Errors (4xx/5xx)",
+      "recentAnomalies": "Recent anomalies",
+      "thisProcess": "this process"
+    },
+    "topTalkers": {
+      "heading": "Top talkers",
+      "sourceIp": "Source IP",
+      "reqs": "Reqs",
+      "errors": "Errors",
+      "empty": {
+        "title": "No traffic",
+        "description": "No requests seen in the current window."
+      }
+    },
+    "anomalies": {
+      "heading": "Recent anomalies",
+      "empty": {
+        "title": "No anomalies",
+        "description": "No traffic anomalies detected."
+      }
+    },
+    "recentRequests": {
+      "heading": "Recent requests",
+      "status": "Status",
+      "method": "Method",
+      "hostPath": "Host / path",
+      "sourceIp": "Source IP",
+      "when": "When",
+      "empty": {
+        "title": "No requests yet",
+        "description": "No requests have hit the proxy yet. If this stays empty, check that Caddy's access log is enabled (see the Posture panel)."
+      }
+    }
+  },
+  "fail2ban": {
+    "heading": "fail2ban",
+    "staleEmpty": {
+      "title": "Host agent not reporting",
+      "description": "The host security agent hasn't refreshed recently, so fail2ban state may be out of date. Check the vac-security-agent timer on the host."
+    },
+    "notDetected": {
+      "title": "fail2ban not detected",
+      "description": "fail2ban is not installed or readable on this host — recommended on an internet-facing box to auto-ban brute-force attempts. See the Posture panel."
+    },
+    "noJails": {
+      "title": "No jails",
+      "description": "fail2ban is running but reports no jails."
+    },
+    "banned": "{{currentlyBanned}} banned · {{totalBanned}} total"
+  },
+  "monitoringOff": {
+    "title": "Monitoring off",
+    "description": "The read-only host security agent isn't enabled, so VAC can't see host state. Turn it on with `vac security-agent on`."
+  },
+  "hostSource": {
+    "viaHostAgent": "host agent",
+    "viaHost": "host",
+    "via": "via {{label}}",
+    "updated": " · updated {{time}}"
+  },
+  "firewall": {
+    "heading": "Firewall",
+    "staleEmpty": {
+      "title": "Host agent not reporting",
+      "description": "The host security agent hasn't refreshed recently, so firewall state may be out of date. Check the vac-security-agent timer on the host."
+    },
+    "notDetected": {
+      "title": "No firewall detected",
+      "description": "No ufw / nftables ruleset is readable on this host. Running an internet-facing box without a firewall is dangerous — enable one, or opt out with <0>vac security-check firewall off</0>."
+    },
+    "noRules": "No rules reported."
+  }
+}

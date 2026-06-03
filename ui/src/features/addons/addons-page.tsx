@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, Blocks, Database, Download, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -43,6 +44,7 @@ import { useDatabaseInventory } from '@/lib/api/db-inventory'
 import type { Addon, App } from '@/types/api'
 
 export function AddonsPage() {
+  const { t } = useTranslation('addons')
   const { data: addons, isLoading } = useAddons()
   const { data: apps } = useApps()
   const { data: inventory } = useDatabaseInventory()
@@ -66,10 +68,7 @@ export function AddonsPage() {
 
   return (
     <PageContainer>
-      <PageHeader
-        title="Add-ons"
-        description="A curated catalog for this box: one-click apps that deploy with backups, routing, and HTTPS, plus managed databases you add to your apps."
-      />
+      <PageHeader title={t('page.title')} description={t('page.description')} />
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -92,13 +91,14 @@ export function AddonsPage() {
           )}
         </div>
       ) : (
-        <EmptyState icon={Blocks} title="No add-ons available" />
+        <EmptyState icon={Blocks} title={t('page.empty')} />
       )}
     </PageContainer>
   )
 }
 
 function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }) {
+  const { t } = useTranslation('addons')
   return (
     <MotionCard className="flex flex-col gap-3 p-5">
       <div className="flex items-start justify-between gap-2">
@@ -112,11 +112,11 @@ function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }
         </div>
         {installedApp ? (
           <span className="rounded-full border border-ok-border bg-ok-bg px-2 py-0.5 text-2xs text-ok-foreground">
-            Installed
+            {t('card.installed')}
           </span>
         ) : (
           <span className="rounded-full border bg-surface-2 px-2 py-0.5 text-2xs text-muted-foreground">
-            ~{addon.footprint_mb} MB
+            {t('card.footprint', { mb: addon.footprint_mb })}
           </span>
         )}
       </div>
@@ -124,7 +124,7 @@ function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }
       {addon.depends_on_db ? (
         <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
           <Database className="size-3" />
-          Provisions a managed {addon.depends_on_db} database
+          {t('card.provisionsDb', { engine: addon.depends_on_db })}
         </div>
       ) : null}
       {installedApp ? (
@@ -140,11 +140,12 @@ function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }
 // box. Uninstall is the generic app delete behind an add-on-aware confirm — the
 // backend stops the stack, removes its volumes, and deprovisions any managed DB.
 function InstalledActions({ addon, app }: { addon: Addon; app: App }) {
+  const { t } = useTranslation('addons')
   const navigate = useNavigate()
   const remove = useDeleteApp()
   const uninstall = () =>
     remove.mutate(app.id, {
-      onSuccess: () => toast.success(`Uninstalled ${addon.name}`),
+      onSuccess: () => toast.success(t('installed.toastUninstalled', { name: addon.name })),
       onError: (e) => toast.error(e.message),
     })
 
@@ -156,30 +157,34 @@ function InstalledActions({ addon, app }: { addon: Addon; app: App }) {
         className="flex-1"
         onClick={() => navigate({ to: '/apps/$appId/overview', params: { appId: app.id } })}
       >
-        Open
+        {t('installed.open')}
       </Button>
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <Button variant="outline" size="sm" aria-label={`Uninstall ${addon.name}`}>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={t('installed.uninstallAria', { name: addon.name })}
+          >
             <Trash2 className="size-3.5" />
           </Button>
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Uninstall {addon.name}?</AlertDialogTitle>
+            <AlertDialogTitle>{t('installed.confirmTitle', { name: addon.name })}</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the app and permanently deletes its data — its containers and volumes
-              {addon.depends_on_db ? `, plus its managed ${addon.depends_on_db} database` : ''}.
-              This cannot be undone.
+              {addon.depends_on_db
+                ? t('installed.confirmDescriptionWithDb', { engine: addon.depends_on_db })
+                : t('installed.confirmDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('installed.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={uninstall}
               className="bg-err text-err-foreground hover:bg-err/90"
             >
-              Uninstall
+              {t('installed.uninstall')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -192,6 +197,7 @@ function InstalledActions({ addon, app }: { addon: Addon; app: App }) {
 // Unlike a template add-on it isn't deployed standalone — it's provisioned into
 // an app — so the card routes to an app picker and shows the engine's live state.
 function DatabaseAddonCard({ addon, count, apps }: { addon: Addon; count: number; apps: App[] }) {
+  const { t } = useTranslation('addons')
   const navigate = useNavigate()
   const active = count > 0
 
@@ -208,24 +214,24 @@ function DatabaseAddonCard({ addon, count, apps }: { addon: Addon; count: number
         </div>
         {active ? (
           <span className="rounded-full border border-ok-border bg-ok-bg px-2 py-0.5 text-2xs text-ok-foreground">
-            Active · {count} {count === 1 ? 'database' : 'databases'}
+            {t('card.active', { count })}
           </span>
         ) : (
           <span className="rounded-full border bg-surface-2 px-2 py-0.5 text-2xs text-muted-foreground">
-            ~{addon.footprint_mb} MB
+            {t('card.footprint', { mb: addon.footprint_mb })}
           </span>
         )}
       </div>
       <p className="flex-1 text-sm text-muted-foreground">{addon.description}</p>
       <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
         <Database className="size-3" />
-        {addon.shared ? 'One shared instance serves every app' : 'Provisioned per app'}
+        {addon.shared ? t('card.shared') : t('card.perApp')}
       </div>
       <div className="flex gap-2">
         <AddToAppDialog addon={addon} apps={apps} />
         {active ? (
           <Button variant="outline" size="sm" onClick={() => navigate({ to: '/database' })}>
-            Manage
+            {t('addToApp.manage')}
           </Button>
         ) : null}
       </div>
@@ -237,6 +243,7 @@ function DatabaseAddonCard({ addon, count, apps }: { addon: Addon; count: number
 // per-app endpoint as the app's Database tab — the catalog is just a second
 // entry point. The app must be picked here since the catalog isn't app-scoped.
 function AddToAppDialog({ addon, apps }: { addon: Addon; apps: App[] }) {
+  const { t } = useTranslation('addons')
   const [open, setOpen] = useState(false)
   const [appId, setAppId] = useState('')
   const add = useAddDatabaseToApp()
@@ -250,7 +257,7 @@ function AddToAppDialog({ addon, apps }: { addon: Addon; apps: App[] }) {
       {
         onSuccess: (res) => {
           setOpen(false)
-          toast.success(res.warning || `Provisioning ${addon.name} for the app`)
+          toast.success(res.warning || t('addToApp.toastProvisioning', { name: addon.name }))
           navigate({ to: '/apps/$appId/databases', params: { appId } })
         },
         onError: (e) => toast.error(e.message),
@@ -263,20 +270,20 @@ function AddToAppDialog({ addon, apps }: { addon: Addon; apps: App[] }) {
       <DialogTrigger asChild>
         <Button variant="brand" size="sm" className="flex-1" disabled={noApps}>
           <Download className="size-3.5" />
-          {noApps ? 'No apps yet' : 'Add to an app'}
+          {noApps ? t('addToApp.noApps') : t('addToApp.trigger')}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add {addon.name} to an app</DialogTitle>
+          <DialogTitle>{t('addToApp.title', { name: addon.name })}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4 py-2">
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium">App</span>
+            <span className="text-xs font-medium">{t('addToApp.appLabel')}</span>
             <Select value={appId} onValueChange={setAppId}>
               <SelectTrigger>
-                <SelectValue placeholder="Choose an app" />
+                <SelectValue placeholder={t('addToApp.appPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {apps.map((a) => (
@@ -292,23 +299,20 @@ function AddToAppDialog({ addon, apps }: { addon: Addon; apps: App[] }) {
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <span>
               {addon.shared
-                ? `The first ${addon.name} database starts a shared instance (~${addon.footprint_mb} MB) on this box. Later databases reuse it.`
-                : `Uses roughly ${addon.footprint_mb} MB of RAM on this box.`}
+                ? t('addToApp.warningShared', { name: addon.name, mb: addon.footprint_mb })
+                : t('addToApp.warningPerApp', { mb: addon.footprint_mb })}
             </span>
           </div>
 
-          <p className="text-2xs text-muted-foreground">
-            VAC injects the connection string as an env var and schedules a nightly backup. Redeploy
-            the app to pick it up.
-          </p>
+          <p className="text-2xs text-muted-foreground">{t('addToApp.note')}</p>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t('addToApp.cancel')}
           </Button>
           <Button variant="brand" disabled={add.isPending || !appId} onClick={submit}>
-            Provision
+            {t('addToApp.provision')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -317,6 +321,7 @@ function AddToAppDialog({ addon, apps }: { addon: Addon; apps: App[] }) {
 }
 
 function InstallDialog({ addon }: { addon: Addon }) {
+  const { t } = useTranslation('addons')
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(addon.name)
   const install = useInstallAddon()
@@ -332,11 +337,13 @@ function InstallDialog({ addon }: { addon: Addon }) {
           if (secrets.length > 0) {
             // Surfaced once — they're sealed at rest and not re-derivable.
             toast.success(
-              `Installed. Save these now: ${secrets.map(([k, v]) => `${k}=${v}`).join(', ')}`,
+              t('install.toastSaveSecrets', {
+                secrets: secrets.map(([k, v]) => `${k}=${v}`).join(', '),
+              }),
               { duration: 30_000 },
             )
           } else {
-            toast.success('Add-on installing')
+            toast.success(t('install.toastInstalling'))
           }
           navigate({ to: '/apps/$appId/overview', params: { appId: res.app_id } })
         },
@@ -350,35 +357,39 @@ function InstallDialog({ addon }: { addon: Addon }) {
       <DialogTrigger asChild>
         <Button variant="brand" size="sm" className="w-full">
           <Download className="size-3.5" />
-          Install
+          {t('install.trigger')}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Install {addon.name}</DialogTitle>
+          <DialogTitle>{t('install.title', { name: addon.name })}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4 py-2">
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium">App name</span>
+            <span className="text-xs font-medium">{t('install.appName')}</span>
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </div>
 
           <div className="flex items-start gap-2 rounded-lg border border-warn-border bg-warn-bg px-3 py-2 text-xs text-warn-foreground">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <span>
-              Runs on this box and uses roughly {addon.footprint_mb} MB of RAM
-              {addon.depends_on_db ? `, plus a managed ${addon.depends_on_db} database.` : '.'}
+              {addon.depends_on_db
+                ? t('install.warningWithDb', {
+                    mb: addon.footprint_mb,
+                    engine: addon.depends_on_db,
+                  })
+                : t('install.warning', { mb: addon.footprint_mb })}
             </span>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t('install.cancel')}
           </Button>
           <Button variant="brand" disabled={install.isPending} onClick={submit}>
-            Install
+            {t('install.install')}
           </Button>
         </DialogFooter>
       </DialogContent>

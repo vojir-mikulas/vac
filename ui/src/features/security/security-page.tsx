@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, ShieldAlert, XCircle } from 'lucide-react'
+import { Trans, useTranslation } from 'react-i18next'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { SectionHeader } from '@/components/common/section-header'
@@ -18,12 +19,10 @@ import { relativeTime } from '@/lib/format'
 import type { PostureFinding, RecentRequest, SecuritySeverity, TopTalker } from '@/types/api'
 
 export function SecurityPage() {
+  const { t } = useTranslation('security')
   return (
     <PageContainer>
-      <PageHeader
-        title="Security"
-        description="Read-only posture and traffic signals. VAC shows and alerts — it never mutates host state."
-      />
+      <PageHeader title={t('page.title')} description={t('page.description')} />
 
       <div className="mb-6">
         <PosturePanel />
@@ -51,14 +50,15 @@ const SEVERITY_STATUS: Record<SecuritySeverity, string> = {
 }
 
 function PosturePanel() {
+  const { t } = useTranslation('security')
   const { data, isLoading } = useSecurityPosture()
   return (
     <>
-      <SectionHeader>Posture</SectionHeader>
+      <SectionHeader>{t('posture.heading')}</SectionHeader>
       {isLoading ? (
         <ListSkeleton rows={5} avatar />
       ) : !data || data.length === 0 ? (
-        <EmptyState title="No posture checks" description="The posture checklist is unavailable." />
+        <EmptyState title={t('posture.empty.title')} description={t('posture.empty.description')} />
       ) : (
         <>
           <PostureSummary findings={data} />
@@ -80,6 +80,7 @@ function PosturePanel() {
 // PostureSummary is the at-a-glance banner that "lights up" red/amber/green from
 // the worst finding, so an operator sees a problem without scanning every row.
 function PostureSummary({ findings }: { findings: PostureFinding[] }) {
+  const { t } = useTranslation('security')
   const errors = findings.filter((f) => f.severity === 'error').length
   const warns = findings.filter((f) => f.severity === 'warn').length
   const overall: SecuritySeverity = errors > 0 ? 'error' : warns > 0 ? 'warn' : 'ok'
@@ -92,16 +93,16 @@ function PostureSummary({ findings }: { findings: PostureFinding[] }) {
         : 'border-ok/40 bg-ok/5'
   const headline =
     overall === 'error'
-      ? `${errors} issue${errors === 1 ? '' : 's'} need attention`
+      ? t('posture.summary.needAttention', { count: errors })
       : overall === 'warn'
-        ? `${warns} warning${warns === 1 ? '' : 's'}`
-        : 'All checks passing'
+        ? t('posture.summary.warnings', { count: warns })
+        : t('posture.summary.allPassing')
   const sub =
     overall === 'ok'
-      ? `${findings.length} checks passing`
+      ? t('posture.summary.checksPassing', { count: findings.length })
       : [
-          errors ? `${errors} error${errors === 1 ? '' : 's'}` : null,
-          warns ? `${warns} warning${warns === 1 ? '' : 's'}` : null,
+          errors ? t('posture.summary.errors', { count: errors }) : null,
+          warns ? t('posture.summary.warnings', { count: warns }) : null,
         ]
           .filter(Boolean)
           .join(' · ')
@@ -148,11 +149,14 @@ function severityIcon(s: SecuritySeverity) {
 // ── Traffic ──────────────────────────────────────────────────────────────────
 
 function TrafficPanel() {
+  const { t } = useTranslation('security')
   const { data, isLoading } = useSecurityTraffic()
-  const windowLabel = data ? `${data.window_seconds}s window` : 'live'
+  const windowLabel = data
+    ? t('traffic.windowLabel', { seconds: data.window_seconds })
+    : t('traffic.live')
   return (
     <>
-      <SectionHeader>Traffic</SectionHeader>
+      <SectionHeader>{t('traffic.heading')}</SectionHeader>
       {isLoading ? (
         <div className="flex flex-col gap-4">
           <StatStripSkeleton />
@@ -163,42 +167,42 @@ function TrafficPanel() {
           <div className="mb-4">
             <StatStrip>
               <StatTile
-                label="Tracked IPs"
+                label={t('traffic.stats.trackedIps')}
                 value={String(data?.tracked_ips ?? 0)}
                 sub={windowLabel}
                 accent
               />
               <StatTile
-                label="Requests"
+                label={t('traffic.stats.requests')}
                 value={String(data?.total_requests ?? 0)}
                 sub={windowLabel}
               />
               <StatTile
-                label="Errors (4xx/5xx)"
+                label={t('traffic.stats.errors')}
                 value={String(data?.total_errors ?? 0)}
                 sub={windowLabel}
               />
               <StatTile
-                label="Recent anomalies"
+                label={t('traffic.stats.recentAnomalies')}
                 value={String(data?.recent_anomalies.length ?? 0)}
-                sub="this process"
+                sub={t('traffic.stats.thisProcess')}
               />
             </StatStrip>
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div>
-              <SectionHeader>Top talkers</SectionHeader>
+              <SectionHeader>{t('traffic.topTalkers.heading')}</SectionHeader>
               <TopTalkersTable talkers={data?.top_talkers ?? []} />
             </div>
             <div>
-              <SectionHeader>Recent anomalies</SectionHeader>
+              <SectionHeader>{t('traffic.anomalies.heading')}</SectionHeader>
               <AnomaliesList anomalies={data?.recent_anomalies ?? []} />
             </div>
           </div>
 
           <div className="mt-6">
-            <SectionHeader>Recent requests</SectionHeader>
+            <SectionHeader>{t('traffic.recentRequests.heading')}</SectionHeader>
             <RecentRequestsTable requests={data?.recent_requests ?? []} />
           </div>
         </>
@@ -208,22 +212,23 @@ function TrafficPanel() {
 }
 
 function RecentRequestsTable({ requests }: { requests: RecentRequest[] }) {
+  const { t } = useTranslation('security')
   if (requests.length === 0) {
     return (
       <EmptyState
-        title="No requests yet"
-        description="No requests have hit the proxy yet. If this stays empty, check that Caddy's access log is enabled (see the Posture panel)."
+        title={t('traffic.recentRequests.empty.title')}
+        description={t('traffic.recentRequests.empty.description')}
       />
     )
   }
   return (
     <Card className="gap-0 overflow-hidden p-0">
       <div className="flex items-center gap-3 border-b px-5 py-2.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-        <span className="w-14 shrink-0">Status</span>
-        <span className="w-14 shrink-0">Method</span>
-        <span className="min-w-0 flex-1">Host / path</span>
-        <span className="w-28 shrink-0 text-right">Source IP</span>
-        <span className="w-16 shrink-0 text-right">When</span>
+        <span className="w-14 shrink-0">{t('traffic.recentRequests.status')}</span>
+        <span className="w-14 shrink-0">{t('traffic.recentRequests.method')}</span>
+        <span className="min-w-0 flex-1">{t('traffic.recentRequests.hostPath')}</span>
+        <span className="w-28 shrink-0 text-right">{t('traffic.recentRequests.sourceIp')}</span>
+        <span className="w-16 shrink-0 text-right">{t('traffic.recentRequests.when')}</span>
       </div>
       <div className="max-h-96 overflow-y-auto">
         {requests.map((r, i) => (
@@ -267,15 +272,21 @@ function statusTone(status: number): string {
 }
 
 function TopTalkersTable({ talkers }: { talkers: TopTalker[] }) {
+  const { t } = useTranslation('security')
   if (talkers.length === 0) {
-    return <EmptyState title="No traffic" description="No requests seen in the current window." />
+    return (
+      <EmptyState
+        title={t('traffic.topTalkers.empty.title')}
+        description={t('traffic.topTalkers.empty.description')}
+      />
+    )
   }
   return (
     <Card className="gap-0 p-0">
       <div className="flex items-center gap-4 border-b px-5 py-2.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-        <span className="flex-1">Source IP</span>
-        <span className="w-16 shrink-0 text-right">Reqs</span>
-        <span className="w-16 shrink-0 text-right">Errors</span>
+        <span className="flex-1">{t('traffic.topTalkers.sourceIp')}</span>
+        <span className="w-16 shrink-0 text-right">{t('traffic.topTalkers.reqs')}</span>
+        <span className="w-16 shrink-0 text-right">{t('traffic.topTalkers.errors')}</span>
       </div>
       {talkers.map((t, i) => (
         <div key={t.ip} className={`flex items-center gap-4 px-5 py-3 ${i > 0 ? 'border-t' : ''}`}>
@@ -304,8 +315,14 @@ function AnomaliesList({
 }: {
   anomalies: { at: string; ip: string; kind: string; detail: string }[]
 }) {
+  const { t } = useTranslation('security')
   if (anomalies.length === 0) {
-    return <EmptyState title="No anomalies" description="No traffic anomalies detected." />
+    return (
+      <EmptyState
+        title={t('traffic.anomalies.empty.title')}
+        description={t('traffic.anomalies.empty.description')}
+      />
+    )
   }
   return (
     <Card className="gap-0 p-0">
@@ -331,32 +348,33 @@ function AnomaliesList({
 // ── fail2ban ─────────────────────────────────────────────────────────────────
 
 function Fail2banPanel() {
+  const { t } = useTranslation('security')
   const { data, isLoading } = useFail2ban()
   return (
     <div>
-      <SectionHeader>fail2ban</SectionHeader>
+      <SectionHeader>{t('fail2ban.heading')}</SectionHeader>
       {isLoading ? (
         <ListSkeleton rows={3} />
       ) : !data?.source ? (
         <MonitoringOffState />
       ) : data.stale ? (
         <EmptyState
-          title="Host agent not reporting"
-          description="The host security agent hasn't refreshed recently, so fail2ban state may be out of date. Check the vac-security-agent timer on the host."
+          title={t('fail2ban.staleEmpty.title')}
+          description={t('fail2ban.staleEmpty.description')}
         />
       ) : !data.detected ? (
         <Card className="gap-1 border-warn/40 bg-warn/5 p-4">
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-4 text-warn" />
-            <span className="text-sm font-medium">fail2ban not detected</span>
+            <span className="text-sm font-medium">{t('fail2ban.notDetected.title')}</span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            fail2ban is not installed or readable on this host — recommended on an internet-facing
-            box to auto-ban brute-force attempts. See the Posture panel.
-          </p>
+          <p className="text-sm text-muted-foreground">{t('fail2ban.notDetected.description')}</p>
         </Card>
       ) : !data.jails || data.jails.length === 0 ? (
-        <EmptyState title="No jails" description="fail2ban is running but reports no jails." />
+        <EmptyState
+          title={t('fail2ban.noJails.title')}
+          description={t('fail2ban.noJails.description')}
+        />
       ) : (
         <>
           <Card className="gap-0 p-0">
@@ -368,7 +386,10 @@ function Fail2banPanel() {
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-sm font-medium">{j.name}</span>
                   <span className="text-2xs text-muted-foreground">
-                    {j.currently_banned} banned · {j.total_banned} total
+                    {t('fail2ban.banned', {
+                      currentlyBanned: j.currently_banned,
+                      totalBanned: j.total_banned,
+                    })}
                   </span>
                 </div>
                 {j.banned_ips && j.banned_ips.length > 0 ? (
@@ -390,23 +411,22 @@ function Fail2banPanel() {
 // agent isn't enabled). Neutral, not alarming — the sandboxed control plane
 // simply can't see host state until the operator opts in.
 function MonitoringOffState() {
+  const { t } = useTranslation('security')
   return (
-    <EmptyState
-      title="Monitoring off"
-      description="The read-only host security agent isn't enabled, so VAC can't see host state. Turn it on with `vac security-agent on`."
-    />
+    <EmptyState title={t('monitoringOff.title')} description={t('monitoringOff.description')} />
   )
 }
 
 // HostSourceFooter notes where the fail2ban/firewall read came from and how fresh
 // it is — "via host agent · updated 12s ago" — so a stale/absent agent is legible.
 function HostSourceFooter({ source, generatedAt }: { source?: string; generatedAt?: string }) {
+  const { t } = useTranslation('security')
   if (!source) return null
-  const label = source === 'agent' ? 'host agent' : 'host'
+  const label = source === 'agent' ? t('hostSource.viaHostAgent') : t('hostSource.viaHost')
   return (
     <p className="mt-1.5 text-2xs text-muted-foreground">
-      via {label}
-      {generatedAt ? ` · updated ${relativeTime(generatedAt)}` : ''}
+      {t('hostSource.via', { label })}
+      {generatedAt ? t('hostSource.updated', { time: relativeTime(generatedAt) }) : ''}
     </p>
   )
 }
@@ -414,29 +434,32 @@ function HostSourceFooter({ source, generatedAt }: { source?: string; generatedA
 // ── Firewall ─────────────────────────────────────────────────────────────────
 
 function FirewallPanel() {
+  const { t } = useTranslation('security')
   const { data, isLoading } = useFirewall()
   return (
     <div>
-      <SectionHeader>Firewall</SectionHeader>
+      <SectionHeader>{t('firewall.heading')}</SectionHeader>
       {isLoading ? (
         <ListSkeleton rows={3} />
       ) : !data?.source ? (
         <MonitoringOffState />
       ) : data.stale ? (
         <EmptyState
-          title="Host agent not reporting"
-          description="The host security agent hasn't refreshed recently, so firewall state may be out of date. Check the vac-security-agent timer on the host."
+          title={t('firewall.staleEmpty.title')}
+          description={t('firewall.staleEmpty.description')}
         />
       ) : !data.detected ? (
         <Card className="gap-1 border-warn/40 bg-warn/5 p-4">
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-4 text-warn" />
-            <span className="text-sm font-medium">No firewall detected</span>
+            <span className="text-sm font-medium">{t('firewall.notDetected.title')}</span>
           </div>
           <p className="text-sm text-muted-foreground">
-            No ufw / nftables ruleset is readable on this host. Running an internet-facing box
-            without a firewall is dangerous — enable one, or opt out with{' '}
-            <code className="font-mono text-2xs">vac security-check firewall off</code>.
+            <Trans
+              t={t}
+              i18nKey="firewall.notDetected.description"
+              components={[<code className="font-mono text-2xs" />]}
+            />
           </p>
         </Card>
       ) : (
@@ -451,7 +474,7 @@ function FirewallPanel() {
                 {data.rules.join('\n')}
               </pre>
             ) : (
-              <p className="text-sm text-muted-foreground">No rules reported.</p>
+              <p className="text-sm text-muted-foreground">{t('firewall.noRules')}</p>
             )}
           </Card>
           <HostSourceFooter source={data.source} generatedAt={data.generated_at} />

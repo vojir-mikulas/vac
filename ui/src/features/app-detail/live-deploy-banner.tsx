@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { Card } from '@/components/ui/card'
@@ -24,6 +25,7 @@ export function LiveDeployBanner({ appId }: { appId: string }) {
 }
 
 function ActiveDeploy({ appId, deployment }: { appId: string; deployment: Deployment }) {
+  const { t } = useTranslation('app-detail')
   const qc = useQueryClient()
   const elapsed = useElapsed(deployment.started_at ?? deployment.triggered_at)
   const { lines } = useDeploymentLogs(deployment.id, true, () => {
@@ -35,12 +37,13 @@ function ActiveDeploy({ appId, deployment }: { appId: string; deployment: Deploy
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">Deploying</span>
+            <span className="text-sm font-medium">{t('liveBanner.deploying')}</span>
             <StatusPill status={deployment.status} size="sm" />
           </div>
           <div className="mt-1 font-mono text-2xs text-muted-foreground">
-            {deployment.commit_message ?? 'Deploy'} · {shortSha(deployment.commit_sha)} ·{' '}
-            {formatDuration(elapsed)} elapsed
+            {deployment.commit_message ?? t('liveBanner.deployFallback')} ·{' '}
+            {shortSha(deployment.commit_sha)} ·{' '}
+            {t('liveBanner.elapsed', { duration: formatDuration(elapsed) })}
           </div>
         </div>
       </div>
@@ -50,8 +53,8 @@ function ActiveDeploy({ appId, deployment }: { appId: string; deployment: Deploy
       <LogViewer
         lines={lines}
         className="h-64"
-        emptyLabel="Waiting for build output…"
-        label="Deployment logs"
+        emptyLabel={t('liveBanner.logsEmpty')}
+        label={t('liveBanner.logsLabel')}
       />
     </Card>
   )

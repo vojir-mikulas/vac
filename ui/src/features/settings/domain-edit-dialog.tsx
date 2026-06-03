@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,7 @@ const selectClass =
  * in-place route swap (plan 09 Phase 2), no downtime, no cert re-issue.
  */
 export function DomainEditDialog({ domain, onClose }: { domain: Domain; onClose: () => void }) {
+  const { t } = useTranslation('settings')
   const { data: apps } = useApps()
   const [hostname, setHostname] = useState(domain.hostname)
   const [appId, setAppId] = useState(domain.app_id)
@@ -50,7 +52,7 @@ export function DomainEditDialog({ domain, onClose }: { domain: Domain; onClose:
       },
       {
         onSuccess: () => {
-          toast.success('Domain updated')
+          toast.success(t('domains.edit.toast.updated'))
           onClose()
         },
         onError: (e) => toast.error(e.message),
@@ -62,14 +64,12 @@ export function DomainEditDialog({ domain, onClose }: { domain: Domain; onClose:
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit domain</DialogTitle>
-          <DialogDescription>
-            Re-point this domain to another service or app, or rename it. Routing swaps in place.
-          </DialogDescription>
+          <DialogTitle>{t('domains.edit.title')}</DialogTitle>
+          <DialogDescription>{t('domains.edit.description')}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 py-2">
           <div className="grid gap-2">
-            <Label>Hostname</Label>
+            <Label>{t('domains.fields.hostname')}</Label>
             <Input
               value={hostname}
               onChange={(e) => setHostname(e.target.value)}
@@ -78,7 +78,7 @@ export function DomainEditDialog({ domain, onClose }: { domain: Domain; onClose:
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-2">
-              <Label>App</Label>
+              <Label>{t('domains.fields.app')}</Label>
               <select
                 className={selectClass}
                 value={appId}
@@ -87,7 +87,7 @@ export function DomainEditDialog({ domain, onClose }: { domain: Domain; onClose:
                   setService('')
                 }}
               >
-                <option value="">Unassigned</option>
+                <option value="">{t('domains.fields.unassigned')}</option>
                 {(apps ?? []).map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -96,14 +96,14 @@ export function DomainEditDialog({ domain, onClose }: { domain: Domain; onClose:
               </select>
             </div>
             <div className="grid gap-2">
-              <Label>Service</Label>
+              <Label>{t('domains.fields.service')}</Label>
               <select
                 className={selectClass}
                 value={service}
                 onChange={(e) => setService(e.target.value)}
                 disabled={!appId}
               >
-                <option value="">Select service…</option>
+                <option value="">{t('domains.fields.selectService')}</option>
                 {(services ?? []).map((s) => (
                   <option key={s.id} value={s.name}>
                     {s.name}
@@ -114,7 +114,7 @@ export function DomainEditDialog({ domain, onClose }: { domain: Domain; onClose:
           </div>
 
           <div className="grid gap-2">
-            <Label>Redirect to (optional)</Label>
+            <Label>{t('domains.edit.redirectLabel')}</Label>
             <Input
               value={redirectTo}
               onChange={(e) => setRedirectTo(e.target.value)}
@@ -122,19 +122,20 @@ export function DomainEditDialog({ domain, onClose }: { domain: Domain; onClose:
               className="font-mono text-xs"
             />
             <p className="text-2xs text-muted-foreground">
-              Send all traffic for this host to another domain with a permanent (308) redirect —
-              e.g. point <span className="font-mono">www.example.com</span> at{' '}
-              <span className="font-mono">example.com</span>. The redirect target becomes the
-              primary domain. Leave blank to serve the app directly.
+              <Trans
+                t={t}
+                i18nKey="domains.edit.redirectHint"
+                components={[<span className="font-mono" />]}
+              />
             </p>
           </div>
         </div>
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            Cancel
+            {t('domains.edit.cancel')}
           </Button>
           <Button variant="brand" size="sm" disabled={!canSave} onClick={onSave}>
-            Save changes
+            {t('domains.edit.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

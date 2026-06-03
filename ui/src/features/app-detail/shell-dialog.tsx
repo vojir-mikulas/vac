@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { ShieldAlert, TerminalSquare } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -12,11 +13,10 @@ import {
 } from '@/components/ui/dialog'
 import { useContainerShell } from '@/features/app-detail/use-container-shell'
 
-const STATUS_LABEL: Record<string, string> = {
-  idle: 'Idle',
-  connecting: 'Connecting…',
-  connected: 'Connected',
-  disconnected: 'Disconnected',
+const STATUS_KEYS = ['idle', 'connecting', 'connected', 'disconnected'] as const
+
+function isStatusKey(s: string): s is (typeof STATUS_KEYS)[number] {
+  return (STATUS_KEYS as readonly string[]).includes(s)
 }
 
 // Per-service interactive shell (P3.4). Gated behind a confirm because it opens
@@ -24,6 +24,7 @@ const STATUS_LABEL: Record<string, string> = {
 // plane; the session is audit-logged server-side. Only rendered when the
 // feature flag is on and the service is running (caller's job).
 export function ShellDialog({ appId, service }: { appId: string; service: string }) {
+  const { t } = useTranslation('app-detail')
   const [open, setOpen] = useState(false)
   const [started, setStarted] = useState(false)
   const { containerRef, status, connect, disconnect } = useContainerShell(appId, service)
@@ -47,13 +48,13 @@ export function ShellDialog({ appId, service }: { appId: string; service: string
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
           <TerminalSquare className="size-3.5" />
-          Shell
+          {t('shell.trigger')}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="font-mono">Shell · {service}</DialogTitle>
-          <DialogDescription>This session is recorded in the audit log.</DialogDescription>
+          <DialogTitle className="font-mono">{t('shell.title', { service })}</DialogTitle>
+          <DialogDescription>{t('shell.description')}</DialogDescription>
         </DialogHeader>
 
         {!started ? (
@@ -61,14 +62,18 @@ export function ShellDialog({ appId, service }: { appId: string; service: string
             <div className="flex items-start gap-2.5 rounded-md border border-warn-border bg-warn-bg p-3 text-sm text-warn-foreground">
               <ShieldAlert className="mt-0.5 size-4 shrink-0" />
               <p>
-                Open a root-capable shell into <span className="font-mono">{service}</span>? You
-                will have full access inside the container. The session open is audit-logged.
+                <Trans
+                  t={t}
+                  i18nKey="shell.warning"
+                  values={{ service }}
+                  components={[<span className="font-mono" />]}
+                />
               </p>
             </div>
             <div className="flex justify-end">
               <Button variant="brand" onClick={begin}>
                 <TerminalSquare className="size-4" />
-                Open shell
+                {t('shell.openShell')}
               </Button>
             </div>
           </div>
@@ -85,11 +90,11 @@ export function ShellDialog({ appId, service }: { appId: string; service: string
                         : 'bg-err-foreground'
                   }`}
                 />
-                {STATUS_LABEL[status] ?? status}
+                {isStatusKey(status) ? t(`shell.status.${status}`) : status}
               </span>
               {status === 'disconnected' ? (
                 <Button variant="outline" size="xs" onClick={connect}>
-                  Reconnect
+                  {t('shell.reconnect')}
                 </Button>
               ) : null}
             </div>

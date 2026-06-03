@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
 import { serviceColorVar } from '@/lib/service-color'
@@ -28,8 +29,8 @@ export function LogViewer({
   autoScroll = true,
   showService = true,
   className,
-  emptyLabel = 'Waiting for logs…',
-  label = 'Logs',
+  emptyLabel,
+  label,
 }: {
   lines: LogLine[]
   autoScroll?: boolean
@@ -39,6 +40,9 @@ export function LogViewer({
   // Accessible name for the live region, e.g. "Deployment logs" / "Runtime logs".
   label?: string
 }) {
+  const { t } = useTranslation('logs')
+  const resolvedEmptyLabel = emptyLabel ?? t('viewer.empty')
+  const resolvedLabel = label ?? t('viewer.label')
   const parentRef = useRef<HTMLDivElement>(null)
 
   const virtualizer = useVirtualizer({
@@ -82,13 +86,13 @@ export function LogViewer({
     return (
       <div
         role="log"
-        aria-label={label}
+        aria-label={resolvedLabel}
         className={cn(
           'grid min-h-64 place-items-center rounded-xl border bg-console font-mono text-xs text-console-muted',
           className,
         )}
       >
-        {emptyLabel}
+        {resolvedEmptyLabel}
       </div>
     )
   }
@@ -106,7 +110,7 @@ export function LogViewer({
         onScroll={recomputePinned}
         role="log"
         aria-live="polite"
-        aria-label={label}
+        aria-label={resolvedLabel}
         tabIndex={0}
         className={cn(
           'h-112 overflow-auto rounded-xl border bg-console p-3 font-mono text-xs leading-5 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
@@ -146,11 +150,11 @@ export function LogViewer({
         <button
           type="button"
           onClick={jumpToLatest}
-          aria-label="Jump to latest log line"
+          aria-label={t('viewer.jumpToLatestAria')}
           className="absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-surface-2 px-3 py-1 text-2xs font-medium shadow-sm hover:bg-surface-2/70"
         >
           <ArrowDown className="size-3" />
-          Jump to latest
+          {t('viewer.jumpToLatest')}
         </button>
       ) : null}
     </div>

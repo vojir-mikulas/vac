@@ -19,25 +19,32 @@ import { SUPPORTED_LANGUAGES } from '@/i18n'
 const CHANNELS = ['stable', 'beta', 'edge'] as const
 
 export function InstanceSection() {
+  const { t } = useTranslation('settings')
   const { data, isLoading } = useInstanceInfo()
 
   return (
     <section className="flex flex-col gap-8">
       <div>
-        <SectionHeader>Version</SectionHeader>
+        <SectionHeader>{t('instance.version.heading')}</SectionHeader>
         <Card className="gap-5 p-5">
           <Row
-            label="Current"
-            hint={data?.built_at ? `Built ${formatBuilt(data.built_at)}` : undefined}
+            label={t('instance.version.current')}
+            hint={
+              data?.built_at
+                ? t('instance.version.builtAt', { date: formatBuilt(data.built_at) })
+                : undefined
+            }
           >
             {isLoading ? (
               <Skeleton className="h-5 w-24" />
             ) : (
-              <span className="font-mono text-sm">vac · {data?.version || 'dev'}</span>
+              <span className="font-mono text-sm">
+                {t('instance.version.value', { version: data?.version || 'dev' })}
+              </span>
             )}
           </Row>
 
-          <Row label="Update channel" hint="Switching channels is not available yet.">
+          <Row label={t('instance.channel.label')} hint={t('instance.channel.hint')}>
             <div className="inline-flex items-center gap-0.5 rounded-md border bg-surface-1 p-0.5 opacity-60">
               {CHANNELS.map((c) => (
                 <span
@@ -55,13 +62,10 @@ export function InstanceSection() {
             </div>
           </Row>
 
-          <Row
-            label="Auto update"
-            hint="Pull and self-update during the maintenance window (Sun 04:00 UTC)."
-          >
+          <Row label={t('instance.autoUpdate.label')} hint={t('instance.autoUpdate.hint')}>
             <div className="flex items-center gap-2">
-              <Badge variant="secondary">Coming soon</Badge>
-              <Switch checked={false} disabled aria-label="Auto update (coming soon)" />
+              <Badge variant="secondary">{t('instance.comingSoon')}</Badge>
+              <Switch checked={false} disabled aria-label={t('instance.autoUpdate.ariaLabel')} />
             </div>
           </Row>
         </Card>

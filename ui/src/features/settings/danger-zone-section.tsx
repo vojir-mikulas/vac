@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -21,9 +22,10 @@ import { instanceApi } from '@/lib/api/instance'
 const RESET_PHRASE = 'RESET'
 
 export function DangerZoneSection() {
+  const { t } = useTranslation('settings')
   return (
     <section>
-      <SectionHeader>Danger zone</SectionHeader>
+      <SectionHeader>{t('dangerZone.heading')}</SectionHeader>
       <div className="flex flex-col gap-0 overflow-hidden rounded-xl border">
         <RestartControlPlaneRow />
         <StopAllAppsRow />
@@ -62,12 +64,13 @@ function DangerRow({
 }
 
 function RestartControlPlaneRow() {
+  const { t } = useTranslation('settings')
   const [reconnecting, setReconnecting] = useState(false)
   const restart = useMutation({
     mutationFn: () => instanceApi.restartControlPlane(),
     onSuccess: () => {
       setReconnecting(true)
-      toast.info('Control plane restarting — reconnecting…')
+      toast.info(t('dangerZone.restart.toast'))
       // The API briefly drops; a full reload once it's back is the cleanest reset.
       setTimeout(() => window.location.reload(), 6000)
     },
@@ -76,14 +79,14 @@ function RestartControlPlaneRow() {
 
   return (
     <DangerRow
-      title="Restart control plane"
-      description="Restarts vac-api and vac-proxy. Apps keep running."
+      title={t('dangerZone.restart.title')}
+      description={t('dangerZone.restart.description')}
     >
       <ConfirmButton
-        label={reconnecting ? 'Reconnecting…' : 'Restart'}
-        title="Restart control plane?"
-        description="vac-api and vac-proxy will restart. The dashboard will briefly disconnect and reconnect. Running apps are unaffected."
-        actionLabel="Restart"
+        label={reconnecting ? t('dangerZone.restart.reconnecting') : t('dangerZone.restart.action')}
+        title={t('dangerZone.restart.confirmTitle')}
+        description={t('dangerZone.restart.confirmDescription')}
+        actionLabel={t('dangerZone.restart.action')}
         disabled={reconnecting || restart.isPending}
         onConfirm={() => restart.mutate()}
       />
@@ -92,23 +95,24 @@ function RestartControlPlaneRow() {
 }
 
 function StopAllAppsRow() {
+  const { t } = useTranslation('settings')
   const stop = useMutation({
     mutationFn: () => instanceApi.stopAllApps(),
-    onSuccess: (r) => toast.success(`Stopped ${r.stopped} app${r.stopped === 1 ? '' : 's'}`),
+    onSuccess: (r) => toast.success(t('dangerZone.stopAll.toast', { count: r.stopped })),
     onError: (e) => toast.error(e.message),
   })
 
   return (
     <DangerRow
-      title="Stop all applications"
-      description="Stops every container managed by VAC."
+      title={t('dangerZone.stopAll.title')}
+      description={t('dangerZone.stopAll.description')}
       border
     >
       <ConfirmButton
-        label="Stop all"
-        title="Stop all applications?"
-        description="Every VAC-managed app stack will be stopped. They can be started again individually. The control plane keeps running."
-        actionLabel="Stop all"
+        label={t('dangerZone.stopAll.action')}
+        title={t('dangerZone.stopAll.confirmTitle')}
+        description={t('dangerZone.stopAll.confirmDescription')}
+        actionLabel={t('dangerZone.stopAll.action')}
         disabled={stop.isPending}
         onConfirm={() => stop.mutate()}
       />
@@ -117,12 +121,13 @@ function StopAllAppsRow() {
 }
 
 function ResetInstanceRow() {
+  const { t } = useTranslation('settings')
   const [open, setOpen] = useState(false)
   const [phrase, setPhrase] = useState('')
   const reset = useMutation({
     mutationFn: () => instanceApi.reset(RESET_PHRASE),
     onSuccess: (r) => {
-      toast.success(`Reset complete — removed ${r.removed} app${r.removed === 1 ? '' : 's'}`)
+      toast.success(t('dangerZone.reset.toast', { count: r.removed }))
       setOpen(false)
       setPhrase('')
     },
@@ -131,8 +136,8 @@ function ResetInstanceRow() {
 
   return (
     <DangerRow
-      title="Reset instance"
-      description="Wipes apps, deployments, and databases. Requires typed confirmation."
+      title={t('dangerZone.reset.title')}
+      description={t('dangerZone.reset.description')}
       border
       danger
     >
@@ -145,16 +150,19 @@ function ResetInstanceRow() {
       >
         <AlertDialogTrigger asChild>
           <Button variant="destructive" size="sm">
-            Reset…
+            {t('dangerZone.reset.action')}
           </Button>
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reset this instance?</AlertDialogTitle>
+            <AlertDialogTitle>{t('dangerZone.reset.confirmTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes every app, its deployments, and its data volumes. This cannot
-              be undone. Type <span className="font-mono font-semibold">{RESET_PHRASE}</span> to
-              confirm.
+              <Trans
+                t={t}
+                i18nKey="dangerZone.reset.confirmDescription"
+                values={{ phrase: RESET_PHRASE }}
+                components={[<span className="font-mono font-semibold" />]}
+              />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Input
@@ -165,7 +173,7 @@ function ResetInstanceRow() {
             autoFocus
           />
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('dangerZone.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={phrase !== RESET_PHRASE || reset.isPending}
@@ -179,7 +187,9 @@ function ResetInstanceRow() {
                 reset.mutate()
               }}
             >
-              {reset.isPending ? 'Resetting…' : 'Reset instance'}
+              {reset.isPending
+                ? t('dangerZone.reset.resetting')
+                : t('dangerZone.reset.confirmAction')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -203,6 +213,7 @@ function ConfirmButton({
   disabled?: boolean
   onConfirm: () => void
 }) {
+  const { t } = useTranslation('settings')
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
@@ -216,7 +227,7 @@ function ConfirmButton({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t('dangerZone.cancel')}</AlertDialogCancel>
           <AlertDialogAction onClick={onConfirm}>{actionLabel}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

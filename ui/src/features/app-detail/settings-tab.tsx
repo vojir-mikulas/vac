@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Blocks, Download } from 'lucide-react'
@@ -39,6 +40,7 @@ export function SettingsTab({ appId }: { appId: string }) {
 }
 
 function SettingsForm({ app }: { app: App }) {
+  const { t } = useTranslation('app-detail')
   const appId = app.id
   // Add-on apps have no git source / build config of their own — they ship a
   // materialized template. Hide the repo/branch/build/autodeploy controls and
@@ -64,13 +66,16 @@ function SettingsForm({ app }: { app: App }) {
     // Blank clears the limit (0 → unlimited on the backend).
     const value = trimmed === '' ? 0 : Number(trimmed)
     if (!Number.isInteger(value) || value < 0) {
-      toast.error('RAM limit must be a whole number of MiB (or blank for unlimited)')
+      toast.error(t('settings.ramLimitInvalid'))
       return
     }
     update.mutate(
       { mem_limit_mb: value },
       {
-        onSuccess: () => toast.success(value === 0 ? 'RAM limit removed' : 'RAM limit updated'),
+        onSuccess: () =>
+          toast.success(
+            value === 0 ? t('settings.ramLimitRemoved') : t('settings.ramLimitUpdated'),
+          ),
         onError: (e) => toast.error(e.message),
       },
     )
@@ -80,7 +85,7 @@ function SettingsForm({ app }: { app: App }) {
     update.mutate(
       { build_kind: build.build_kind, build_config: build.build_config },
       {
-        onSuccess: () => toast.success('Build source updated'),
+        onSuccess: () => toast.success(t('settings.buildSourceUpdated')),
         onError: (e) => toast.error(e.message),
       },
     )
@@ -89,7 +94,7 @@ function SettingsForm({ app }: { app: App }) {
     update.mutate(
       { name },
       {
-        onSuccess: () => toast.success('App name updated'),
+        onSuccess: () => toast.success(t('settings.appNameUpdated')),
         onError: (e) => toast.error(e.message),
       },
     )
@@ -98,7 +103,7 @@ function SettingsForm({ app }: { app: App }) {
     update.mutate(
       { git_url: gitUrl, git_branch: branch, compose_file: composeFile },
       {
-        onSuccess: () => toast.success('Source updated'),
+        onSuccess: () => toast.success(t('settings.sourceUpdated')),
         onError: (e) => toast.error(e.message),
       },
     )
@@ -107,7 +112,7 @@ function SettingsForm({ app }: { app: App }) {
     exportApp.mutate(appId, {
       onSuccess: (yaml) => {
         downloadFile(`${app.slug}.vac.app.yaml`, yaml, 'application/yaml')
-        toast.success('Exported app spec')
+        toast.success(t('settings.specExported'))
       },
       onError: (e) => toast.error(e.message),
     })
@@ -115,7 +120,7 @@ function SettingsForm({ app }: { app: App }) {
   const deleteApp = () =>
     remove.mutate(appId, {
       onSuccess: () => {
-        toast.success('App deleted')
+        toast.success(t('settings.appDeleted'))
         navigate({ to: '/apps' })
       },
       onError: (e) => toast.error(e.message),
@@ -124,10 +129,10 @@ function SettingsForm({ app }: { app: App }) {
   return (
     <div className="flex max-w-3xl flex-col gap-8">
       <section>
-        <SectionHeader>General</SectionHeader>
+        <SectionHeader>{t('settings.general')}</SectionHeader>
         <Card className="gap-4 p-5">
           <div className="grid gap-2">
-            <Label htmlFor="name">App name</Label>
+            <Label htmlFor="name">{t('settings.appName')}</Label>
             <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="flex justify-end">
@@ -137,7 +142,7 @@ function SettingsForm({ app }: { app: App }) {
               disabled={update.isPending || !name}
               onClick={saveGeneral}
             >
-              Save
+              {t('settings.save')}
             </Button>
           </div>
         </Card>
@@ -145,7 +150,7 @@ function SettingsForm({ app }: { app: App }) {
 
       {isAddon ? (
         <section>
-          <SectionHeader>Source</SectionHeader>
+          <SectionHeader>{t('settings.source')}</SectionHeader>
           <Card className="gap-3 p-5">
             <div className="flex items-center gap-2">
               {brandFor(app.template_icon) ? (
@@ -154,22 +159,21 @@ function SettingsForm({ app }: { app: App }) {
                 <Blocks className="size-4 text-muted-foreground" />
               )}
               <span className="text-sm font-medium">
-                Installed from {app.template_name ?? 'an add-on'}
+                {t('settings.installedFrom', {
+                  name: app.template_name ?? t('settings.installedFromFallback'),
+                })}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">
-              This app was deployed from a curated add-on template. Its repository, build, and
-              auto-deploy settings are managed by the template and can't be edited here.
-            </p>
+            <p className="text-xs text-muted-foreground">{t('settings.addonSourceNote')}</p>
           </Card>
         </section>
       ) : (
         <>
           <section>
-            <SectionHeader>Source</SectionHeader>
+            <SectionHeader>{t('settings.source')}</SectionHeader>
             <Card className="gap-4 p-5">
               <div className="grid gap-2">
-                <Label htmlFor="git">Repository URL</Label>
+                <Label htmlFor="git">{t('settings.repositoryUrl')}</Label>
                 <Input
                   id="git"
                   value={gitUrl}
@@ -179,7 +183,7 @@ function SettingsForm({ app }: { app: App }) {
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-2">
-                  <Label htmlFor="branch">Branch</Label>
+                  <Label htmlFor="branch">{t('settings.branch')}</Label>
                   <Input
                     id="branch"
                     value={branch}
@@ -188,7 +192,7 @@ function SettingsForm({ app }: { app: App }) {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="compose">Compose file</Label>
+                  <Label htmlFor="compose">{t('settings.composeFile')}</Label>
                   <Input
                     id="compose"
                     value={composeFile}
@@ -199,7 +203,7 @@ function SettingsForm({ app }: { app: App }) {
               </div>
               <div className="flex justify-end">
                 <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveSource}>
-                  Save
+                  {t('settings.save')}
                 </Button>
               </div>
             </Card>
@@ -211,12 +215,12 @@ function SettingsForm({ app }: { app: App }) {
           <AutoDeploySection appId={appId} defaultBranch={app.git_branch} />
 
           <section>
-            <SectionHeader>Build</SectionHeader>
+            <SectionHeader>{t('settings.build')}</SectionHeader>
             <Card className="gap-5 p-5">
               <BuildSourcePicker value={build} onChange={setBuild} />
               <div className="flex justify-end">
                 <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveBuild}>
-                  Save
+                  {t('settings.save')}
                 </Button>
               </div>
             </Card>
@@ -227,93 +231,89 @@ function SettingsForm({ app }: { app: App }) {
       {/* Custom domains are a routing concern adjacent to source/build, and
           apply to add-on apps too (they're routed just like git apps). */}
       <section>
-        <SectionHeader>Domains</SectionHeader>
+        <SectionHeader>{t('settings.domains')}</SectionHeader>
         <AppDomainsSection appId={appId} />
       </section>
 
       <section>
-        <SectionHeader>Runtime</SectionHeader>
+        <SectionHeader>{t('settings.runtime')}</SectionHeader>
         <Card className="gap-4 p-5">
           <div className="grid gap-2">
-            <Label htmlFor="ram-limit">RAM limit (MiB)</Label>
+            <Label htmlFor="ram-limit">{t('settings.ramLimit')}</Label>
             <Input
               id="ram-limit"
               inputMode="numeric"
-              placeholder="Unlimited"
+              placeholder={t('settings.ramLimitPlaceholder')}
               value={ramLimit}
               onChange={(e) => setRamLimit(e.target.value)}
               className="max-w-40 font-mono text-xs"
             />
-            <p className="text-xs text-muted-foreground">
-              Hard memory ceiling per container — VAC kills it before it can OOM the box. Leave
-              blank for unlimited. Applied on the next deploy.
-            </p>
+            <p className="text-xs text-muted-foreground">{t('settings.ramLimitHint')}</p>
           </div>
           <div className="flex justify-end">
             <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveRuntime}>
-              Save
+              {t('settings.save')}
             </Button>
           </div>
         </Card>
       </section>
 
       <section>
-        <SectionHeader>Portability</SectionHeader>
+        <SectionHeader>{t('settings.portability')}</SectionHeader>
         <Card className="gap-0 p-0">
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
             <div className="max-w-xl">
-              <div className="text-sm font-medium">Export app spec</div>
+              <div className="text-sm font-medium">{t('settings.exportSpec')}</div>
               <p className="text-xs text-muted-foreground">
-                Download this app as a portable <span className="font-mono">vac.app.yaml</span> —
-                build config, services, domains, triggers, and env keys. Nothing here is
-                proprietary: re-import it on another VAC, or keep it in version control for disaster
-                recovery. Sensitive secret values are omitted — you re-enter them on the far side.
+                <Trans
+                  t={t}
+                  i18nKey="settings.exportSpecNote"
+                  components={[<span className="font-mono" />]}
+                />
               </p>
             </div>
             <Button variant="outline" size="sm" disabled={exportApp.isPending} onClick={exportSpec}>
               <Download className="size-4" />
-              Export spec
+              {t('settings.exportSpecButton')}
             </Button>
           </div>
         </Card>
       </section>
 
       <section>
-        <SectionHeader>Danger zone</SectionHeader>
+        <SectionHeader>{t('settings.dangerZone')}</SectionHeader>
         <Card className="gap-0 border-err-border p-0">
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
             <div>
               <div className="text-sm font-medium">
-                {isAddon ? 'Uninstall this add-on' : 'Delete this app'}
+                {isAddon ? t('settings.uninstallTitle') : t('settings.deleteTitle')}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Stops all services and permanently removes the app, its containers, and data
-                volumes.
-              </p>
+              <p className="text-xs text-muted-foreground">{t('settings.dangerNote')}</p>
             </div>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="danger" size="sm">
-                  {isAddon ? 'Uninstall' : 'Delete app'}
+                  {isAddon ? t('settings.uninstall') : t('settings.deleteApp')}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>
-                    {isAddon ? `Uninstall ${app.name}?` : `Delete ${app.name}?`}
+                    {isAddon
+                      ? t('settings.uninstallConfirmTitle', { name: app.name })
+                      : t('settings.deleteConfirmTitle', { name: app.name })}
                   </AlertDialogTitle>
                   <AlertDialogDescription>
-                    This permanently removes the app, its services, configuration, and data volumes
-                    — plus any managed database it owns. This action cannot be undone.
+                    {t('settings.deleteConfirmDescription')}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={deleteApp}
                     className="bg-err text-err-foreground hover:bg-err/90"
                   >
-                    Delete
+                    {t('settings.delete')}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

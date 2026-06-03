@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
@@ -10,10 +11,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useDeployConcurrency, useSetDeployConcurrency } from '@/lib/api/instance'
 
 export function DeploymentsSection() {
+  const { t } = useTranslation('settings')
   const { data, isLoading } = useDeployConcurrency()
   return (
     <section>
-      <SectionHeader>Deployments</SectionHeader>
+      <SectionHeader>{t('deployments.heading')}</SectionHeader>
       {isLoading || !data ? (
         <Card className="p-5">
           <Skeleton className="h-32 w-full" />
@@ -31,6 +33,7 @@ export function DeploymentsSection() {
 }
 
 function ConcurrencyForm({ value, min, max }: { value: number; min: number; max: number }) {
+  const { t } = useTranslation('settings')
   const id = useId()
   const set = useSetDeployConcurrency()
   const [n, setN] = useState(String(value))
@@ -41,14 +44,14 @@ function ConcurrencyForm({ value, min, max }: { value: number; min: number; max:
 
   const save = () =>
     set.mutate(parsed, {
-      onSuccess: () => toast.success('Deploy concurrency saved — applies after the next restart'),
+      onSuccess: () => toast.success(t('deployments.toast.saved')),
       onError: (e) => toast.error(e.message),
     })
 
   return (
     <Card className="gap-4 p-5">
       <div className="grid gap-2">
-        <Label htmlFor={id}>Maximum concurrent deploys</Label>
+        <Label htmlFor={id}>{t('deployments.maxLabel')}</Label>
         <Input
           id={id}
           type="number"
@@ -60,11 +63,7 @@ function ConcurrencyForm({ value, min, max }: { value: number; min: number; max:
           className="w-24"
         />
         <p className="text-sm text-muted-foreground">
-          How many app deploys run at the same time when several are queued (e.g. a burst of
-          pushes). Different apps only — VAC never runs two deploys for the <em>same</em> app at
-          once. Higher values finish a backlog faster but use more CPU, RAM, and disk I/O during
-          builds; keep it low on a small VPS. Allowed range {min}–{max}. Takes effect after the next
-          control-plane restart.
+          <Trans t={t} i18nKey="deployments.hint" values={{ min, max }} components={[<em />]} />
         </p>
       </div>
       <div className="flex justify-end">
@@ -74,7 +73,7 @@ function ConcurrencyForm({ value, min, max }: { value: number; min: number; max:
           disabled={!valid || !dirty || set.isPending}
           onClick={save}
         >
-          Save
+          {t('deployments.save')}
         </Button>
       </div>
     </Card>

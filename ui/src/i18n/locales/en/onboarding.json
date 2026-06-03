@@ -1,1 +1,19 @@
-{}
+{
+  "heading": "Get started with VAC",
+  "subheading": "A couple of steps to your first live deploy. {{done}} of {{total}} done.",
+  "dismiss": "Dismiss onboarding",
+  "steps": {
+    "baseDomain": {
+      "title": "Set your base domain",
+      "description": "Apps get an automatic subdomain under it (e.g. my-app.example.com).",
+      "action": "Open settings",
+      "aRecordHint": "Point an A record at this server:",
+      "copyIp": "Copy IP"
+    },
+    "firstApp": {
+      "title": "Deploy your first app",
+      "description": "Paste a repo URL, pick a branch and domain, and hit deploy.",
+      "action": "New app"
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -14,6 +15,7 @@ function isSshUrl(url: string): boolean {
 }
 
 export function DeployKeyCard({ appId, gitUrl }: { appId: string; gitUrl: string }) {
+  const { t } = useTranslation('app-detail')
   const ssh = isSshUrl(gitUrl)
   const qc = useQueryClient()
 
@@ -28,7 +30,7 @@ export function DeployKeyCard({ appId, gitUrl }: { appId: string; gitUrl: string
     mutationFn: () => appsApi.regenerateSshKey(appId),
     onSuccess: (key) => {
       qc.setQueryData(queryKeys.apps.sshKey(appId), key)
-      toast.success('Deploy key regenerated')
+      toast.success(t('deployKey.regenerated'))
     },
     onError: (e) => toast.error(e.message),
   })
@@ -40,24 +42,22 @@ export function DeployKeyCard({ appId, gitUrl }: { appId: string; gitUrl: string
   return (
     <Card className="gap-3 p-5">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium">Deploy key</h4>
-        {data ? <CopyButton value={data.public_key} label="Copy key" /> : null}
+        <h4 className="text-sm font-medium">{t('deployKey.title')}</h4>
+        {data ? <CopyButton value={data.public_key} label={t('deployKey.copyKey')} /> : null}
       </div>
-      <p className="text-xs text-muted-foreground">
-        Add this public key as a read-only deploy key on your Git host so VAC can clone over SSH.
-      </p>
+      <p className="text-xs text-muted-foreground">{t('deployKey.description')}</p>
       {isLoading ? (
         <Skeleton className="h-16 w-full" />
       ) : notFound ? (
         <div className="flex items-center justify-between gap-3">
-          <span className="text-xs text-muted-foreground">No key generated yet.</span>
+          <span className="text-xs text-muted-foreground">{t('deployKey.noKey')}</span>
           <Button
             variant="outline"
             size="sm"
             disabled={regenerate.isPending}
             onClick={() => regenerate.mutate()}
           >
-            Generate key
+            {t('deployKey.generate')}
           </Button>
         </div>
       ) : data ? (
@@ -73,7 +73,7 @@ export function DeployKeyCard({ appId, gitUrl }: { appId: string; gitUrl: string
               disabled={regenerate.isPending}
               onClick={() => regenerate.mutate()}
             >
-              Regenerate
+              {t('deployKey.regenerate')}
             </Button>
           </div>
         </>

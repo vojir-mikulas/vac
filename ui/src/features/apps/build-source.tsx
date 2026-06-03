@@ -1,11 +1,15 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Box, FileCode2, Layers, Sparkles, Wand2 } from 'lucide-react'
+import { AnimatePresence, m } from 'motion/react'
+import { Box, Check, FileCode2, Layers, Sparkles, Wand2 } from 'lucide-react'
+import { type IconType } from 'react-icons'
+import { SiAstro, SiNextdotjs, SiNodedotjs, SiPython, SiReact, SiVite } from 'react-icons/si'
 
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
+import { RISE, transition } from '@/lib/motion'
 import type { BuildConfig, BuildKind } from '@/types/api'
 
 export interface BuildSourceValue {
@@ -24,13 +28,14 @@ const KIND_OPTIONS = [
 ] satisfies { kind: BuildKind; icon: typeof Box }[]
 
 // Frameworks: React works today; the rest are scaffolded as "coming soon".
-const FRAMEWORKS: { id: string; label: string; soon?: boolean }[] = [
-  { id: 'react', label: 'React' },
-  { id: 'nextjs', label: 'Next.js', soon: true },
-  { id: 'astro', label: 'Astro', soon: true },
-  { id: 'vite', label: 'Vite', soon: true },
-  { id: 'node', label: 'Node', soon: true },
-  { id: 'python', label: 'Python', soon: true },
+// Each carries a react-icons brand glyph + its brand color for the picker.
+const FRAMEWORKS: { id: string; label: string; icon: IconType; color: string; soon?: boolean }[] = [
+  { id: 'react', label: 'React', icon: SiReact, color: '#61DAFB' },
+  { id: 'nextjs', label: 'Next.js', icon: SiNextdotjs, color: '#888888', soon: true },
+  { id: 'astro', label: 'Astro', icon: SiAstro, color: '#FF5D01', soon: true },
+  { id: 'vite', label: 'Vite', icon: SiVite, color: '#646CFF', soon: true },
+  { id: 'node', label: 'Node', icon: SiNodedotjs, color: '#5FA04E', soon: true },
+  { id: 'python', label: 'Python', icon: SiPython, color: '#3776AB', soon: true },
 ]
 
 export function BuildSourcePicker({
@@ -56,15 +61,30 @@ export function BuildSourcePicker({
           const active = value.build_kind === opt.kind
           const Icon = opt.icon
           return (
-            <button
+            <m.button
               key={opt.kind}
               type="button"
               onClick={() => setKind(opt.kind)}
+              whileTap={{ scale: 0.98 }}
+              transition={transition.fast}
               className={cn(
-                'flex cursor-pointer flex-col gap-1 rounded-lg border p-3 text-left transition-colors',
+                'relative flex cursor-pointer flex-col gap-1 rounded-lg border p-3 text-left transition-colors',
                 active ? 'border-brand bg-brand/5' : 'hover:bg-surface-2',
               )}
             >
+              <AnimatePresence>
+                {active ? (
+                  <m.span
+                    initial={{ opacity: 0, scale: 0.6 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.6 }}
+                    transition={transition.fast}
+                    className="absolute top-2 right-2 grid size-4 place-items-center rounded-full bg-brand text-brand-foreground"
+                  >
+                    <Check className="size-2.5" strokeWidth={3} />
+                  </m.span>
+                ) : null}
+              </AnimatePresence>
               <div className="flex items-center gap-2">
                 <Icon className={cn('size-4', active ? 'text-brand' : 'text-muted-foreground')} />
                 <span className="text-sm font-medium">
@@ -79,106 +99,127 @@ export function BuildSourcePicker({
               <span className="text-2xs text-muted-foreground">
                 {t(`buildSource.kinds.${opt.kind}.hint`)}
               </span>
-            </button>
+            </m.button>
           )
         })}
       </div>
 
-      {value.build_kind === 'auto' ? (
-        <p className="rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
-          {t('buildSource.autoNote')}
-        </p>
-      ) : null}
+      {/* Animate the per-kind config panel so switching builds cross-fades the
+          inputs in instead of snapping. Keyed by kind; `mode="wait"` lets the
+          outgoing panel leave before the new one settles its height. */}
+      <AnimatePresence mode="wait" initial={false}>
+        <m.div
+          key={value.build_kind}
+          initial={{ opacity: 0, y: RISE }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -RISE }}
+          transition={transition.base}
+        >
+          {value.build_kind === 'auto' ? (
+            <p className="rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
+              {t('buildSource.autoNote')}
+            </p>
+          ) : null}
 
-      {value.build_kind === 'compose' ? (
-        <Field label={t('buildSource.composePath')} hint={t('buildSource.relativeToRoot')}>
-          <Input
-            value={cfg.composePath ?? ''}
-            onChange={(e) => setConfig({ composePath: e.target.value })}
-            placeholder="compose.yaml"
-            className="font-mono text-xs"
-          />
-        </Field>
-      ) : null}
+          {value.build_kind === 'compose' ? (
+            <Field label={t('buildSource.composePath')} hint={t('buildSource.relativeToRoot')}>
+              <Input
+                value={cfg.composePath ?? ''}
+                onChange={(e) => setConfig({ composePath: e.target.value })}
+                placeholder="compose.yaml"
+                className="font-mono text-xs"
+              />
+            </Field>
+          ) : null}
 
-      {value.build_kind === 'dockerfile' ? (
-        <Field label={t('buildSource.dockerfilePath')} hint={t('buildSource.relativeToRoot')}>
-          <Input
-            value={cfg.dockerfilePath ?? ''}
-            onChange={(e) => setConfig({ dockerfilePath: e.target.value })}
-            placeholder="Dockerfile"
-            className="font-mono text-xs"
-          />
-        </Field>
-      ) : null}
+          {value.build_kind === 'dockerfile' ? (
+            <Field label={t('buildSource.dockerfilePath')} hint={t('buildSource.relativeToRoot')}>
+              <Input
+                value={cfg.dockerfilePath ?? ''}
+                onChange={(e) => setConfig({ dockerfilePath: e.target.value })}
+                placeholder="Dockerfile"
+                className="font-mono text-xs"
+              />
+            </Field>
+          ) : null}
 
-      {value.build_kind === 'framework' ? (
-        <div className="flex flex-col gap-5">
-          <Field label={t('buildSource.framework')}>
-            <div className="grid grid-cols-3 gap-2">
-              {FRAMEWORKS.map((f) => {
-                const active = (cfg.framework ?? 'react') === f.id
-                return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    disabled={f.soon}
-                    onClick={() => setConfig({ framework: f.id })}
-                    className={cn(
-                      'rounded-lg border px-3 py-2 text-center text-xs font-medium transition-colors',
-                      f.soon && 'cursor-not-allowed opacity-50',
-                      !f.soon && 'cursor-pointer',
-                      active && !f.soon
-                        ? 'border-brand bg-brand/5 text-brand'
-                        : 'hover:bg-surface-2',
-                    )}
-                  >
-                    {f.label}
-                    {f.soon ? (
-                      <span className="ml-1 text-2xs text-muted-foreground">
-                        {t('buildSource.soon')}
-                      </span>
-                    ) : null}
-                  </button>
-                )
-              })}
+          {value.build_kind === 'framework' ? (
+            <div className="flex flex-col gap-5">
+              <Field label={t('buildSource.framework')}>
+                <div className="grid grid-cols-3 gap-2">
+                  {FRAMEWORKS.map((f) => {
+                    const active = (cfg.framework ?? 'react') === f.id
+                    const Icon = f.icon
+                    return (
+                      <m.button
+                        key={f.id}
+                        type="button"
+                        disabled={f.soon}
+                        onClick={() => setConfig({ framework: f.id })}
+                        whileTap={f.soon ? undefined : { scale: 0.97 }}
+                        transition={transition.fast}
+                        className={cn(
+                          'flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 text-center text-xs font-medium transition-colors',
+                          f.soon && 'cursor-not-allowed opacity-50',
+                          !f.soon && 'cursor-pointer',
+                          active && !f.soon
+                            ? 'border-brand bg-brand/5 text-brand'
+                            : 'hover:bg-surface-2',
+                        )}
+                      >
+                        <Icon
+                          className="size-5"
+                          style={{ color: active && !f.soon ? undefined : f.color }}
+                          aria-hidden
+                        />
+                        <span>{f.label}</span>
+                        {f.soon ? (
+                          <span className="text-2xs font-normal text-muted-foreground">
+                            {t('buildSource.soon')}
+                          </span>
+                        ) : null}
+                      </m.button>
+                    )
+                  })}
+                </div>
+              </Field>
+              <Field label={t('buildSource.buildCommand')} hint={t('buildSource.buildCommandHint')}>
+                <Input
+                  value={cfg.buildCommand ?? ''}
+                  onChange={(e) => setConfig({ buildCommand: e.target.value })}
+                  placeholder="npm install && npm run build"
+                  className="font-mono text-xs"
+                />
+              </Field>
             </div>
-          </Field>
-          <Field label={t('buildSource.buildCommand')} hint={t('buildSource.buildCommandHint')}>
-            <Input
-              value={cfg.buildCommand ?? ''}
-              onChange={(e) => setConfig({ buildCommand: e.target.value })}
-              placeholder="npm install && npm run build"
-              className="font-mono text-xs"
-            />
-          </Field>
-        </div>
-      ) : null}
+          ) : null}
 
-      {value.build_kind === 'static' ? (
-        <div className="flex flex-col gap-5">
-          <Field label={t('buildSource.outputDir')} hint={t('buildSource.outputDirHint')}>
-            <Input
-              value={cfg.staticDir ?? ''}
-              onChange={(e) => setConfig({ staticDir: e.target.value })}
-              placeholder="dist"
-              className="font-mono text-xs"
-            />
-          </Field>
-          <label className="flex items-center justify-between gap-3">
-            <span className="text-sm">
-              {t('buildSource.spaFallback')}
-              <span className="block text-2xs text-muted-foreground">
-                {t('buildSource.spaFallbackHint')}
-              </span>
-            </span>
-            <Switch
-              checked={cfg.spaFallback ?? false}
-              onCheckedChange={(v) => setConfig({ spaFallback: v })}
-            />
-          </label>
-        </div>
-      ) : null}
+          {value.build_kind === 'static' ? (
+            <div className="flex flex-col gap-5">
+              <Field label={t('buildSource.outputDir')} hint={t('buildSource.outputDirHint')}>
+                <Input
+                  value={cfg.staticDir ?? ''}
+                  onChange={(e) => setConfig({ staticDir: e.target.value })}
+                  placeholder="dist"
+                  className="font-mono text-xs"
+                />
+              </Field>
+              <label className="flex items-center justify-between gap-3">
+                <span className="text-sm">
+                  {t('buildSource.spaFallback')}
+                  <span className="block text-2xs text-muted-foreground">
+                    {t('buildSource.spaFallbackHint')}
+                  </span>
+                </span>
+                <Switch
+                  checked={cfg.spaFallback ?? false}
+                  onCheckedChange={(v) => setConfig({ spaFallback: v })}
+                />
+              </label>
+            </div>
+          ) : null}
+        </m.div>
+      </AnimatePresence>
     </div>
   )
 }

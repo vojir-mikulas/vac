@@ -1,5 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react'
 import { Download } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -20,12 +21,7 @@ import { LogViewer } from '@/components/common/log-viewer'
 import { downloadFile, logsToJson, logsToText } from '@/lib/log-export'
 import type { LogLevel, LogLine } from '@/lib/ws/use-log-stream'
 
-const LEVELS: { value: string; label: string }[] = [
-  { value: 'all', label: 'All levels' },
-  { value: 'info', label: 'Info' },
-  { value: 'warn', label: 'Warn' },
-  { value: 'error', label: 'Error' },
-]
+const LEVELS = ['all', 'info', 'warn', 'error'] as const satisfies readonly string[]
 
 const LEVEL_RANK: Record<LogLevel, number> = { info: 0, ok: 0, warn: 1, error: 2 }
 
@@ -40,6 +36,7 @@ export function LogPanel({
   initialService?: string
   exportName?: string
 }) {
+  const { t } = useTranslation('logs')
   const [autoScroll, setAutoScroll] = useState(true)
   const [level, setLevel] = useState('all')
   const [service, setService] = useState(initialService ?? 'all')
@@ -63,7 +60,7 @@ export function LogPanel({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All services</SelectItem>
+              <SelectItem value="all">{t('panel.allServices')}</SelectItem>
               {services.map((s) => (
                 <SelectItem key={s} value={s}>
                   {s}
@@ -79,8 +76,8 @@ export function LogPanel({
           </SelectTrigger>
           <SelectContent>
             {LEVELS.map((l) => (
-              <SelectItem key={l.value} value={l.value}>
-                {l.label}
+              <SelectItem key={l} value={l}>
+                {t(`panel.levels.${l}`)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -88,16 +85,18 @@ export function LogPanel({
 
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <Switch checked={autoScroll} onCheckedChange={setAutoScroll} />
-          Auto-scroll
+          {t('panel.autoScroll')}
         </label>
 
         <div className="ml-auto flex items-center gap-3">
-          <span className="font-mono text-2xs text-muted-foreground">{filtered.length} lines</span>
+          <span className="font-mono text-2xs text-muted-foreground">
+            {t('panel.lineCount', { count: filtered.length })}
+          </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
                 <Download className="size-3.5" />
-                Export
+                {t('panel.export')}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -106,21 +105,21 @@ export function LogPanel({
                   downloadFile(`${exportName}.txt`, logsToText(filtered), 'text/plain')
                 }
               >
-                Plain text
+                {t('panel.exportText')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() =>
                   downloadFile(`${exportName}.json`, logsToJson(filtered), 'application/json')
                 }
               >
-                JSON
+                {t('panel.exportJson')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
 
-      <LogViewer lines={filtered} autoScroll={autoScroll} label="Runtime logs" />
+      <LogViewer lines={filtered} autoScroll={autoScroll} label={t('panel.viewerLabel')} />
     </div>
   )
 }

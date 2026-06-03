@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 import { SectionHeader } from '@/components/common/section-header'
 import { CardStackSkeleton } from '@/components/common/card-stack-skeleton'
 import { SwapFade } from '@/components/common/swap-fade'
@@ -10,6 +12,7 @@ import { useBackups } from '@/lib/api/backups'
 import { useInstanceInfo } from '@/lib/api/instance'
 
 export function ServicesTab({ appId }: { appId: string }) {
+  const { t } = useTranslation('app-detail')
   const { data: services, isLoading } = useServices(appId)
   const { data: app } = useApp(appId)
   const { data: instance } = useInstanceInfo()
@@ -22,7 +25,7 @@ export function ServicesTab({ appId }: { appId: string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <SectionHeader className="mb-0">Stack control</SectionHeader>
+        <SectionHeader className="mb-0">{t('services.stackControl')}</SectionHeader>
         <StackControls appId={appId} status={app?.status} />
       </div>
 
@@ -42,8 +45,8 @@ export function ServicesTab({ appId }: { appId: string }) {
           </div>
         ) : (
           <EmptyState
-            title="No services detected"
-            description="Services appear here after the first successful deploy."
+            title={t('services.emptyTitle')}
+            description={t('services.emptyDescription')}
           />
         )}
       </SwapFade>

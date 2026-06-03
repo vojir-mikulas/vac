@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
@@ -23,10 +24,11 @@ function humanize(key: string): string {
 }
 
 export function NotificationsSection() {
+  const { t } = useTranslation('settings')
   const { data, isLoading } = useNotificationSettings()
   return (
     <section>
-      <SectionHeader>Notifications</SectionHeader>
+      <SectionHeader>{t('notifications.heading')}</SectionHeader>
       {isLoading || !data ? (
         <Card className="p-5">
           <Skeleton className="h-40 w-full" />
@@ -39,6 +41,7 @@ export function NotificationsSection() {
 }
 
 function NotificationsForm({ settings }: { settings: NotificationSettings }) {
+  const { t } = useTranslation('settings')
   const update = useUpdateNotifications()
   const [discord, setDiscord] = useState('')
   const [slack, setSlack] = useState('')
@@ -46,7 +49,7 @@ function NotificationsForm({ settings }: { settings: NotificationSettings }) {
 
   const test = useMutation({
     mutationFn: () => notificationsApi.test(),
-    onSuccess: (r) => toast.success(`Sent ${r.sent} test message${r.sent === 1 ? '' : 's'}`),
+    onSuccess: (r) => toast.success(t('notifications.toast.tested', { count: r.sent })),
     onError: (e) => toast.error(e.message),
   })
 
@@ -59,7 +62,7 @@ function NotificationsForm({ settings }: { settings: NotificationSettings }) {
         events,
       },
       {
-        onSuccess: () => toast.success('Notification settings saved'),
+        onSuccess: () => toast.success(t('notifications.toast.saved')),
         onError: (e) => toast.error(e.message),
       },
     )
@@ -67,14 +70,14 @@ function NotificationsForm({ settings }: { settings: NotificationSettings }) {
   return (
     <Card className="gap-5 p-5">
       <ChannelField
-        label="Discord webhook"
+        label={t('notifications.discordWebhook')}
         configured={settings.discord_configured}
         hint={settings.discord_hint}
         value={discord}
         onChange={setDiscord}
       />
       <ChannelField
-        label="Slack webhook"
+        label={t('notifications.slackWebhook')}
         configured={settings.slack_configured}
         hint={settings.slack_hint}
         value={slack}
@@ -84,7 +87,7 @@ function NotificationsForm({ settings }: { settings: NotificationSettings }) {
       <Separator />
 
       <div className="flex flex-col gap-3">
-        <span className="text-sm font-medium">Events</span>
+        <span className="text-sm font-medium">{t('notifications.events')}</span>
         {Object.keys(events).map((key) => (
           <label key={key} className="flex items-center justify-between gap-2 text-sm">
             <span className="text-muted-foreground">{humanize(key)}</span>
@@ -98,10 +101,10 @@ function NotificationsForm({ settings }: { settings: NotificationSettings }) {
 
       <div className="flex justify-end gap-2">
         <Button variant="outline" size="sm" disabled={test.isPending} onClick={() => test.mutate()}>
-          Send test
+          {t('notifications.sendTest')}
         </Button>
         <Button variant="brand" size="sm" disabled={update.isPending} onClick={save}>
-          Save
+          {t('notifications.save')}
         </Button>
       </div>
     </Card>
@@ -121,6 +124,7 @@ function ChannelField({
   value: string
   onChange: (v: string) => void
 }) {
+  const { t } = useTranslation('settings')
   const id = useId()
   return (
     <div className="grid gap-2">
@@ -130,7 +134,7 @@ function ChannelField({
         type="url"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={configured ? `Configured (${hint}) — leave blank to keep` : 'https://…'}
+        placeholder={configured ? t('notifications.configuredPlaceholder', { hint }) : 'https://…'}
         className="font-mono text-xs"
       />
     </div>
