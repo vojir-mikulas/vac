@@ -30,7 +30,7 @@ import {
   type DomainAssignment,
 } from '@/lib/api/domains'
 import { useServices } from '@/lib/api/services'
-import { useBaseDomain, useSetBaseDomain } from '@/lib/api/instance'
+import { useBaseDomain, useSetBaseDomain, type BaseDomainInfo } from '@/lib/api/instance'
 import { cn } from '@/lib/utils'
 import type { Domain } from '@/types/api'
 
@@ -44,14 +44,36 @@ export function DomainsSection() {
   )
 }
 
+// Where the effective base domain comes from, so the operator can tell a
+// config-supplied value apart from a UI override. `suffix` completes the
+// "Currently effective: … {suffix}" line; `origin` names the inherited source
+// for the "keep inheriting from {origin}" hint (env/file only).
+const SOURCE_COPY: Record<
+  NonNullable<BaseDomainInfo['source']>,
+  { suffix: string; origin: string }
+> = {
+  override: { suffix: 'override set here', origin: '' },
+  env: {
+    suffix: 'from the VAC_BASE_DOMAIN environment variable',
+    origin: 'the VAC_BASE_DOMAIN environment variable',
+  },
+  file: { suffix: 'from the config file', origin: 'the config file' },
+  unset: { suffix: '', origin: '' },
+}
+
 function BaseDomainCard() {
   const { data, isLoading } = useBaseDomain()
   const { data: apps } = useApps()
   const save = useSetBaseDomain()
   const [value, setValue] = useState<string | null>(null)
   const [confirm, setConfirm] = useState(false)
+  // The input is bound to the *override* only — never pre-filled with an
+  // env/file value. Pre-filling would let the next Save persist a DB override
+  // that silently shadows the config source. The effective value surfaces as
+  // the placeholder + the "Currently effective" line instead.
   const current = value ?? data?.base_domain ?? ''
-  const effective = data?.effective || 'example.com'
+  const effective = data?.effective ?? ''
+  const source = data?.source ?? 'unset'
   const changed = current.trim() !== (data?.base_domain ?? '')
   const appNames = (apps ?? []).map((a) => a.name)
 
@@ -77,34 +99,57 @@ function BaseDomainCard() {
       <Card className="gap-4 p-5">
         <p className="text-xs text-muted-foreground">
           Apps get an automatic subdomain under this domain (e.g.{' '}
-          <span className="font-mono">my-app.{effective}</span>). Leave blank to disable automatic
-          subdomains.
+          <span className="font-mono">my-app.{effective || 'example.com'}</span>). Leave blank to
+          disable automatic subdomains.
         </p>
         {isLoading ? (
           <Skeleton className="h-9 w-full" />
         ) : (
-          <div className="flex items-end gap-2">
-            <div className="grid flex-1 gap-2">
-              <Label>Domain</Label>
-              <Input
-                value={current}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="example.com"
-                className="font-mono text-xs"
-              />
+          <>
+            {/* Surface the resolved value + where it came from, so a domain set
+                via env/yaml doesn't read as "nothing is configured". */}
+            <p className="text-xs">
+              {effective ? (
+                <>
+                  <span className="text-muted-foreground">Currently effective: </span>
+                  <span className="font-mono">{effective}</span>
+                  <span className="text-muted-foreground"> — {SOURCE_COPY[source].suffix}</span>
+                </>
+              ) : (
+                <span className="text-muted-foreground">
+                  No base domain configured — apps get no automatic subdomain.
+                </span>
+              )}
+            </p>
+            <div className="flex items-end gap-2">
+              <div className="grid flex-1 gap-2">
+                <Label>Domain</Label>
+                <Input
+                  value={current}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder={effective || 'example.com'}
+                  className="font-mono text-xs"
+                />
+              </div>
+              <Button
+                variant="brand"
+                size="sm"
+                disabled={save.isPending || !changed}
+                onClick={onSave}
+              >
+                Save
+              </Button>
             </div>
-            <Button
-              variant="brand"
-              size="sm"
-              disabled={save.isPending || !changed}
-              onClick={onSave}
-            >
-              Save
-            </Button>
-          </div>
+            {source !== 'override' && effective ? (
+              <p className="text-2xs text-muted-foreground">
+                Leave blank to keep inheriting from {SOURCE_COPY[source].origin}; type a value to
+                override it here.
+              </p>
+            ) : null}
+          </>
         )}
 
-        {data?.base_domain ? <WildcardSuggestion baseDomain={data.base_domain} /> : null}
+        {effective ? <WildcardSuggestion baseDomain={effective} /> : null}
       </Card>
 
       <AlertDialog open={confirm} onOpenChange={setConfirm}>

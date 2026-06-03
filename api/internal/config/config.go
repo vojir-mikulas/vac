@@ -51,8 +51,13 @@ type Config struct {
 	DeploymentKeepCount   int           `yaml:"deployment_keep_count"`
 
 	// Phase 3: reverse proxy & HTTPS.
-	CaddyAdminURL           string        `yaml:"caddy_admin_url"`
-	BaseDomain              string        `yaml:"base_domain"`
+	CaddyAdminURL string `yaml:"caddy_admin_url"`
+	BaseDomain    string `yaml:"base_domain"`
+	// BaseDomainSource records where a non-empty BaseDomain came from ("env" or
+	// "file"), so the Domains settings card can label the effective value's
+	// origin. Computed in Load() — never read from env/yaml. Empty means no base
+	// domain is configured at the config layer.
+	BaseDomainSource        string        `yaml:"-"`
 	ControlDomain           string        `yaml:"control_domain"`
 	EdgeNetwork             string        `yaml:"edge_network"`
 	CaddyAccessLog          string        `yaml:"caddy_access_log"`
@@ -177,8 +182,22 @@ func Load() (Config, error) {
 
 	applyEnv(&cfg)
 
+	deriveBaseDomainSource(&cfg)
 	validate(&cfg)
 	return cfg, nil
+}
+
+// deriveBaseDomainSource records where the effective base domain came from so the
+// UI can label it. Default() leaves BaseDomain empty, so after the yaml+env merge
+// a non-empty value with no VAC_BASE_DOMAIN set could only have come from the
+// config file. Leaves the source empty when no base domain is configured.
+func deriveBaseDomainSource(cfg *Config) {
+	switch {
+	case os.Getenv("VAC_BASE_DOMAIN") != "":
+		cfg.BaseDomainSource = "env"
+	case cfg.BaseDomain != "":
+		cfg.BaseDomainSource = "file"
+	}
 }
 
 func loadYAML(path string, cfg *Config) error {

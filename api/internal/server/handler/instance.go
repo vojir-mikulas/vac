@@ -27,6 +27,24 @@ func effectiveLabel(host string) string {
 	return host
 }
 
+// baseDomainSource reports where the effective base domain comes from so the
+// Domains card can label it: a DB override set in the UI wins; otherwise the
+// config layer's source (env var or yaml file, captured at load); otherwise it
+// is unset. GET and PUT share this so they always agree.
+func baseDomainSource(override string, cfg config.Config) string {
+	switch {
+	case override != "":
+		return "override"
+	case cfg.BaseDomain != "":
+		if cfg.BaseDomainSource != "" {
+			return cfg.BaseDomainSource
+		}
+		return "file"
+	default:
+		return "unset"
+	}
+}
+
 // ControlPlaneRestarter bounces raw infrastructure containers by name.
 // *dockercli.Compose satisfies it.
 type ControlPlaneRestarter interface {
@@ -106,6 +124,7 @@ func GetBaseDomain(s *store.Store, cfg config.Config) http.HandlerFunc {
 		WriteJSON(w, http.StatusOK, map[string]string{
 			"base_domain": settings.BaseDomain,
 			"effective":   effective,
+			"source":      baseDomainSource(settings.BaseDomain, cfg),
 		})
 	}
 }
@@ -168,6 +187,7 @@ func PutBaseDomain(s *store.Store, cfg config.Config, pm BaseDomainSetter, rec R
 		WriteJSON(w, http.StatusOK, map[string]string{
 			"base_domain": host,
 			"effective":   effective,
+			"source":      baseDomainSource(host, cfg),
 		})
 	}
 }

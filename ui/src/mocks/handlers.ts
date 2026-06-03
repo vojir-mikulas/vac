@@ -170,7 +170,12 @@ const routes: Route[] = [
   {
     method: 'GET',
     pattern: 'instance/base-domain',
-    handler: () => ok({ base_domain: getState().baseDomain, effective: getState().baseDomain }),
+    handler: () =>
+      ok({
+        base_domain: getState().baseDomain,
+        effective: getState().baseDomain,
+        source: getState().baseDomain ? 'override' : 'unset',
+      }),
   },
   {
     method: 'PUT',
@@ -181,6 +186,7 @@ const routes: Route[] = [
       return ok({
         base_domain: getState().baseDomain,
         effective: getState().baseDomain || 'apps.example.com',
+        source: getState().baseDomain ? 'override' : 'unset',
       })
     },
   },

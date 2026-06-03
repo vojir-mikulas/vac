@@ -15,6 +15,8 @@ export interface InstanceInfo {
 export interface BaseDomainInfo {
   base_domain: string // the runtime override ("" = unset, using config)
   effective: string // override or config fallback
+  /** Where `effective` comes from, so the card can label its origin. */
+  source: 'override' | 'env' | 'file' | 'unset'
 }
 
 export interface DnsCheckResult {

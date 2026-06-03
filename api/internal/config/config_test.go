@@ -210,6 +210,46 @@ func TestLoad_ControlDomainEmptyWithoutBaseDomain(t *testing.T) {
 	}
 }
 
+func TestLoad_BaseDomainSourceEnv(t *testing.T) {
+	t.Setenv("VAC_BASE_DOMAIN", "apps.example.com")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BaseDomainSource != "env" {
+		t.Errorf("base domain source = %q, want env", cfg.BaseDomainSource)
+	}
+}
+
+func TestLoad_BaseDomainSourceFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vac.yaml")
+	if err := os.WriteFile(path, []byte("base_domain: apps.example.com\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VAC_CONFIG_FILE", path)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BaseDomain != "apps.example.com" {
+		t.Fatalf("base domain = %q, want apps.example.com from yaml", cfg.BaseDomain)
+	}
+	if cfg.BaseDomainSource != "file" {
+		t.Errorf("base domain source = %q, want file", cfg.BaseDomainSource)
+	}
+}
+
+func TestLoad_BaseDomainSourceUnset(t *testing.T) {
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BaseDomainSource != "" {
+		t.Errorf("base domain source = %q, want empty when unconfigured", cfg.BaseDomainSource)
+	}
+}
+
 func TestLoad_SessionTTLs(t *testing.T) {
 	t.Setenv("VAC_SESSION_TTL", "2h")
 	t.Setenv("VAC_SESSION_TTL_EXTENDED", "48h")

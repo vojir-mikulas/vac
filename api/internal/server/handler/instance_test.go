@@ -71,6 +71,29 @@ func TestDNSCheckUnresolvedHostReportsNotPointing(t *testing.T) {
 	}
 }
 
+func TestBaseDomainSource(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		override string
+		cfg      config.Config
+		want     string
+	}{
+		{"override wins", "apps.me.com", config.Config{BaseDomain: "env.com", BaseDomainSource: "env"}, "override"},
+		{"env when no override", "", config.Config{BaseDomain: "env.com", BaseDomainSource: "env"}, "env"},
+		{"file when no override", "", config.Config{BaseDomain: "file.com", BaseDomainSource: "file"}, "file"},
+		{"falls back to file when source missing", "", config.Config{BaseDomain: "x.com"}, "file"},
+		{"unset", "", config.Config{}, "unset"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := baseDomainSource(tc.override, tc.cfg); got != tc.want {
+				t.Errorf("baseDomainSource(%q, %+v) = %q; want %q", tc.override, tc.cfg, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestResetInstanceRejectsWrongConfirmation(t *testing.T) {
 	t.Parallel()
 	// Wrong confirmation is rejected before any store/docker interaction, so nil
