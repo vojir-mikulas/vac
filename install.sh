@@ -27,6 +27,7 @@ set -eu
 # Captured before defaults are applied (defaults would mask the distinction).
 [ -n "${VAC_DOMAIN+x}" ]           && DOMAIN_PRESET=1  || DOMAIN_PRESET=0
 [ -n "${VAC_MANAGED_SERVICES+x}" ] && MANAGED_PRESET=1 || MANAGED_PRESET=0
+[ -n "${VAC_ENABLE_SHELL+x}" ]     && SHELL_PRESET=1   || SHELL_PRESET=0
 [ -n "${VAC_GRANT_ACCESS+x}" ]     && GRANT_PRESET=1   || GRANT_PRESET=0
 
 VAC_VERSION="${VAC_VERSION:-latest}"
@@ -39,6 +40,10 @@ VAC_DOMAIN="${VAC_DOMAIN:-}"
 # default — it starts background workers and uses a little more RAM. Toggle any
 # time with `vac managed-services on|off`.
 VAC_MANAGED_SERVICES="${VAC_MANAGED_SERVICES:-}"
+# Interactive container shell (P3.4). Off by default — when on, the dashboard can
+# open a root-capable shell into a user app container (confirm-gated + audited).
+# Highest blast-radius feature, so it's opt-in: `vac container-shell on|off`.
+VAC_ENABLE_SHELL="${VAC_ENABLE_SHELL:-}"
 # When installed via sudo, also let the invoking user run `vac` without sudo:
 # add them to the `docker` group and give them the install dir (which holds the
 # root-only .env). Opt out with --no-grant or VAC_GRANT_ACCESS=0.
@@ -108,8 +113,8 @@ Flags:
   -h, --help   Show this help and exit.
 
 Env overrides (a pre-set value skips its question): VAC_VERSION, VAC_DOMAIN,
-VAC_MANAGED_SERVICES (true/false), VAC_INSTALL_DIR, VAC_HOST_PORT, VAC_REGISTRY,
-VAC_GRANT_ACCESS (1/0).
+VAC_MANAGED_SERVICES (true/false), VAC_ENABLE_SHELL (true/false), VAC_INSTALL_DIR,
+VAC_HOST_PORT, VAC_REGISTRY, VAC_GRANT_ACCESS (1/0).
 USAGE
 }
 
@@ -226,7 +231,8 @@ run_wizard() {
   if [ "$ASSUME_YES" != 1 ] && [ -r /dev/tty ]; then INTERACTIVE=1; fi
   if [ "$INTERACTIVE" != 1 ]; then
     VAC_MANAGED_SERVICES="$(normalize_bool "${VAC_MANAGED_SERVICES:-false}")"
-    info "Running non-interactively — using defaults (domain: ${VAC_DOMAIN:-none}, managed services: ${VAC_MANAGED_SERVICES})."
+    VAC_ENABLE_SHELL="$(normalize_bool "${VAC_ENABLE_SHELL:-false}")"
+    info "Running non-interactively — using defaults (domain: ${VAC_DOMAIN:-none}, managed services: ${VAC_MANAGED_SERVICES}, container shell: ${VAC_ENABLE_SHELL})."
     return 0
   fi
 
@@ -234,6 +240,7 @@ run_wizard() {
   wizard_system_summary
   wizard_ask_domain
   wizard_ask_managed_services
+  wizard_ask_container_shell
   wizard_ask_grant
   wizard_confirm
 }
@@ -287,6 +294,24 @@ wizard_ask_managed_services() {
   fi
 }
 
+wizard_ask_container_shell() {
+  if [ "$SHELL_PRESET" = 1 ]; then
+    VAC_ENABLE_SHELL="$(normalize_bool "$VAC_ENABLE_SHELL")"
+    return 0
+  fi
+  say ""
+  say "${B}${C}Container shell${N}  (open a terminal into an app's container from the dashboard)"
+  say "  Off by default. When on, a ${B}Shell${N} action on each running service opens a"
+  say "  ${B}root-capable${N} shell inside that container — handy for debugging, but a powerful"
+  say "  one: it's confirm-gated and every session is recorded in the audit log."
+  say "  You can turn it on or off any time with: ${B}vac container-shell on|off${N}"
+  if confirm 'Enable the container shell now?' n; then
+    VAC_ENABLE_SHELL=true
+  else
+    VAC_ENABLE_SHELL=false
+  fi
+}
+
 wizard_ask_grant() {
   # Only meaningful when invoked via sudo from a real user account.
   [ "$GRANT_PRESET" = 1 ] && return 0
@@ -311,6 +336,7 @@ wizard_confirm() {
   say "  install dir:       ${VAC_INSTALL_DIR}"
   say "  domain:            ${VAC_DOMAIN:-none (reach by IP)}"
   say "  managed services:  ${VAC_MANAGED_SERVICES}"
+  say "  container shell:    ${VAC_ENABLE_SHELL}"
   say "  sudo-free access:  ${_grant}"
   say ""
   confirm 'Proceed?' y || die "Aborted — nothing was changed."
@@ -380,6 +406,7 @@ DOCKER_GID=$DOCKER_GID
 VAC_HOST_PORT=$VAC_HOST_PORT
 VAC_BASE_DOMAIN=$VAC_DOMAIN
 VAC_MANAGED_SERVICES=$(normalize_bool "${VAC_MANAGED_SERVICES:-false}")
+VAC_ENABLE_SHELL=$(normalize_bool "${VAC_ENABLE_SHELL:-false}")
 EOF
     chmod 600 "$ENV_FILE"
   fi
@@ -453,6 +480,17 @@ case "$cmd" in
         echo "Managed services disabled." ;;
       *) echo "usage: vac managed-services on|off" >&2; exit 1 ;;
     esac ;;
+  container-shell)
+    case "${1:-}" in
+      on|true|1)
+        set_env VAC_ENABLE_SHELL true; dc up -d vac-api
+        echo "Container shell enabled — a 'Shell' action appears on running services."
+        echo "It opens a root-capable shell into the container (confirm-gated + audited)." ;;
+      off|false|0|"")
+        set_env VAC_ENABLE_SHELL false; dc up -d vac-api
+        echo "Container shell disabled." ;;
+      *) echo "usage: vac container-shell on|off" >&2; exit 1 ;;
+    esac ;;
   config)    cat "$ENVF" ;;
   version|--version|-v)
     pinned="$(grep '^VAC_VERSION=' "$ENVF" 2>/dev/null | cut -d= -f2-)"
@@ -492,6 +530,7 @@ vac — manage this VAC install ($DIR)
   vac set-domain <domain>          serve dashboard on HTTPS + enable app subdomains
   vac unset-domain                 disable HTTPS dashboard and app subdomains
   vac managed-services on|off      toggle backups, databases & the add-on catalog
+  vac container-shell on|off       toggle the in-dashboard container shell (privileged)
   vac reset-password <username>    set a new password and revoke sessions
   vac up | down | restart [service]
   vac config                       print the .env
@@ -586,6 +625,9 @@ print_summary() {
   fi
   if [ "$(normalize_bool "${VAC_MANAGED_SERVICES:-false}")" = "true" ]; then
     printf '  Managed services are %son%s — backups, databases & add-ons are available.\n' "$B" "$N"
+  fi
+  if [ "$(normalize_bool "${VAC_ENABLE_SHELL:-false}")" = "true" ]; then
+    printf '  Container shell is %son%s — a privileged, audited shell into app containers.\n' "$B" "$N"
   fi
   printf '  Manage:  %svac status | vac logs | vac upgrade | vac down%s\n' "$B" "$N"
   if [ "${RELOGIN:-0}" = "1" ]; then
