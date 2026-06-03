@@ -11,8 +11,14 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/vojir-mikulas/vac/api/internal/addon"
+	"github.com/vojir-mikulas/vac/api/internal/dbprovision"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
+
+// fakeEngines is an AddonEngineSource for cross-listing managed-DB engines.
+type fakeEngines struct{ engines []dbprovision.EngineInfo }
+
+func (f fakeEngines) AvailableEngines() []dbprovision.EngineInfo { return f.engines }
 
 type fakeCatalog struct {
 	templates map[string]addon.Template
@@ -48,16 +54,47 @@ func grafanaCatalog() *fakeCatalog {
 
 func TestListAddons(t *testing.T) {
 	rr := httptest.NewRecorder()
-	ListAddons(grafanaCatalog())(rr, httptest.NewRequest(http.MethodGet, "/api/addons", nil))
+	ListAddons(grafanaCatalog(), nil)(rr, httptest.NewRequest(http.MethodGet, "/api/addons", nil))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d", rr.Code)
 	}
-	var got []addon.Template
+	var got []addonDTO
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(got) != 1 || got[0].ID != "grafana" {
+	if len(got) != 1 || got[0].ID != "grafana" || got[0].Kind != "template" {
 		t.Errorf("catalog = %+v", got)
+	}
+}
+
+// Heavyweight engines (MariaDB) are cross-listed as database add-ons; free
+// engines (Postgres, footprint 0) are not.
+func TestListAddons_CrossListsHeavyweightEngines(t *testing.T) {
+	engines := fakeEngines{engines: []dbprovision.EngineInfo{
+		{Name: "postgres", FootprintMB: 0, Shared: false},
+		{Name: "mariadb", FootprintMB: 150, Shared: true},
+	}}
+	rr := httptest.NewRecorder()
+	ListAddons(grafanaCatalog(), engines)(rr, httptest.NewRequest(http.MethodGet, "/api/addons", nil))
+
+	var got []addonDTO
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	var db *addonDTO
+	for i := range got {
+		if got[i].Kind == "database" {
+			if db != nil {
+				t.Fatalf("more than one database add-on: %+v", got)
+			}
+			db = &got[i]
+		}
+	}
+	if db == nil {
+		t.Fatalf("expected a database add-on, got %+v", got)
+	}
+	if db.ID != "mariadb" || db.Name != "MariaDB" || db.FootprintMB != 150 || !db.Shared {
+		t.Errorf("database add-on = %+v", db)
 	}
 }
 

@@ -48,6 +48,30 @@ export function useAddDatabase(appId: string) {
   })
 }
 
+// useAddDatabaseToApp is the add-on-catalog variant of useAddDatabase: the app
+// is chosen at mutate time (the catalog isn't scoped to one app), then it hits
+// the same per-app provisioning endpoint.
+export function useAddDatabaseToApp() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      appId,
+      engine,
+      envVarName,
+    }: {
+      appId: string
+      engine: string
+      envVarName?: string
+    }) => databasesApi.add(appId, engine, envVarName),
+    onSuccess: (_res, { appId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.apps.databases(appId) })
+      qc.invalidateQueries({ queryKey: queryKeys.apps.env(appId) })
+      // The box-wide inventory powers the catalog's live "Active" state.
+      qc.invalidateQueries({ queryKey: queryKeys.databases.inventory })
+    },
+  })
+}
+
 export function useRemoveDatabase(appId: string) {
   const qc = useQueryClient()
   return useMutation({

@@ -350,7 +350,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			// Add-on catalog (Track D / D3). Global surface (installs become
 			// apps); gated by the managed-services flag like backups/databases.
 			if cfg.ManagedServices && addonCatalog != nil {
-				r.Get("/addons", handler.ListAddons(addonCatalog))
+				r.Get("/addons", handler.ListAddons(addonCatalog, dbHandler))
 				r.Get("/addons/{id}", handler.GetAddon(addonCatalog))
 				if addonInstaller2 != nil {
 					r.Post("/addons/{id}/install", handler.InstallAddon(addonCatalog, addonInstaller2))

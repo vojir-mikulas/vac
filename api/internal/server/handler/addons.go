@@ -11,6 +11,7 @@ import (
 
 	"github.com/vojir-mikulas/vac/api/internal/addon"
 	"github.com/vojir-mikulas/vac/api/internal/audit"
+	"github.com/vojir-mikulas/vac/api/internal/dbprovision"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
@@ -20,16 +21,101 @@ type AddonCatalog interface {
 	Get(id string) (addon.Template, bool)
 }
 
+// AddonEngineSource lists managed-DB engines to cross-list in the add-on
+// catalog. *dbprovision.Provisioner satisfies it; nil omits database add-ons.
+type AddonEngineSource interface {
+	AvailableEngines() []dbprovision.EngineInfo
+}
+
 // AddonInstaller installs a catalog template as an app. *addon.Installer
 // satisfies it.
 type AddonInstaller interface {
 	Install(ctx context.Context, templateID, name, slug string) (addon.InstallResult, error)
 }
 
-// ListAddons returns the catalog.
-func ListAddons(cat AddonCatalog) http.HandlerFunc {
+// addonDTO is one catalog entry. kind="template" entries deploy as a normal app
+// (compose + manifest); kind="database" entries cross-list a heavyweight
+// managed-DB engine (e.g. MariaDB) so it's discoverable here — it's provisioned
+// per app from an app's Database tab, not deployed as a standalone app.
+type addonDTO struct {
+	Kind        string            `json:"kind"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Category    string            `json:"category"`
+	Icon        string            `json:"icon"`
+	FootprintMB int               `json:"footprint_mb"`
+	DependsOnDB string            `json:"depends_on_db"`
+	ComposeFile string            `json:"compose_file,omitempty"`
+	DefaultEnv  map[string]string `json:"default_env,omitempty"`
+	// Shared marks a database add-on whose engine runs as one instance shared by
+	// every app that provisions on it. Only meaningful for kind="database".
+	Shared bool `json:"shared,omitempty"`
+}
+
+func templateAddon(t addon.Template) addonDTO {
+	return addonDTO{
+		Kind:        "template",
+		ID:          t.ID,
+		Name:        t.Name,
+		Description: t.Description,
+		Category:    t.Category,
+		Icon:        t.Icon,
+		FootprintMB: t.FootprintMB,
+		DependsOnDB: t.DependsOnDB,
+		ComposeFile: t.ComposeFile,
+		DefaultEnv:  t.DefaultEnv,
+	}
+}
+
+// dbEngineAddonMeta is presentation copy for managed-DB engines surfaced as
+// add-ons. Footprint/shared come from the engine itself; this is just the label.
+var dbEngineAddonMeta = map[string]struct{ Name, Description string }{
+	"mariadb": {
+		Name: "MariaDB",
+		Description: "Managed MariaDB server. Add it to an app and VAC provisions a database, " +
+			"injects the connection string as an env var, and schedules nightly backups. " +
+			"One shared instance serves every app on this box.",
+	},
+}
+
+func dbEngineAddon(e dbprovision.EngineInfo) addonDTO {
+	meta := dbEngineAddonMeta[e.Name]
+	name := meta.Name
+	if name == "" {
+		name = strings.ToUpper(e.Name[:1]) + e.Name[1:]
+	}
+	return addonDTO{
+		Kind:        "database",
+		ID:          e.Name,
+		Name:        name,
+		Description: meta.Description,
+		Category:    "Database",
+		Icon:        e.Name, // brand-icon maps engine names ("mariadb", …)
+		FootprintMB: e.FootprintMB,
+		Shared:      e.Shared,
+	}
+}
+
+// ListAddons returns the catalog: template add-ons plus any heavyweight
+// managed-DB engines (cross-listed for discoverability). Free/built-in engines
+// (Postgres, which lives in the shared control-plane vac-db) are not add-ons.
+func ListAddons(cat AddonCatalog, engines AddonEngineSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		WriteJSON(w, http.StatusOK, cat.List())
+		list := cat.List()
+		out := make([]addonDTO, 0, len(list)+2)
+		for _, t := range list {
+			out = append(out, templateAddon(t))
+		}
+		if engines != nil {
+			for _, e := range engines.AvailableEngines() {
+				if e.FootprintMB <= 0 {
+					continue // free/built-in engines aren't add-ons
+				}
+				out = append(out, dbEngineAddon(e))
+			}
+		}
+		WriteJSON(w, http.StatusOK, out)
 	}
 }
 
@@ -42,7 +128,7 @@ func GetAddon(cat AddonCatalog) http.HandlerFunc {
 			WriteError(w, http.StatusNotFound, "add-on not found")
 			return
 		}
-		WriteJSON(w, http.StatusOK, t)
+		WriteJSON(w, http.StatusOK, templateAddon(t))
 	}
 }
 

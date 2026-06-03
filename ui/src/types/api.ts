@@ -403,7 +403,15 @@ export interface DatabaseInventory {
 }
 
 // ── Track D: add-on catalog ────────────────────────────────────────────────
+/**
+ * "template" add-ons deploy as a normal app; "database" add-ons cross-list a
+ * heavyweight managed-DB engine (e.g. MariaDB) — provisioned per app, not
+ * deployed standalone.
+ */
+export type AddonKind = 'template' | 'database'
+
 export interface Addon {
+  kind: AddonKind
   id: string
   name: string
   description: string
@@ -413,8 +421,10 @@ export interface Addon {
   footprint_mb: number
   /** Managed-DB engine to provision before first deploy, or "" for none. */
   depends_on_db: string
-  compose_file: string
-  default_env: Record<string, string>
+  compose_file?: string
+  default_env?: Record<string, string>
+  /** Database add-ons: the engine runs as one shared instance across apps. */
+  shared?: boolean
 }
 
 export interface AddonInstallResult {
