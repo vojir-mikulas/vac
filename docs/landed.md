@@ -18,18 +18,21 @@ One or two sentences on what landed and why. (commit `abcdef0`, plan/KB link)
 
 Closed three gaps in the Security tab. (1) **fail2ban/firewall detection now
 works in production.** The sandboxed `vac-api` container can't see host binaries,
-so a tiny read-only host collector (`scripts/vac-security-agent.sh`, installed by
-the installer as a ~60s systemd timer with a cron fallback) writes a snapshot
-into a bind-mounted dir; `security.Host` reads it (and flags it stale when the
-timer stops), falling back to direct exec when VAC runs on the host. (2) **More
-posture checks that light up** — firewall (error if absent/inactive), fail2ban
-(warn if absent), Caddy access-log enabled, and base-domain, plus an at-a-glance
-summary banner that turns red/amber from the worst finding. Missing firewall/
-fail2ban warn by default (a box with no firewall is dangerous) but are
-opt-out-able via `vac security-check firewall|fail2ban off`
-(`VAC_SECURITY_EXPECT_*`). (3) **Traffic panel now shows requests** — a live
-recent-requests feed (status/method/host/path/IP) fed by the existing access-log
-tail, so the panel is populated even on a quiet box. (plan
+so a tiny read-only host collector (`scripts/vac-security-agent.sh`) writes a
+snapshot into a bind-mounted dir; `security.Host` reads it (flagging it stale
+when the timer stops), falling back to direct exec when VAC runs on the host. The
+agent is **opt-in** (`VAC_SECURITY_AGENT`, `vac security-agent on|off`, installer
+wizard) — like the container shell / managed services — because it installs a
+host-level systemd timer (cron fallback) outside the compose stack; it's the only
+piece that touches the host. (2) **More posture checks that light up** — firewall
+(error if absent/inactive), fail2ban (warn if absent), Caddy access-log enabled,
+and base-domain, plus an at-a-glance summary banner that turns red/amber from the
+worst finding. When the agent is off, host checks report a neutral "monitoring
+off" (no false "not detected"); when on, missing firewall/fail2ban warn by
+default but are opt-out-able via `vac security-check firewall|fail2ban off`. (3)
+**Traffic panel now shows requests** — a live recent-requests feed
+(status/method/host/path/IP) fed by the existing access-log tail, so the panel is
+populated even on a quiet box. (plan
 `docs/plans/upcoming/15-security-dashboard.md`)
 
 ## 2026-06-03 — Deploy queue: concurrency, cancellation, live panel

@@ -66,11 +66,16 @@ type PostureConfig struct {
 	MetricsTokenSet  bool
 	BaseDomainSet    bool
 	AccessLogEnabled bool // Caddy access log configured → traffic panel works
+	// HostAgentEnabled is whether the operator opted into the host security agent.
+	// It distinguishes "monitoring is off" (don't cry wolf) from "we looked and
+	// found no firewall" when no host data is available.
+	HostAgentEnabled bool
 	// ExpectFirewall/ExpectFail2ban make the absence of a host firewall /
 	// fail2ban a flagged finding (a box with no firewall is dangerous). Operators
 	// who deliberately don't run one opt out (VAC_SECURITY_EXPECT_FIREWALL=false /
 	// the `vac security-check` CLI), which downgrades the finding to an
-	// informational "disabled by operator" row that never warns.
+	// informational "disabled by operator" row that never warns. Only meaningful
+	// when host data is available (the agent is enabled and reporting).
 	ExpectFirewall bool
 	ExpectFail2ban bool
 }
@@ -202,21 +207,24 @@ func (p *Posture) Check(ctx context.Context) []PostureFinding {
 	return out
 }
 
-// firewallFinding evaluates host firewall posture. Absence is an error when the
-// operator expects a firewall (the default) — a single VPS with no firewall is
-// dangerous — and an informational OK row when they've explicitly opted out.
+// firewallFinding evaluates host firewall posture. When no host data is available
+// (the agent is off — the default — and the control plane can't see host state)
+// it reports a neutral "monitoring off" row rather than a false "not detected".
+// With data, absence is an error when a firewall is expected (the default) — a
+// single VPS with no firewall is dangerous — and an OK row when opted out.
 func (p *Posture) firewallFinding(ctx context.Context) PostureFinding {
+	var fw FirewallState
+	if p.host != nil {
+		fw = p.host.Firewall(ctx)
+	}
+	if fw.Source == "" { // couldn't read host firewall state at all
+		return p.hostMonitorOff("firewall", "firewall")
+	}
 	if !p.cfg.ExpectFirewall {
 		return PostureFinding{Severity: SeverityOK, Code: "firewall",
 			Title:   "Firewall check disabled",
-			Message: "Firewall checking is turned off (VAC_SECURITY_EXPECT_FIREWALL=false). VAC won't warn about a missing host firewall."}
+			Message: "Firewall checking is turned off (`vac security-check firewall off`). VAC won't warn about a missing host firewall."}
 	}
-	if p.host == nil {
-		return PostureFinding{Severity: SeverityWarn, Code: "firewall",
-			Title:   "Firewall state unavailable",
-			Message: "VAC can't read host firewall state on this install."}
-	}
-	fw := p.host.Firewall(ctx)
 	switch {
 	case fw.Stale:
 		return PostureFinding{Severity: SeverityWarn, Code: "firewall",
@@ -237,20 +245,22 @@ func (p *Posture) firewallFinding(ctx context.Context) PostureFinding {
 	}
 }
 
-// fail2banFinding evaluates host fail2ban posture. Absence is a warning when
-// expected (the default) and an informational OK row when opted out.
+// fail2banFinding evaluates host fail2ban posture. Like firewallFinding, it
+// reports "monitoring off" when no host data is available, an OK row when opted
+// out, and a warning when fail2ban is expected but absent.
 func (p *Posture) fail2banFinding(ctx context.Context) PostureFinding {
+	var f2b Fail2banState
+	if p.host != nil {
+		f2b = p.host.Fail2ban(ctx)
+	}
+	if f2b.Source == "" { // couldn't read host fail2ban state at all
+		return p.hostMonitorOff("fail2ban", "fail2ban")
+	}
 	if !p.cfg.ExpectFail2ban {
 		return PostureFinding{Severity: SeverityOK, Code: "fail2ban",
 			Title:   "fail2ban check disabled",
-			Message: "fail2ban checking is turned off (VAC_SECURITY_EXPECT_FAIL2BAN=false). VAC won't warn about a missing fail2ban."}
+			Message: "fail2ban checking is turned off (`vac security-check fail2ban off`). VAC won't warn about a missing fail2ban."}
 	}
-	if p.host == nil {
-		return PostureFinding{Severity: SeverityWarn, Code: "fail2ban",
-			Title:   "fail2ban state unavailable",
-			Message: "VAC can't read host fail2ban state on this install."}
-	}
-	f2b := p.host.Fail2ban(ctx)
 	switch {
 	case f2b.Stale:
 		return PostureFinding{Severity: SeverityWarn, Code: "fail2ban",
@@ -269,4 +279,19 @@ func (p *Posture) fail2banFinding(ctx context.Context) PostureFinding {
 			Title:   "fail2ban active",
 			Message: "fail2ban is running with active jails, banning abusive IPs."}
 	}
+}
+
+// hostMonitorOff is the neutral finding shown when VAC has no host data for a
+// firewall/fail2ban check. If the agent is enabled it's a warning (it should be
+// reporting); if it's off it's an informational OK row inviting opt-in, so an
+// operator who deliberately didn't install the agent isn't nagged.
+func (p *Posture) hostMonitorOff(code, what string) PostureFinding {
+	if p.cfg.HostAgentEnabled {
+		return PostureFinding{Severity: SeverityWarn, Code: code,
+			Title:   what + " state unavailable",
+			Message: "The host security agent is enabled but hasn't reported yet. Check that the vac-security-agent timer is running on the host."}
+	}
+	return PostureFinding{Severity: SeverityOK, Code: code,
+		Title:   what + " monitoring off",
+		Message: "Host " + what + " monitoring is off. Enable the read-only host agent with `vac security-agent on` to surface " + what + " status here."}
 }

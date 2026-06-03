@@ -104,8 +104,12 @@ func (f *fakePostureHost) Fail2ban(context.Context) Fail2banState { return f.f2b
 
 func TestPosture_FirewallAbsentIsError(t *testing.T) {
 	st := &fakePostureStore{}
-	host := &fakePostureHost{fw: FirewallState{Detected: false}, f2b: Fail2banState{Detected: false}}
-	p := NewPosture(st, host, PostureConfig{ExpectFirewall: true, ExpectFail2ban: true})
+	// Agent reporting (Source set) but nothing found → genuine absence.
+	host := &fakePostureHost{
+		fw:  FirewallState{Detected: false, Source: "agent"},
+		f2b: Fail2banState{Detected: false, Source: "agent"},
+	}
+	p := NewPosture(st, host, PostureConfig{HostAgentEnabled: true, ExpectFirewall: true, ExpectFail2ban: true})
 	findings := p.Check(context.Background())
 	if f, _ := find(findings, "firewall"); f.Severity != SeverityError {
 		t.Errorf("absent firewall should be error, got %v", f.Severity)
@@ -118,10 +122,10 @@ func TestPosture_FirewallAbsentIsError(t *testing.T) {
 func TestPosture_FirewallActiveIsOK(t *testing.T) {
 	st := &fakePostureStore{}
 	host := &fakePostureHost{
-		fw:  FirewallState{Detected: true, Active: true, Backend: "ufw"},
-		f2b: Fail2banState{Detected: true, Jails: []Fail2banJail{{Name: "sshd"}}},
+		fw:  FirewallState{Detected: true, Active: true, Backend: "ufw", Source: "agent"},
+		f2b: Fail2banState{Detected: true, Jails: []Fail2banJail{{Name: "sshd"}}, Source: "agent"},
 	}
-	p := NewPosture(st, host, PostureConfig{ExpectFirewall: true, ExpectFail2ban: true})
+	p := NewPosture(st, host, PostureConfig{HostAgentEnabled: true, ExpectFirewall: true, ExpectFail2ban: true})
 	findings := p.Check(context.Background())
 	if f, _ := find(findings, "firewall"); f.Severity != SeverityOK {
 		t.Errorf("active firewall should be OK, got %v", f.Severity)
@@ -133,15 +137,44 @@ func TestPosture_FirewallActiveIsOK(t *testing.T) {
 
 func TestPosture_OptOutSuppressesWarning(t *testing.T) {
 	st := &fakePostureStore{}
-	host := &fakePostureHost{fw: FirewallState{Detected: false}, f2b: Fail2banState{Detected: false}}
+	host := &fakePostureHost{
+		fw:  FirewallState{Detected: false, Source: "agent"},
+		f2b: Fail2banState{Detected: false, Source: "agent"},
+	}
 	// Operator opted out of both checks — absence must not warn.
-	p := NewPosture(st, host, PostureConfig{ExpectFirewall: false, ExpectFail2ban: false})
+	p := NewPosture(st, host, PostureConfig{HostAgentEnabled: true, ExpectFirewall: false, ExpectFail2ban: false})
 	findings := p.Check(context.Background())
 	if f, _ := find(findings, "firewall"); f.Severity != SeverityOK {
 		t.Errorf("opted-out firewall should be OK, got %v", f.Severity)
 	}
 	if f, _ := find(findings, "fail2ban"); f.Severity != SeverityOK {
 		t.Errorf("opted-out fail2ban should be OK, got %v", f.Severity)
+	}
+}
+
+func TestPosture_AgentOffIsNeutral(t *testing.T) {
+	st := &fakePostureStore{}
+	// No host data at all (Source unset) and agent off → neutral "monitoring off",
+	// never a false "no firewall" alarm.
+	host := &fakePostureHost{fw: FirewallState{Detected: false}, f2b: Fail2banState{Detected: false}}
+	p := NewPosture(st, host, PostureConfig{HostAgentEnabled: false, ExpectFirewall: true, ExpectFail2ban: true})
+	findings := p.Check(context.Background())
+	if f, _ := find(findings, "firewall"); f.Severity != SeverityOK {
+		t.Errorf("firewall with agent off should be neutral OK, got %v", f.Severity)
+	}
+	if f, _ := find(findings, "fail2ban"); f.Severity != SeverityOK {
+		t.Errorf("fail2ban with agent off should be neutral OK, got %v", f.Severity)
+	}
+}
+
+func TestPosture_AgentEnabledButSilentWarns(t *testing.T) {
+	st := &fakePostureStore{}
+	// Agent enabled but no data yet (Source unset) → warn it isn't reporting.
+	host := &fakePostureHost{fw: FirewallState{Detected: false}, f2b: Fail2banState{Detected: false}}
+	p := NewPosture(st, host, PostureConfig{HostAgentEnabled: true, ExpectFirewall: true, ExpectFail2ban: true})
+	findings := p.Check(context.Background())
+	if f, _ := find(findings, "firewall"); f.Severity != SeverityWarn {
+		t.Errorf("enabled-but-silent firewall should warn, got %v", f.Severity)
 	}
 }
 

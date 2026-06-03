@@ -120,15 +120,24 @@ type Config struct {
 	SecurityWindow       time.Duration `yaml:"security_window"`
 	SecurityCooldown     time.Duration `yaml:"security_cooldown"`
 
-	// SecurityDir is the directory the host-side security agent
-	// (scripts/vac-security-agent.sh) writes its fail2ban/firewall snapshot into,
-	// bind-mounted read-only into the sandboxed control plane. The posture
-	// checklist warns when no firewall/fail2ban is found unless the operator opts
-	// out via SecurityExpectFirewall / SecurityExpectFail2ban (a box with no
-	// firewall is dangerous, so the warning is on by default).
-	SecurityDir            string `yaml:"security_dir"`
-	SecurityExpectFirewall bool   `yaml:"security_expect_firewall"`
-	SecurityExpectFail2ban bool   `yaml:"security_expect_fail2ban"`
+	// SecurityAgent records whether the operator opted into the host-side security
+	// agent (scripts/vac-security-agent.sh) — an opt-in, like EnableShell /
+	// ManagedServices, because it installs a host-level systemd timer/cron outside
+	// the compose stack. It's the only knob that mutates the host, so it stays off
+	// until explicitly enabled (`vac security-agent on`). When off, the posture
+	// checklist reports host firewall/fail2ban state as "monitoring off" rather
+	// than a false "not detected" (the sandboxed control plane genuinely can't see
+	// host state without the agent).
+	SecurityAgent bool `yaml:"security_agent"`
+	// SecurityDir is the directory the host agent writes its fail2ban/firewall
+	// snapshot into, bind-mounted read-only into the control plane.
+	SecurityDir string `yaml:"security_dir"`
+	// SecurityExpectFirewall / SecurityExpectFail2ban gate the warn-when-missing
+	// posture findings (only meaningful when the agent is enabled and reporting).
+	// On by default — a box with no firewall is dangerous — but opt-out-able via
+	// `vac security-check firewall|fail2ban off` for operators who run neither.
+	SecurityExpectFirewall bool `yaml:"security_expect_firewall"`
+	SecurityExpectFail2ban bool `yaml:"security_expect_fail2ban"`
 
 	// Build metadata injected by main() from ldflags vars; surfaced by the
 	// instance-info endpoint. Not read from env/yaml.
@@ -184,6 +193,7 @@ func Default() Config {
 		SecurityWindow:       time.Minute,
 		SecurityCooldown:     10 * time.Minute,
 
+		SecurityAgent:          false, // opt-in; installs a host-level timer
 		SecurityDir:            "/var/lib/vac/security",
 		SecurityExpectFirewall: true,
 		SecurityExpectFail2ban: true,
@@ -416,6 +426,9 @@ func applyEnv(cfg *Config) {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			cfg.SecurityCooldown = d
 		}
+	}
+	if v := os.Getenv("VAC_SECURITY_AGENT"); v != "" {
+		cfg.SecurityAgent = v == "true" || v == "1"
 	}
 	if v := os.Getenv("VAC_SECURITY_DIR"); v != "" {
 		cfg.SecurityDir = v

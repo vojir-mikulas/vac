@@ -333,12 +333,14 @@ function Fail2banPanel() {
       <SectionHeader>fail2ban</SectionHeader>
       {isLoading ? (
         <Skeleton className="h-32 w-full rounded-xl" />
-      ) : data?.stale ? (
+      ) : !data?.source ? (
+        <MonitoringOffState />
+      ) : data.stale ? (
         <EmptyState
           title="Host agent not reporting"
           description="The host security agent hasn't refreshed recently, so fail2ban state may be out of date. Check the vac-security-agent timer on the host."
         />
-      ) : !data?.detected ? (
+      ) : !data.detected ? (
         <EmptyState
           title="Not detected"
           description="fail2ban is not installed or readable on this host — recommended on an internet-facing box. See the Posture panel."
@@ -374,6 +376,18 @@ function Fail2banPanel() {
   )
 }
 
+// MonitoringOffState is shown when VAC has no host data at all (the opt-in host
+// agent isn't enabled). Neutral, not alarming — the sandboxed control plane
+// simply can't see host state until the operator opts in.
+function MonitoringOffState() {
+  return (
+    <EmptyState
+      title="Monitoring off"
+      description="The read-only host security agent isn't enabled, so VAC can't see host state. Turn it on with `vac security-agent on`."
+    />
+  )
+}
+
 // HostSourceFooter notes where the fail2ban/firewall read came from and how fresh
 // it is — "via host agent · updated 12s ago" — so a stale/absent agent is legible.
 function HostSourceFooter({ source, generatedAt }: { source?: string; generatedAt?: string }) {
@@ -396,12 +410,14 @@ function FirewallPanel() {
       <SectionHeader>Firewall</SectionHeader>
       {isLoading ? (
         <Skeleton className="h-32 w-full rounded-xl" />
-      ) : data?.stale ? (
+      ) : !data?.source ? (
+        <MonitoringOffState />
+      ) : data.stale ? (
         <EmptyState
           title="Host agent not reporting"
           description="The host security agent hasn't refreshed recently, so firewall state may be out of date. Check the vac-security-agent timer on the host."
         />
-      ) : !data?.detected ? (
+      ) : !data.detected ? (
         <Card className="gap-1 border-warn/40 bg-warn/5 p-4">
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-4 text-warn" />

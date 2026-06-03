@@ -239,6 +239,7 @@ func main() {
 		MetricsTokenSet:  cfg.MetricsToken != "",
 		BaseDomainSet:    cfg.BaseDomain != "",
 		AccessLogEnabled: cfg.CaddyAccessLog != "",
+		HostAgentEnabled: cfg.SecurityAgent,
 		ExpectFirewall:   cfg.SecurityExpectFirewall,
 		ExpectFail2ban:   cfg.SecurityExpectFail2ban,
 	})
