@@ -1,20 +1,25 @@
 # 18 — Portability: import on-ramp & export exit-ramp (no lock-in)
 
-**Tier:** Trust moat · **Effort:** L (small track — see phasing) · **Status:** phases 1–2 landed (backend)
+**Tier:** Trust moat · **Effort:** L (small track — see phasing) · **Status:** phases 1–2 landed (backend + UI)
 
-> **Progress (phases 1–2, backend):** the `appspec` core (`vac/v1` types, `FromApp`/`ToApp`,
+> **Progress (phases 1–2, backend + UI):** the `appspec` core (`vac/v1` types, `FromApp`/`ToApp`,
 > round-trip tests) and the spec on-ramp/exit-ramp are implemented:
 > `api/internal/appspec/` (pure types + translation) and `api/internal/portability/`
 > (store/crypto orchestration). Wired as `GET /api/apps/{id}/export` (format=spec),
 > `POST /api/apps/import` (idempotent on slug), and CLI `vac-api export <slug>` /
-> `vac-api apply -f`. Decisions worth noting: services are **pre-created** on import so
-> domains can bind and operator config (internal port, health path) survives; the spec's
-> single `build.composePath` folds to the `compose_file` column (deploy's existing
+> `vac-api apply -f`. The **UI also landed**: an Import dialog on the apps dashboard
+> (`ui/src/features/apps/import-app-dialog.tsx`), an Export action on app detail
+> (`ui/src/features/app-detail/settings-tab.tsx`), and the client in
+> `ui/src/lib/api/portability.ts`. Decisions worth noting: services are **pre-created** on
+> import so domains can bind and operator config (internal port, health path) survives; the
+> spec's single `build.composePath` folds to the `compose_file` column (deploy's existing
 > override→column fallback keeps it functionally identical); sensitive env values are omitted
-> on export and re-pasted on import (reported via `secrets_needed`). **Not yet:** UI
-> (Import paste box / Export action), and **backups + managed databases are deliberately out of
-> the v1 spec** — documented as a gap (they're stateful, not pure config; revisit as additive
-> `vac/v1` fields). Phases 3–5 (sealed instance→instance, compose, k8s) remain.
+> on export and re-pasted on import (reported via `secrets_needed`). **Not yet:** only
+> `format=spec` is implemented — `export` rejects any other format with "only \"spec\" is
+> available (compose/k8s land in later phases)" (`api/internal/admin/portability.go`).
+> **Backups + managed databases are deliberately out of the v1 spec** — documented as a gap
+> (they're stateful, not pure config; revisit as additive `vac/v1` fields). Phases 3–5 (sealed
+> instance→instance, compose, k8s) remain.
 
 ## Goal
 
@@ -165,13 +170,13 @@ A `GET /api/apps/{id}/export?format=…` (+ CLI `vac export <slug>`) producing a
 
 ## Phasing (suggested order)
 
-1. **`appspec` core** — `vac/v1` types + `FromApp`/`ToApp` + round-trip tests. Nothing user-facing;
-   unblocks everything.
-2. **Export `format=spec`** (secrets omitted) + **Import from spec** (re-paste secrets). The
-   minimum honest no-lock-in story; also the DR primitive.
-3. **Instance→instance** (sealed-bundle re-wrap) — the migration/DR path; whole-instance variant.
-4. **Export `format=compose`** (standalone + generated edge).
-5. **Export `format=k8s`** (Kompose + routing/limits overlay + bundle README). The headline
+1. ✅ **`appspec` core** — `vac/v1` types + `FromApp`/`ToApp` + round-trip tests. Nothing user-facing;
+   unblocks everything. **Done.**
+2. ✅ **Export `format=spec`** (secrets omitted) + **Import from spec** (re-paste secrets). The
+   minimum honest no-lock-in story; also the DR primitive. **Done** (backend + CLI + UI).
+3. ⬜ **Instance→instance** (sealed-bundle re-wrap) — the migration/DR path; whole-instance variant.
+4. ⬜ **Export `format=compose`** (standalone + generated edge).
+5. ⬜ **Export `format=k8s`** (Kompose + routing/limits overlay + bundle README). The headline
    exit-ramp; do last, it's the most surface area.
 
 ## Deliberately out of scope (guard the moat)
