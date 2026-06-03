@@ -25,6 +25,13 @@ const VARIANTS: Record<string, Variant> = {
   canceled: { label: 'Canceled', tone: 'muted' },
   stopped: { label: 'Stopped', tone: 'muted' },
   success: { label: 'Success', tone: 'ok' },
+  // Domain DNS/cert states (DomainStatusState — plan 09 F3). Kept distinct so a
+  // misconfigured/error domain doesn't masquerade as "Building".
+  checking: { label: 'Checking', tone: 'warn', pulse: true },
+  awaiting_dns: { label: 'Awaiting DNS', tone: 'warn', pulse: true },
+  issuing: { label: 'Issuing cert', tone: 'warn', pulse: true },
+  active: { label: 'Active', tone: 'ok' },
+  misconfigured: { label: 'Misconfigured', tone: 'err' },
 }
 
 const TONE_CLASSES: Record<Tone, string> = {

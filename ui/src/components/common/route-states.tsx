@@ -1,7 +1,18 @@
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+
+// Shown while a route's beforeLoad/loader is in flight past defaultPendingMs, so
+// a slow gate degrades to a spinner instead of freezing on the previous page.
+export function RoutePendingScreen() {
+  return (
+    <div className="grid min-h-svh place-items-center">
+      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+    </div>
+  )
+}
 
 export function NotFoundScreen() {
   const { t } = useTranslation()

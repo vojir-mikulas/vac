@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api/client'
@@ -45,10 +46,29 @@ export function useActiveDeployments(enabled = true) {
 // tab is hidden.
 export function useActiveDeploymentsStream() {
   const qc = useQueryClient()
+  // App IDs that were mid-deploy in the previous snapshot. When one drops out of
+  // the active set its deploy has settled (the snapshot never carries terminal
+  // rows), so we refresh the views that the completion changes — otherwise the
+  // app's status pill and domains stay frozen at their last value until the 30s
+  // staleTime lapses or the tab refocuses.
+  const prevActive = useRef<Set<string>>(new Set())
   useWebSocket('deployments/stream', {
     onFrame: (frame) => {
-      if (frame.type === 'deployments') {
-        qc.setQueryData(queryKeys.deployments.active, frame.data as ActiveDeployment[])
+      if (frame.type !== 'deployments') return
+      const rows = (frame.data as ActiveDeployment[]) ?? []
+      qc.setQueryData(queryKeys.deployments.active, rows)
+
+      const nowActive = new Set(rows.map((d) => d.app_id))
+      const finished = [...prevActive.current].filter((id) => !nowActive.has(id))
+      prevActive.current = nowActive
+      if (finished.length === 0) return
+
+      qc.invalidateQueries({ queryKey: queryKeys.apps.all })
+      for (const appId of finished) {
+        qc.invalidateQueries({ queryKey: queryKeys.apps.detail(appId) })
+        qc.invalidateQueries({ queryKey: queryKeys.apps.services(appId) })
+        qc.invalidateQueries({ queryKey: queryKeys.apps.domains(appId) })
+        qc.invalidateQueries({ queryKey: queryKeys.apps.deployments(appId) })
       }
     },
   })
@@ -87,13 +107,16 @@ export function useDeployment(appId: string, did: string) {
 }
 
 // useSettleAfterDeploy refreshes the views a new deployment changes: its own
-// history list and the app-detail summary. Shared by the manual-deploy and
-// rollback mutations so their post-deploy refresh stays in lockstep.
+// history list, the app-detail summary, and its domains (auto hosts only exist
+// once the deploy has created services, so a freshly-created app shows none
+// until this fires). Shared by the manual-deploy and rollback mutations so their
+// post-deploy refresh stays in lockstep.
 function useSettleAfterDeploy(appId: string) {
   const qc = useQueryClient()
   return () => {
     qc.invalidateQueries({ queryKey: queryKeys.apps.deployments(appId) })
     qc.invalidateQueries({ queryKey: queryKeys.apps.detail(appId) })
+    qc.invalidateQueries({ queryKey: queryKeys.apps.domains(appId) })
   }
 }
 

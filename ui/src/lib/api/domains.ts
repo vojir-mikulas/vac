@@ -38,10 +38,19 @@ export const domainsApi = {
     api.post<DomainStatus>(`domains/refresh?host=${encodeURIComponent(hostname)}`),
 }
 
+// Per-app domains (custom + derived auto hosts). Polls while any domain is still
+// settling (cert issuing, DNS check) so the app-detail view advances its status
+// live instead of freezing at page-load — mirrors useAllDomains.
 export function useDomains(appId: string) {
   return useQuery({
     queryKey: queryKeys.apps.domains(appId),
     queryFn: () => domainsApi.list(appId),
+    refetchInterval: (query) => {
+      const rows = query.state.data
+      if (!rows) return false
+      const settling = rows.some((d) => d.status && d.status !== 'active' && d.status !== 'error')
+      return settling ? 10_000 : false
+    },
   })
 }
 

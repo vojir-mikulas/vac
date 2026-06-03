@@ -13,7 +13,11 @@ import { routeTree } from './routeTree.gen'
 import { ThemeProvider } from '@/components/theme/theme-provider'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
-import { NotFoundScreen, RouteErrorScreen } from '@/components/common/route-states'
+import {
+  NotFoundScreen,
+  RouteErrorScreen,
+  RoutePendingScreen,
+} from '@/components/common/route-states'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,6 +33,11 @@ const router = createRouter({
   routeTree,
   context: { queryClient },
   defaultPreload: 'intent',
+  // If a route's gate (beforeLoad/loader) runs long, show a spinner instead of
+  // leaving the user on the prior page with the URL already changed.
+  defaultPendingComponent: RoutePendingScreen,
+  defaultPendingMs: 150,
+  defaultPendingMinMs: 300,
   defaultNotFoundComponent: NotFoundScreen,
   defaultErrorComponent: ({ error }) => <RouteErrorScreen error={error} />,
 })

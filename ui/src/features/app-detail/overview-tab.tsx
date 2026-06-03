@@ -110,7 +110,7 @@ export function OverviewTab({ appId }: { appId: string }) {
                         <ExternalLink className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                       </a>
                     </div>
-                    <StatusPill status={d.status === 'active' ? 'success' : 'building'} size="sm" />
+                    <StatusPill status={d.status ?? 'checking'} size="sm" />
                   </div>
                 ))
               ) : (
