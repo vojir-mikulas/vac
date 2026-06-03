@@ -4,12 +4,17 @@ import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
 import type { EnvVar } from '@/types/api'
 
-// Write shape for the full-replace PUT. `value` is always sent; `sensitive`
-// governs only how the value is read back.
+// Write shape for the full-replace PUT. `value` is sent unless `keep` is set;
+// `sensitive` governs only how the value is read back. `write_only` marks the
+// key unrevealable (implies sensitive); `keep` reuses the existing sealed value
+// instead of re-sealing `value` — the only way an untouched write-only secret
+// survives a full-replace, since its plaintext can never be fetched.
 export interface EnvVarInput {
   key: string
   value: string
   sensitive: boolean
+  write_only: boolean
+  keep?: boolean
 }
 
 export const envApi = {

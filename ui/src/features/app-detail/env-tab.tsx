@@ -7,6 +7,8 @@ import {
   Lock,
   LockOpen,
   Plus,
+  ShieldAlert,
+  ShieldCheck,
   Trash2,
   Upload,
 } from 'lucide-react'
@@ -27,12 +29,15 @@ import type { EnvVar } from '@/types/api'
 
 // A single editable row. `value` is null when we don't yet hold the plaintext —
 // i.e. a sensitive var loaded from the server that hasn't been revealed or
-// edited. `dirty`/`isNew` drive the unsaved-change counter; revealing alone is
-// not a change.
+// edited, or a write-only secret (whose plaintext can never be fetched).
+// `dirty`/`isNew` drive the unsaved-change counter; revealing alone is not a
+// change. `writeOnly` is a one-way latch: a persisted write-only row can only be
+// replaced or deleted, never revealed, copied, or downgraded.
 interface Row {
   uid: number
   key: string
   sensitive: boolean
+  writeOnly: boolean
   value: string | null
   revealed: boolean
   dirty: boolean
@@ -63,15 +68,21 @@ export function EnvTab({ appId }: { appId: string }) {
   if (vars && seededFor !== vars) {
     setSeededFor(vars)
     setRows(
-      vars.map((v) => ({
-        uid: newUid(),
-        key: v.key,
-        sensitive: v.sensitive,
-        value: v.sensitive ? (v.value ?? null) : (v.value ?? ''),
-        revealed: !v.sensitive,
-        dirty: false,
-        isNew: false,
-      })),
+      vars.map((v) => {
+        const writeOnly = v.write_only ?? false
+        return {
+          uid: newUid(),
+          key: v.key,
+          sensitive: v.sensitive,
+          writeOnly,
+          // A write-only row never holds plaintext; a sensitive row holds it only
+          // once revealed; a plaintext row always ships its value.
+          value: writeOnly ? null : v.sensitive ? (v.value ?? null) : (v.value ?? ''),
+          revealed: !v.sensitive && !writeOnly,
+          dirty: false,
+          isNew: false,
+        }
+      }),
     )
     setDeletedKeys(new Set())
   }
@@ -88,6 +99,9 @@ export function EnvTab({ appId }: { appId: string }) {
   const reveal = async (uid: number) => {
     const row = list.find((r) => r.uid === uid)
     if (!row) return
+    // Write-only secrets can never be revealed (server returns 403); the UI
+    // hides the eye for them, but guard here too.
+    if (row.writeOnly) return
     if (row.value !== null) {
       patch(uid, { revealed: !row.revealed })
       return
@@ -103,6 +117,8 @@ export function EnvTab({ appId }: { appId: string }) {
   const toggleSensitive = async (uid: number) => {
     const row = list.find((r) => r.uid === uid)
     if (!row) return
+    // A write-only secret is a one-way latch — its lock can't be flipped back.
+    if (row.writeOnly) return
     // Flipping sensitive → plaintext needs the value to display it; fetch first.
     if (row.sensitive && row.value === null) {
       try {
@@ -114,6 +130,24 @@ export function EnvTab({ appId }: { appId: string }) {
       return
     }
     patch(uid, { sensitive: !row.sensitive, revealed: row.sensitive, dirty: true })
+  }
+
+  // Upgrade a row to write-only — effectively irreversible (the value can never
+  // be revealed or copied afterward), so confirm first. A persisted sensitive
+  // row keeps its existing sealed value (resent via `keep` on save); a row the
+  // operator has typed into re-seals that plaintext.
+  const makeWriteOnly = (uid: number) => {
+    const row = list.find((r) => r.uid === uid)
+    if (!row || row.writeOnly) return
+    const ok = window.confirm(
+      `Make ${row.key || 'this variable'} write-only? You won't be able to reveal or copy ` +
+        `its value afterward — only replace or delete it. This cannot be undone.`,
+    )
+    if (!ok) return
+    // Write-only implies sensitive and is always masked. `value` is left as-is:
+    // an unrevealed secret stays null and resends via `keep`; a revealed/new one
+    // re-seals its plaintext.
+    patch(uid, { writeOnly: true, sensitive: true, revealed: false, dirty: true })
   }
 
   const remove = (uid: number) => {
@@ -129,6 +163,7 @@ export function EnvTab({ appId }: { appId: string }) {
         uid: newUid(),
         key: '',
         sensitive: false,
+        writeOnly: false,
         value: '',
         revealed: true,
         dirty: true,
@@ -137,6 +172,9 @@ export function EnvTab({ appId }: { appId: string }) {
     ])
 
   const copyValue = async (row: Row) => {
+    // Write-only secrets can never be copied (the reveal call 403s); the UI
+    // hides the copy button for them, but guard here too.
+    if (row.writeOnly) return
     let value = row.value
     if (value === null) {
       try {
@@ -156,12 +194,16 @@ export function EnvTab({ appId }: { appId: string }) {
       for (const e of entries) {
         const at = out.findIndex((r) => r.key === e.key)
         const existing = at >= 0 ? out[at] : undefined
+        // Importing a value for an existing write-only key replaces it but keeps
+        // the latch — a downgrade would be rejected server-side anyway.
+        const writeOnly = existing?.writeOnly ?? false
         const row: Row = {
           uid: existing?.uid ?? newUid(),
           key: e.key,
-          sensitive: e.sensitive,
+          sensitive: writeOnly || e.sensitive,
+          writeOnly,
           value: e.value,
-          revealed: !e.sensitive,
+          revealed: !writeOnly && !e.sensitive,
           dirty: true,
           isNew: existing ? existing.isNew : true,
         }
@@ -190,12 +232,14 @@ export function EnvTab({ appId }: { appId: string }) {
       return
     }
     // Full-replace PUT needs plaintext for every row; fetch any sensitive value
-    // the operator never revealed or edited.
+    // the operator never revealed or edited. Write-only rows are skipped — their
+    // plaintext can't be fetched (reveal 403s); an untouched one rides through on
+    // the server's `keep` path instead.
     let resolved: Row[]
     try {
       resolved = await Promise.all(
         list.map(async (r) => {
-          if (r.value !== null) return r
+          if (r.value !== null || r.writeOnly) return r
           const res = await envApi.reveal(appId, r.key)
           return { ...r, value: res.value ?? '' }
         }),
@@ -204,11 +248,30 @@ export function EnvTab({ appId }: { appId: string }) {
       toast.error(e instanceof Error ? e.message : 'Could not resolve existing values')
       return
     }
-    const payload: EnvVarInput[] = resolved.map((r) => ({
-      key: r.key.trim(),
-      value: r.value ?? '',
-      sensitive: r.sensitive,
-    }))
+    const payload: EnvVarInput[] = resolved.map((r) => {
+      // Persisted write-only secret the operator never touched: reuse the sealed
+      // bytes server-side (no plaintext to resend) via `keep`.
+      if (!r.isNew && r.writeOnly && r.value === null) {
+        return { key: r.key.trim(), value: '', sensitive: true, write_only: true, keep: true }
+      }
+      // New write-only, or a write-only row given a fresh value: re-seal plaintext.
+      if (r.writeOnly) {
+        return {
+          key: r.key.trim(),
+          value: r.value ?? '',
+          sensitive: true,
+          write_only: true,
+          keep: false,
+        }
+      }
+      return {
+        key: r.key.trim(),
+        value: r.value ?? '',
+        sensitive: r.sensitive,
+        write_only: false,
+        keep: false,
+      }
+    })
     replace.mutate(payload, {
       onSuccess: (res) => {
         toast.success(`Saved ${res.saved} variable${res.saved === 1 ? '' : 's'}`)
@@ -281,6 +344,7 @@ export function EnvTab({ appId }: { appId: string }) {
                   onValue={(value) => patch(row.uid, { value, revealed: true, dirty: true })}
                   onReveal={() => reveal(row.uid)}
                   onToggleSensitive={() => toggleSensitive(row.uid)}
+                  onMakeWriteOnly={() => makeWriteOnly(row.uid)}
                   onCopy={() => copyValue(row)}
                   onRemove={() => remove(row.uid)}
                 />
@@ -322,6 +386,11 @@ export function EnvTab({ appId }: { appId: string }) {
               on demand; <strong className="text-foreground">plaintext</strong> values are editable
               inline. Toggle the lock on any row to switch.
             </p>
+            <p>
+              Mark a secret <strong className="text-foreground">write-only</strong> to make it
+              unrevealable: you can replace or delete it, but VAC will never show or copy its value
+              again.
+            </p>
           </Card>
         </div>
       </div>
@@ -337,6 +406,7 @@ function EnvRow({
   onValue,
   onReveal,
   onToggleSensitive,
+  onMakeWriteOnly,
   onCopy,
   onRemove,
 }: {
@@ -347,10 +417,13 @@ function EnvRow({
   onValue: (value: string) => void
   onReveal: () => void
   onToggleSensitive: () => void
+  onMakeWriteOnly: () => void
   onCopy: () => void
   onRemove: () => void
 }) {
-  const masked = row.sensitive && !row.revealed
+  // A write-only row is masked until the operator types a replacement value
+  // (then it shows what they're entering). A sensitive row masks until revealed.
+  const masked = row.writeOnly ? row.value === null : row.sensitive && !row.revealed
   // Inputs are placeholder-only by design (a per-row visible label would bloat
   // the grid), so each carries an aria-label naming the field and its row.
   const named = row.key || `row ${index}`
@@ -378,24 +451,44 @@ function EnvRow({
         className="h-8 font-mono text-xs"
       />
       <div className="flex items-center gap-1 text-muted-foreground">
-        {row.sensitive ? (
-          <IconButton
-            label={`${row.revealed ? 'Hide' : 'Reveal'} value for ${named}`}
-            pressed={row.revealed}
-            onClick={onReveal}
+        {row.writeOnly ? (
+          // One-way latch: no reveal, no copy, no lock toggle — only replace
+          // (type a new value) or delete. The shield badge marks it visually.
+          <span
+            title="Write-only — cannot be revealed"
+            aria-label={`${named} is write-only and cannot be revealed`}
+            className="grid size-7 place-items-center text-warn"
           >
-            {row.revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-          </IconButton>
-        ) : null}
-        <IconButton
-          label={row.sensitive ? `Mark ${named} plaintext` : `Mark ${named} sensitive`}
-          onClick={onToggleSensitive}
-        >
-          {row.sensitive ? <Lock className="size-3.5" /> : <LockOpen className="size-3.5" />}
-        </IconButton>
-        <IconButton label={`Copy value for ${named}`} onClick={onCopy}>
-          <Copy className="size-3.5" />
-        </IconButton>
+            <ShieldCheck className="size-3.5" />
+          </span>
+        ) : (
+          <>
+            {row.sensitive ? (
+              <IconButton
+                label={`${row.revealed ? 'Hide' : 'Reveal'} value for ${named}`}
+                pressed={row.revealed}
+                onClick={onReveal}
+              >
+                {row.revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+              </IconButton>
+            ) : null}
+            <IconButton
+              label={row.sensitive ? `Mark ${named} plaintext` : `Mark ${named} sensitive`}
+              onClick={onToggleSensitive}
+            >
+              {row.sensitive ? <Lock className="size-3.5" /> : <LockOpen className="size-3.5" />}
+            </IconButton>
+            <IconButton label={`Copy value for ${named}`} onClick={onCopy}>
+              <Copy className="size-3.5" />
+            </IconButton>
+            <IconButton
+              label={`Make ${named} write-only (cannot be revealed)`}
+              onClick={onMakeWriteOnly}
+            >
+              <ShieldAlert className="size-3.5" />
+            </IconButton>
+          </>
+        )}
         <IconButton label={`Delete ${named}`} onClick={onRemove}>
           <Trash2 className="size-3.5" />
         </IconButton>

@@ -155,6 +155,9 @@ export interface DeploymentLogLine {
 export interface EnvVar {
   key: string
   sensitive: boolean
+  // A write-only secret can be set/replaced or deleted but never read back
+  // (reveal → 403). Implies `sensitive`. The value is always omitted.
+  write_only?: boolean
   value?: string
 }
 
