@@ -16,7 +16,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { CardStackSkeleton } from '@/components/common/card-stack-skeleton'
+import { SwapFade } from '@/components/common/swap-fade'
 import { EmptyState } from '@/components/common/empty-state'
 import { SectionHeader } from '@/components/common/section-header'
 import { StatusPill } from '@/components/common/status-pill'
@@ -41,20 +42,24 @@ export function DeploysTab({ appId }: { appId: string }) {
     <div className="flex flex-col gap-4">
       <SectionHeader className="mb-0">History</SectionHeader>
 
-      {isLoading ? (
-        <Skeleton className="h-40 w-full rounded-xl" />
-      ) : deployments && deployments.length > 0 ? (
-        <div className="flex flex-col gap-2">
-          {deployments.map((d) => (
-            <DeployRow key={d.id} deployment={d} isCurrent={d.id === currentId} />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          title="No deployments yet"
-          description="Trigger a deploy from your configured branch to get started."
-        />
-      )}
+      <SwapFade
+        id={isLoading ? 'loading' : deployments && deployments.length > 0 ? 'rows' : 'empty'}
+      >
+        {isLoading ? (
+          <CardStackSkeleton count={5} rowHeight="h-12" gap="gap-2" />
+        ) : deployments && deployments.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {deployments.map((d) => (
+              <DeployRow key={d.id} deployment={d} isCurrent={d.id === currentId} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="No deployments yet"
+            description="Trigger a deploy from your configured branch to get started."
+          />
+        )}
+      </SwapFade>
     </div>
   )
 }

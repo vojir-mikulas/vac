@@ -5,8 +5,9 @@ import { SectionHeader } from '@/components/common/section-header'
 import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { StatusPill } from '@/components/common/status-pill'
 import { EmptyState } from '@/components/common/empty-state'
+import { ListSkeleton } from '@/components/common/list-skeleton'
+import { StatStripSkeleton } from '@/components/common/stat-strip-skeleton'
 import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   useFail2ban,
   useFirewall,
@@ -55,7 +56,7 @@ function PosturePanel() {
     <>
       <SectionHeader>Posture</SectionHeader>
       {isLoading ? (
-        <Skeleton className="h-40 w-full rounded-xl" />
+        <ListSkeleton rows={5} avatar />
       ) : !data || data.length === 0 ? (
         <EmptyState title="No posture checks" description="The posture checklist is unavailable." />
       ) : (
@@ -153,7 +154,10 @@ function TrafficPanel() {
     <>
       <SectionHeader>Traffic</SectionHeader>
       {isLoading ? (
-        <Skeleton className="h-40 w-full rounded-xl" />
+        <div className="flex flex-col gap-4">
+          <StatStripSkeleton />
+          <ListSkeleton rows={4} />
+        </div>
       ) : (
         <>
           <div className="mb-4">
@@ -332,7 +336,7 @@ function Fail2banPanel() {
     <div>
       <SectionHeader>fail2ban</SectionHeader>
       {isLoading ? (
-        <Skeleton className="h-32 w-full rounded-xl" />
+        <ListSkeleton rows={3} />
       ) : !data?.source ? (
         <MonitoringOffState />
       ) : data.stale ? (
@@ -415,7 +419,7 @@ function FirewallPanel() {
     <div>
       <SectionHeader>Firewall</SectionHeader>
       {isLoading ? (
-        <Skeleton className="h-32 w-full rounded-xl" />
+        <ListSkeleton rows={3} />
       ) : !data?.source ? (
         <MonitoringOffState />
       ) : data.stale ? (

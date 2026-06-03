@@ -1,13 +1,16 @@
 import { useState } from 'react'
+import { m } from 'motion/react'
 import { Bot, Eye, Undo2, User } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { SectionHeader } from '@/components/common/section-header'
 import { EmptyState } from '@/components/common/empty-state'
+import { ListSkeleton } from '@/components/common/list-skeleton'
+import { SwapFade } from '@/components/common/swap-fade'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { listItem } from '@/lib/motion'
 import { useActivity, useRevertActivity, type AuditEntry } from '@/lib/api/audit'
 import { relativeTime } from '@/lib/format'
 import { ActivityDiffDialog } from './activity-diff-dialog'
@@ -33,27 +36,29 @@ export function ActivityFeed() {
       />
 
       <SectionHeader>Recent activity</SectionHeader>
-      {isLoading ? (
-        <Skeleton className="h-40 w-full rounded-xl" />
-      ) : entries.length === 0 ? (
-        <EmptyState
-          title="No activity yet"
-          description="Changes to apps, env vars, domains, and settings will appear here."
-        />
-      ) : (
-        <Card className="gap-0 p-0">
-          {entries.map((e, i) => (
-            <ActivityRow
-              key={e.id}
-              entry={e}
-              first={i === 0}
-              onRevert={() => onRevert(e)}
-              onPreview={() => setPreview(e)}
-              reverting={revert.isPending && revert.variables === e.id}
-            />
-          ))}
-        </Card>
-      )}
+      <SwapFade id={isLoading ? 'loading' : entries.length === 0 ? 'empty' : 'feed'}>
+        {isLoading ? (
+          <ListSkeleton rows={6} avatar />
+        ) : entries.length === 0 ? (
+          <EmptyState
+            title="No activity yet"
+            description="Changes to apps, env vars, domains, and settings will appear here."
+          />
+        ) : (
+          <Card className="gap-0 p-0">
+            {entries.map((e, i) => (
+              <ActivityRow
+                key={e.id}
+                entry={e}
+                index={i}
+                onRevert={() => onRevert(e)}
+                onPreview={() => setPreview(e)}
+                reverting={revert.isPending && revert.variables === e.id}
+              />
+            ))}
+          </Card>
+        )}
+      </SwapFade>
 
       {preview && <ActivityDiffDialog entry={preview} onClose={() => setPreview(null)} />}
     </PageContainer>
@@ -62,20 +67,26 @@ export function ActivityFeed() {
 
 function ActivityRow({
   entry,
-  first,
+  index,
   onRevert,
   onPreview,
   reverting,
 }: {
   entry: AuditEntry
-  first: boolean
+  index: number
   onRevert: () => void
   onPreview: () => void
   reverting: boolean
 }) {
   const failed = entry.status_code >= 400
   return (
-    <div className={`flex items-center gap-3 px-5 py-3 ${first ? '' : 'border-t'}`}>
+    <m.div
+      custom={index}
+      variants={listItem}
+      initial="hidden"
+      animate="visible"
+      className={`flex items-center gap-3 px-5 py-3 ${index === 0 ? '' : 'border-t'}`}
+    >
       <ActorIcon type={entry.actor_type} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm">
@@ -101,7 +112,7 @@ function ActivityRow({
           Revert
         </Button>
       ) : null}
-    </div>
+    </m.div>
   )
 }
 

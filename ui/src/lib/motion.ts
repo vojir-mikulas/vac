@@ -48,17 +48,33 @@ export const fadeUp: Variants = {
   exit: { opacity: 0, y: -RISE, transition: transition.fast },
 }
 
-// Stagger container for lists. Children use `listItem`. Keep the stagger short so
-// long lists don't cascade forever — callers should cap how many rows opt in.
-export const staggerContainer: Variants = {
+// How many leading rows get a staggered delay. Beyond this they all settle together,
+// so a 200-row list never cascades for seconds.
+const STAGGER_CAP = 12
+const STAGGER_STEP = 0.03
+
+// List container: just propagates `initial`/`animate` to its `listItem` children.
+// Per-item delay is computed from `custom` (the row index) so it can be capped —
+// pass `custom={i}` on each item.
+export const listContainer: Variants = {
   hidden: {},
-  visible: {
-    transition: { staggerChildren: 0.03 },
-  },
+  visible: {},
 }
 
 export const listItem: Variants = {
   hidden: { opacity: 0, y: RISE },
-  visible: { opacity: 1, y: 0, transition: transition.base },
-  exit: { opacity: 0, transition: transition.fast },
+  visible: (i: number = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { ...transition.base, delay: Math.min(i, STAGGER_CAP) * STAGGER_STEP },
+  }),
 }
+
+// Hover-lift micro-interaction for interactive cards: a 2px rise on hover and a
+// faint press on tap. Spread onto a motion element. Kept tiny on purpose — a hint
+// of depth, not a bounce.
+export const hoverLift = {
+  whileHover: { y: -2 },
+  whileTap: { scale: 0.99 },
+  transition: transition.fast,
+} as const

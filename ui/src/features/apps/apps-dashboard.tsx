@@ -1,4 +1,5 @@
 import { useDeferredValue, useMemo, useState } from 'react'
+import { m } from 'motion/react'
 import { Link } from '@tanstack/react-router'
 import {
   Blocks,
@@ -21,7 +22,7 @@ import { EmptyState } from '@/components/common/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { ListSkeleton } from '@/components/common/list-skeleton'
 import {
   Table,
   TableBody,
@@ -30,7 +31,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { SwapFade } from '@/components/common/swap-fade'
 import { cn } from '@/lib/utils'
+import { listItem } from '@/lib/motion'
 import { useApps } from '@/lib/api/apps'
 import { useBoxBudget, useHostStats } from '@/lib/api/metrics'
 import { formatBytes, formatPercent, relativeTime } from '@/lib/format'
@@ -157,58 +160,62 @@ export function AppsDashboard() {
             </div>
           </div>
 
-          {isLoading ? (
-            <AppsTableSkeleton />
-          ) : list.length === 0 ? (
-            <EmptyState
-              icon={Boxes}
-              title="No apps yet"
-              description="Connect a repository to deploy your first app, or import an existing vac.app.yaml spec."
-              action={
-                <>
-                  <Button variant="brand" asChild>
-                    <Link to="/apps/new">
-                      <Plus className="size-4" />
-                      New App
-                    </Link>
-                  </Button>
-                  <Button variant="outline" onClick={() => setImportOpen(true)}>
-                    <Download className="size-4" />
-                    Import
-                  </Button>
-                </>
-              }
-            />
-          ) : (
-            <div className="overflow-hidden rounded-xl border">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-surface-1 hover:bg-surface-1">
-                    <TableHead className="text-2xs uppercase tracking-wider">Application</TableHead>
-                    <TableHead className="text-2xs uppercase tracking-wider">Status</TableHead>
-                    <TableHead className="text-2xs uppercase tracking-wider">Compose</TableHead>
-                    <TableHead className="text-2xs uppercase tracking-wider">Updated</TableHead>
-                    <TableHead className="w-10" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((app) => (
-                    <AppRow key={app.id} app={app} />
-                  ))}
-                  {filtered.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="py-10 text-center text-sm text-muted-foreground"
-                      >
-                        No apps match the current filter.
-                      </TableCell>
+          <SwapFade id={isLoading ? 'loading' : list.length === 0 ? 'empty' : 'table'}>
+            {isLoading ? (
+              <AppsTableSkeleton />
+            ) : list.length === 0 ? (
+              <EmptyState
+                icon={Boxes}
+                title="No apps yet"
+                description="Connect a repository to deploy your first app, or import an existing vac.app.yaml spec."
+                action={
+                  <>
+                    <Button variant="brand" asChild>
+                      <Link to="/apps/new">
+                        <Plus className="size-4" />
+                        New App
+                      </Link>
+                    </Button>
+                    <Button variant="outline" onClick={() => setImportOpen(true)}>
+                      <Download className="size-4" />
+                      Import
+                    </Button>
+                  </>
+                }
+              />
+            ) : (
+              <div className="overflow-hidden rounded-xl border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-surface-1 hover:bg-surface-1">
+                      <TableHead className="text-2xs uppercase tracking-wider">
+                        Application
+                      </TableHead>
+                      <TableHead className="text-2xs uppercase tracking-wider">Status</TableHead>
+                      <TableHead className="text-2xs uppercase tracking-wider">Compose</TableHead>
+                      <TableHead className="text-2xs uppercase tracking-wider">Updated</TableHead>
+                      <TableHead className="w-10" />
                     </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((app, i) => (
+                      <AppRow key={app.id} app={app} index={i} />
+                    ))}
+                    {filtered.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          className="py-10 text-center text-sm text-muted-foreground"
+                        >
+                          No apps match the current filter.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </SwapFade>
         </div>
 
         <div className="lg:w-80 lg:shrink-0">
@@ -268,11 +275,21 @@ export function AppsDashboard() {
   )
 }
 
-function AppRow({ app }: { app: App }) {
+// Animated table row: capped stagger entrance (via `index`) and `layout` so the
+// rows above a filtered-out one glide up instead of snapping. Carries TableRow's
+// own classes inline since motion needs to own the <tr> element directly.
+function AppRow({ app, index }: { app: App; index: number }) {
   const isAddon = app.source === 'template'
   const brand = isAddon ? brandFor(app.template_icon) : null
   return (
-    <TableRow className="cursor-pointer">
+    <m.tr
+      layout
+      custom={index}
+      variants={listItem}
+      initial="hidden"
+      animate="visible"
+      className="cursor-pointer border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted"
+    >
       <TableCell>
         <Link to="/apps/$appId" params={{ appId: app.id }} className="flex items-center gap-3">
           <span className="grid size-8 shrink-0 place-items-center rounded-md border bg-surface-2 font-mono text-sm font-semibold uppercase">
@@ -312,7 +329,7 @@ function AppRow({ app }: { app: App }) {
           <MoreHorizontal className="size-4" />
         </Button>
       </TableCell>
-    </TableRow>
+    </m.tr>
   )
 }
 
@@ -404,11 +421,5 @@ function BudgetRow({
 }
 
 function AppsTableSkeleton() {
-  return (
-    <div className="flex flex-col gap-2">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <Skeleton key={i} className="h-14 w-full rounded-xl" />
-      ))}
-    </div>
-  )
+  return <ListSkeleton header avatar rows={5} />
 }

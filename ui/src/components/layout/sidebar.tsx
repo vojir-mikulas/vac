@@ -1,4 +1,6 @@
-import { Link } from '@tanstack/react-router'
+import { useId } from 'react'
+import { m } from 'motion/react'
+import { Link, useRouterState } from '@tanstack/react-router'
 import {
   Activity,
   Blocks,
@@ -11,6 +13,7 @@ import {
 } from 'lucide-react'
 
 import { Meter } from '@/components/common/meter'
+import { transition } from '@/lib/motion'
 import { useActiveDeployments } from '@/lib/api/deployments'
 import { useHostStats } from '@/lib/api/metrics'
 import { useInstanceInfo } from '@/lib/api/instance'
@@ -51,6 +54,14 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { data: queue } = useActiveDeployments()
   const security = useSecurityAttention()
   const deployCount = queue?.length ?? 0
+
+  // Which top-level section is active, derived from the path so the highlight pill
+  // can glide to it. Prefix match handles nested routes (/apps/$appId → Apps).
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const isActive = (to: string) => pathname === to || pathname.startsWith(`${to}/`)
+  // Namespace the shared layoutId per mounted sidebar (desktop rail vs mobile
+  // drawer both render this), so their pills don't fight over one layoutId.
+  const pillId = `sidebar-active-${useId()}`
 
   // Per-item attention badge: deploys in flight (brand) and unresolved security
   // posture findings (severity-toned, matching the page's "N issues" banner).
@@ -99,21 +110,31 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <nav aria-label="Primary" className="flex flex-1 flex-col gap-px px-2 py-2.5">
         {nav.map((item) => {
           const badge = badgeFor(item.to)
+          const active = isActive(item.to)
           return (
             <Link
               key={item.to}
               to={item.to}
               onClick={onNavigate}
-              className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-normal text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground data-[status=active]:bg-surface-2 data-[status=active]:font-medium data-[status=active]:text-foreground"
+              className="relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-normal text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground data-[status=active]:font-medium data-[status=active]:text-foreground"
               activeProps={{ 'data-status': 'active', 'aria-current': 'page' }}
             >
-              <item.icon className="size-4" />
-              <span className="flex-1">{item.label}</span>
+              {/* Active highlight: a single shared element that animates between
+                  items via layoutId. Behind the icon/label, which sit relative. */}
+              {active ? (
+                <m.span
+                  layoutId={pillId}
+                  transition={transition.layout}
+                  className="absolute inset-0 rounded-md bg-surface-2"
+                />
+              ) : null}
+              <item.icon className="relative size-4" />
+              <span className="relative flex-1">{item.label}</span>
               {badge ? (
                 <span
                   aria-label={badge.label}
                   className={cn(
-                    'grid min-w-5 place-items-center rounded-full px-1.5 text-2xs font-semibold leading-5',
+                    'relative grid min-w-5 place-items-center rounded-full px-1.5 text-2xs font-semibold leading-5',
                     badge.className,
                   )}
                 >

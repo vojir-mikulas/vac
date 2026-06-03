@@ -6,10 +6,12 @@ import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { BrandIcon } from '@/components/common/brand-icon'
 import { EmptyState } from '@/components/common/empty-state'
 import { StatusPill } from '@/components/common/status-pill'
+import { ListSkeleton } from '@/components/common/list-skeleton'
+import { StatStripSkeleton } from '@/components/common/stat-strip-skeleton'
+import { SwapFade } from '@/components/common/swap-fade'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Meter } from '@/components/common/meter'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
@@ -34,14 +36,29 @@ export function DatabasePage() {
         title="Database"
         description="Every database VAC manages on this box — disk usage, backups, and the app that owns each one."
       />
-      {instance == null ? (
-        <Skeleton className="h-64 w-full rounded-xl" />
-      ) : instance.managed_services ? (
-        <InventoryView />
-      ) : (
-        <ControlPlaneOnlyView />
-      )}
+      <SwapFade
+        id={instance == null ? 'loading' : instance.managed_services ? 'inventory' : 'control'}
+      >
+        {instance == null ? (
+          <DatabaseSkeleton />
+        ) : instance.managed_services ? (
+          <InventoryView />
+        ) : (
+          <ControlPlaneOnlyView />
+        )}
+      </SwapFade>
     </PageContainer>
+  )
+}
+
+// Mirrors the loaded shape — a 4-tile stat strip over a list — so the gate doesn't
+// resize when real data lands.
+function DatabaseSkeleton() {
+  return (
+    <div className="flex flex-col gap-6">
+      <StatStripSkeleton />
+      <ListSkeleton rows={4} />
+    </div>
   )
 }
 
@@ -69,7 +86,7 @@ function InventoryView() {
   const { data: host } = useHostStats()
 
   if (isLoading || !data) {
-    return <Skeleton className="h-64 w-full rounded-xl" />
+    return <DatabaseSkeleton />
   }
 
   const engines = data.engines

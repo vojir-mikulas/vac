@@ -5,8 +5,9 @@ import { ExternalLink, Lock, ShieldAlert } from 'lucide-react'
 import { SectionHeader } from '@/components/common/section-header'
 import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { StatusPill } from '@/components/common/status-pill'
+import { ListSkeleton } from '@/components/common/list-skeleton'
+import { SwapFade } from '@/components/common/swap-fade'
 import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
 import { OverviewPanel } from '@/features/app-detail/overview-panel'
 import { ServicesTable } from '@/features/app-detail/services-table'
 import { TrafficChart } from '@/features/app-detail/traffic-chart'
@@ -62,11 +63,13 @@ export function OverviewTab({ appId }: { appId: string }) {
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 flex-1">
           <SectionHeader>Services</SectionHeader>
-          {isLoading ? (
-            <Skeleton className="h-40 w-full rounded-xl" />
-          ) : (
-            <ServicesTable appId={appId} services={services ?? []} />
-          )}
+          <SwapFade id={isLoading ? 'loading' : 'table'}>
+            {isLoading ? (
+              <ListSkeleton header rows={4} />
+            ) : (
+              <ServicesTable appId={appId} services={services ?? []} />
+            )}
+          </SwapFade>
         </div>
 
         <div className="flex flex-col gap-6 lg:w-80 lg:shrink-0">

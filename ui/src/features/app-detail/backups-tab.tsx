@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { SectionHeader } from '@/components/common/section-header'
 import { EmptyState } from '@/components/common/empty-state'
 import { StatusPill } from '@/components/common/status-pill'
+import { CardStackSkeleton } from '@/components/common/card-stack-skeleton'
+import { SwapFade } from '@/components/common/swap-fade'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -79,21 +81,23 @@ export function BackupsTab({ appId }: { appId: string }) {
         <BackupDialog appId={appId} />
       </div>
 
-      {isLoading ? (
-        <Skeleton className="h-40 w-full rounded-xl" />
-      ) : configs && configs.length > 0 ? (
-        <div className="flex flex-col gap-4">
-          {configs.map((c) => (
-            <BackupCard key={c.id} appId={appId} config={c} />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          icon={Database}
-          title="No backups configured"
-          description="Schedule a dump command for a stateful service — VAC runs it in the container and ships the output to your chosen destination."
-        />
-      )}
+      <SwapFade id={isLoading ? 'loading' : configs && configs.length > 0 ? 'cards' : 'empty'}>
+        {isLoading ? (
+          <CardStackSkeleton count={1} rowHeight="h-36" />
+        ) : configs && configs.length > 0 ? (
+          <div className="flex flex-col gap-4">
+            {configs.map((c) => (
+              <BackupCard key={c.id} appId={appId} config={c} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={Database}
+            title="No backups configured"
+            description="Schedule a dump command for a stateful service — VAC runs it in the container and ships the output to your chosen destination."
+          />
+        )}
+      </SwapFade>
     </div>
   )
 }

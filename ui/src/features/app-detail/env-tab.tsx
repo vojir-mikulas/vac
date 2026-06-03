@@ -3,6 +3,7 @@ import { AlertTriangle, Lock, LockOpen, Plus, Trash2, Upload } from 'lucide-reac
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
+import { SwapFade } from '@/components/common/swap-fade'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -210,28 +211,39 @@ export function EnvTab({ appId }: { appId: string }) {
           ) : null}
 
           <Card className="gap-0 p-0">
-            {isLoading ? (
-              <div className="p-4">
-                <Skeleton className="h-24 w-full" />
-              </div>
-            ) : list.length === 0 ? (
-              <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                No variables yet. Use <strong>Add variable</strong> or <strong>Import .env</strong>.
-              </p>
-            ) : (
-              list.map((row, i) => (
-                <EnvRow
-                  key={row.uid}
-                  row={row}
-                  index={i + 1}
-                  divider={i > 0}
-                  onKey={(key) => patch(row.uid, { key, dirty: true })}
-                  onValue={(value) => patch(row.uid, { value, dirty: true })}
-                  onToggleMode={() => toggleMode(row.uid)}
-                  onRemove={() => remove(row.uid)}
-                />
-              ))
-            )}
+            <SwapFade id={isLoading ? 'loading' : list.length === 0 ? 'empty' : 'rows'}>
+              {isLoading ? (
+                <div className="flex flex-col">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-center gap-3 px-4 py-2.5 ${i > 0 ? 'border-t' : ''}`}
+                    >
+                      <Skeleton className="h-8 w-1/3" />
+                      <Skeleton className="h-8 flex-1" />
+                    </div>
+                  ))}
+                </div>
+              ) : list.length === 0 ? (
+                <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  No variables yet. Use <strong>Add variable</strong> or{' '}
+                  <strong>Import .env</strong>.
+                </p>
+              ) : (
+                list.map((row, i) => (
+                  <EnvRow
+                    key={row.uid}
+                    row={row}
+                    index={i + 1}
+                    divider={i > 0}
+                    onKey={(key) => patch(row.uid, { key, dirty: true })}
+                    onValue={(value) => patch(row.uid, { value, dirty: true })}
+                    onToggleMode={() => toggleMode(row.uid)}
+                    onRemove={() => remove(row.uid)}
+                  />
+                ))
+              )}
+            </SwapFade>
           </Card>
 
           {saveError ? (

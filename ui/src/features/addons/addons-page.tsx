@@ -7,7 +7,7 @@ import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { BrandIcon, brandFor } from '@/components/common/brand-icon'
 import { EmptyState } from '@/components/common/empty-state'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { MotionCard } from '@/components/common/motion-card'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -100,7 +100,7 @@ export function AddonsPage() {
 
 function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }) {
   return (
-    <Card className="flex flex-col gap-3 p-5">
+    <MotionCard className="flex flex-col gap-3 p-5">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           {brandFor(addon.icon) ? (
@@ -132,7 +132,7 @@ function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }
       ) : (
         <InstallDialog addon={addon} />
       )}
-    </Card>
+    </MotionCard>
   )
 }
 
@@ -196,7 +196,7 @@ function DatabaseAddonCard({ addon, count, apps }: { addon: Addon; count: number
   const active = count > 0
 
   return (
-    <Card className="flex flex-col gap-3 p-5">
+    <MotionCard className="flex flex-col gap-3 p-5">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           {brandFor(addon.icon) ? (
@@ -229,7 +229,7 @@ function DatabaseAddonCard({ addon, count, apps }: { addon: Addon; count: number
           </Button>
         ) : null}
       </div>
-    </Card>
+    </MotionCard>
   )
 }
 

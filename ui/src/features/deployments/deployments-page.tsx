@@ -1,3 +1,4 @@
+import { m } from 'motion/react'
 import { Link } from '@tanstack/react-router'
 import { useQueries } from '@tanstack/react-query'
 
@@ -6,8 +7,10 @@ import { SectionHeader } from '@/components/common/section-header'
 import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { StatusPill } from '@/components/common/status-pill'
 import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/common/empty-state'
+import { ListSkeleton } from '@/components/common/list-skeleton'
+import { SwapFade } from '@/components/common/swap-fade'
+import { listItem } from '@/lib/motion'
 import { DeployQueue } from '@/features/deployments/deploy-queue'
 import { useApps } from '@/lib/api/apps'
 import { deploymentsApi, useActiveDeployments } from '@/lib/api/deployments'
@@ -62,44 +65,50 @@ export function DeploymentsPage() {
       <DeployQueue />
 
       <SectionHeader>Timeline</SectionHeader>
-      {isLoading ? (
-        <Skeleton className="h-40 w-full rounded-xl" />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          title="No deployments yet"
-          description="Deploys across all apps will appear here."
-        />
-      ) : (
-        <Card className="gap-0 p-0">
-          <div className="flex items-center gap-4 border-b bg-surface-1 px-5 py-2.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-            <span className="w-32 shrink-0">App</span>
-            <span className="flex-1">Commit</span>
-            <span className="shrink-0">Status</span>
-          </div>
-          {rows.slice(0, 50).map((d, i) => (
-            <div
-              key={d.id}
-              className={`flex items-center gap-4 px-5 py-3 ${i > 0 ? 'border-t' : ''}`}
-            >
-              <Link
-                to="/apps/$appId/deploys"
-                params={{ appId: d.app_id }}
-                className="w-32 shrink-0 truncate font-mono text-xs font-medium hover:underline"
-              >
-                {d.appName}
-              </Link>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm">{d.commit_message ?? 'Deploy'}</div>
-                <div className="font-mono text-2xs text-muted-foreground">
-                  {shortSha(d.commit_sha)} · {relativeTime(d.triggered_at)} ·{' '}
-                  {durationBetween(d.started_at, d.finished_at)}
-                </div>
-              </div>
-              <StatusPill status={d.status} size="sm" />
+      <SwapFade id={isLoading ? 'loading' : rows.length === 0 ? 'empty' : 'timeline'}>
+        {isLoading ? (
+          <ListSkeleton header rows={6} />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title="No deployments yet"
+            description="Deploys across all apps will appear here."
+          />
+        ) : (
+          <Card className="gap-0 p-0">
+            <div className="flex items-center gap-4 border-b bg-surface-1 px-5 py-2.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+              <span className="w-32 shrink-0">App</span>
+              <span className="flex-1">Commit</span>
+              <span className="shrink-0">Status</span>
             </div>
-          ))}
-        </Card>
-      )}
+            {rows.slice(0, 50).map((d, i) => (
+              <m.div
+                key={d.id}
+                custom={i}
+                variants={listItem}
+                initial="hidden"
+                animate="visible"
+                className={`flex items-center gap-4 px-5 py-3 ${i > 0 ? 'border-t' : ''}`}
+              >
+                <Link
+                  to="/apps/$appId/deploys"
+                  params={{ appId: d.app_id }}
+                  className="w-32 shrink-0 truncate font-mono text-xs font-medium hover:underline"
+                >
+                  {d.appName}
+                </Link>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm">{d.commit_message ?? 'Deploy'}</div>
+                  <div className="font-mono text-2xs text-muted-foreground">
+                    {shortSha(d.commit_sha)} · {relativeTime(d.triggered_at)} ·{' '}
+                    {durationBetween(d.started_at, d.finished_at)}
+                  </div>
+                </div>
+                <StatusPill status={d.status} size="sm" />
+              </m.div>
+            ))}
+          </Card>
+        )}
+      </SwapFade>
     </PageContainer>
   )
 }

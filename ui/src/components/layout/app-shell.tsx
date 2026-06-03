@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { AnimatePresence, m } from 'motion/react'
 import { AlertTriangle, X } from 'lucide-react'
 
+import { transition } from '@/lib/motion'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Topbar } from '@/components/layout/topbar'
 import { CommandMenu, useCommandMenu } from '@/components/layout/command-menu'
@@ -58,38 +60,52 @@ function InsecureHTTPBanner() {
       window.sessionStorage.getItem(BANNER_DISMISS_KEY) !== '1',
   )
 
-  if (!show) return null
-
+  // AnimatePresence with initial={false}: the banner is shown on first paint with
+  // no entrance animation, but collapses (height + fade) when dismissed instead of
+  // vanishing. overflow-hidden lets the height animation clip the content cleanly.
   return (
-    <div
-      role="alert"
-      className="flex items-center gap-3 rounded-xl border border-warn-border bg-warn-bg px-4 py-2.5 text-sm text-warn-foreground"
-    >
-      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-warn-foreground/10">
-        <AlertTriangle className="size-4" />
-      </span>
-      <div className="flex-1 leading-snug">
-        <span className="font-medium">You're on plain HTTP — sessions are insecure.</span>{' '}
-        <span className="text-warn-foreground/80">
-          Configure a domain with{' '}
-          <code className="rounded bg-warn-foreground/10 px-1 py-0.5 font-mono text-xs">
-            vac set-domain
-          </code>{' '}
-          to enable HTTPS.
-        </span>
-      </div>
-      <button
-        type="button"
-        aria-label="Dismiss"
-        onClick={() => {
-          window.sessionStorage.setItem(BANNER_DISMISS_KEY, '1')
-          setShow(false)
-        }}
-        className="-mr-1 shrink-0 cursor-pointer rounded-md p-1.5 text-warn-foreground/70 transition-colors hover:bg-warn-foreground/10 hover:text-warn-foreground"
-      >
-        <X className="size-3.5" />
-      </button>
-    </div>
+    <AnimatePresence initial={false}>
+      {show ? (
+        <m.div
+          key="insecure-http"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={transition.base}
+          className="overflow-hidden"
+        >
+          <div
+            role="alert"
+            className="flex items-center gap-3 rounded-xl border border-warn-border bg-warn-bg px-4 py-2.5 text-sm text-warn-foreground"
+          >
+            <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-warn-foreground/10">
+              <AlertTriangle className="size-4" />
+            </span>
+            <div className="flex-1 leading-snug">
+              <span className="font-medium">You're on plain HTTP — sessions are insecure.</span>{' '}
+              <span className="text-warn-foreground/80">
+                Configure a domain with{' '}
+                <code className="rounded bg-warn-foreground/10 px-1 py-0.5 font-mono text-xs">
+                  vac set-domain
+                </code>{' '}
+                to enable HTTPS.
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={() => {
+                window.sessionStorage.setItem(BANNER_DISMISS_KEY, '1')
+                setShow(false)
+              }}
+              className="-mr-1 shrink-0 cursor-pointer rounded-md p-1.5 text-warn-foreground/70 transition-colors hover:bg-warn-foreground/10 hover:text-warn-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        </m.div>
+      ) : null}
+    </AnimatePresence>
   )
 }
 

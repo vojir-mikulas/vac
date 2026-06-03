@@ -6,10 +6,11 @@ import { SectionHeader } from '@/components/common/section-header'
 import { BrandIcon } from '@/components/common/brand-icon'
 import { EmptyState } from '@/components/common/empty-state'
 import { StatusPill } from '@/components/common/status-pill'
+import { CardStackSkeleton } from '@/components/common/card-stack-skeleton'
+import { SwapFade } from '@/components/common/swap-fade'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
   DialogContent,
@@ -49,21 +50,23 @@ export function DatabasesTab({ appId }: { appId: string }) {
         <AddDatabaseDialog appId={appId} />
       </div>
 
-      {isLoading ? (
-        <Skeleton className="h-32 w-full rounded-xl" />
-      ) : databases && databases.length > 0 ? (
-        <div className="flex flex-col gap-4">
-          {databases.map((db) => (
-            <DatabaseCard key={db.id} appId={appId} db={db} />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          icon={Database}
-          title="No managed databases"
-          description="Add a database and VAC provisions it, injects the connection string as an env var, and schedules a nightly backup — no manual config."
-        />
-      )}
+      <SwapFade id={isLoading ? 'loading' : databases && databases.length > 0 ? 'cards' : 'empty'}>
+        {isLoading ? (
+          <CardStackSkeleton count={1} rowHeight="h-36" />
+        ) : databases && databases.length > 0 ? (
+          <div className="flex flex-col gap-4">
+            {databases.map((db) => (
+              <DatabaseCard key={db.id} appId={appId} db={db} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={Database}
+            title="No managed databases"
+            description="Add a database and VAC provisions it, injects the connection string as an env var, and schedules a nightly backup — no manual config."
+          />
+        )}
+      </SwapFade>
     </div>
   )
 }

@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Skeleton } from '@/components/ui/skeleton'
+import { ListSkeleton } from '@/components/common/list-skeleton'
+import { SwapFade } from '@/components/common/swap-fade'
 import { DomainConfigPanel } from '@/features/settings/domain-config-panel'
 import { DomainStatusBadge } from '@/features/settings/domain-status-badge'
 import { useCreateDomain, useDeleteDomain, useDomains } from '@/lib/api/domains'
@@ -29,23 +30,23 @@ export function AppDomainsSection({ appId }: { appId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {isLoading ? (
-        <Card className="p-5">
-          <Skeleton className="h-20 w-full" />
-        </Card>
-      ) : domains && domains.length > 0 ? (
-        <Card className="gap-0 p-0">
-          {domains.map((d, i) => (
-            <AppDomainRow key={d.id || d.hostname} appId={appId} domain={d} border={i > 0} />
-          ))}
-        </Card>
-      ) : (
-        <Card className="p-5">
-          <p className="text-center text-sm text-muted-foreground">
-            No custom domains. This app is reachable at its automatic subdomain.
-          </p>
-        </Card>
-      )}
+      <SwapFade id={isLoading ? 'loading' : domains && domains.length > 0 ? 'rows' : 'empty'}>
+        {isLoading ? (
+          <ListSkeleton rows={2} />
+        ) : domains && domains.length > 0 ? (
+          <Card className="gap-0 p-0">
+            {domains.map((d, i) => (
+              <AppDomainRow key={d.id || d.hostname} appId={appId} domain={d} border={i > 0} />
+            ))}
+          </Card>
+        ) : (
+          <Card className="p-5">
+            <p className="text-center text-sm text-muted-foreground">
+              No custom domains. This app is reachable at its automatic subdomain.
+            </p>
+          </Card>
+        )}
+      </SwapFade>
 
       <AddAppDomain appId={appId} />
     </div>

@@ -1,5 +1,6 @@
 import { SectionHeader } from '@/components/common/section-header'
-import { Skeleton } from '@/components/ui/skeleton'
+import { CardStackSkeleton } from '@/components/common/card-stack-skeleton'
+import { SwapFade } from '@/components/common/swap-fade'
 import { EmptyState } from '@/components/common/empty-state'
 import { ServiceCard } from '@/features/app-detail/service-card'
 import { StackControls } from '@/features/app-detail/stack-controls'
@@ -25,25 +26,27 @@ export function ServicesTab({ appId }: { appId: string }) {
         <StackControls appId={appId} status={app?.status} />
       </div>
 
-      {isLoading ? (
-        <Skeleton className="h-44 w-full rounded-xl" />
-      ) : services && services.length > 0 ? (
-        <div className="flex flex-col gap-4">
-          {services.map((svc) => (
-            <ServiceCard
-              key={svc.id}
-              appId={appId}
-              service={svc}
-              noBackupWarning={managed && !backedUp.has(svc.name)}
-            />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          title="No services detected"
-          description="Services appear here after the first successful deploy."
-        />
-      )}
+      <SwapFade id={isLoading ? 'loading' : services && services.length > 0 ? 'cards' : 'empty'}>
+        {isLoading ? (
+          <CardStackSkeleton count={2} rowHeight="h-36" />
+        ) : services && services.length > 0 ? (
+          <div className="flex flex-col gap-4">
+            {services.map((svc) => (
+              <ServiceCard
+                key={svc.id}
+                appId={appId}
+                service={svc}
+                noBackupWarning={managed && !backedUp.has(svc.name)}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="No services detected"
+            description="Services appear here after the first successful deploy."
+          />
+        )}
+      </SwapFade>
     </div>
   )
 }
