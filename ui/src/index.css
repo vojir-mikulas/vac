@@ -279,3 +279,88 @@
   background: color-mix(in oklch, var(--brand), white 70%);
   color: color-mix(in oklch, var(--brand), black 35%);
 }
+
+/* ── Auth backdrop: cursor-scanned dot/grid lattice + brand aurora ──────────
+   Decorative layers for the login/setup screens (see auth-background.tsx).
+   Neutral and theme-aware: dots and grid lines are foreground-tinted, so they
+   read on both the light and dark surface as `--foreground` flips with the
+   theme. Each lattice has a faint always-on base plus a "bright" copy that is
+   revealed only through a moving radial mask (set in JS) — a spotlight that
+   follows the pointer. Base and bright share size/position so they align. */
+.scan-field,
+.scan-field-bright {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-size: 24px 24px;
+}
+.scan-field {
+  background-image: radial-gradient(
+    color-mix(in oklch, var(--foreground), transparent 92%) 1.2px,
+    transparent 1.6px
+  );
+}
+.scan-field-bright {
+  background-image: radial-gradient(
+    color-mix(in oklch, var(--foreground), transparent 72%) 1.4px,
+    transparent 1.9px
+  );
+}
+
+/* Corner grid — full-page lattice clipped to the bottom-left corner by a fade
+   mask, offset 12px so the cells sit under the dot matrix. `.auth-grid` is the
+   faint base; `.auth-grid-bright` (nested in `.auth-corner-clip`) is the same
+   lattice at full strength, lit up where the scan meets the corner. */
+.auth-grid,
+.auth-grid-bright {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-size: 24px 24px;
+  background-position: 12px 12px;
+}
+.auth-grid {
+  background-image:
+    linear-gradient(color-mix(in oklch, var(--foreground), transparent 94%) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      color-mix(in oklch, var(--foreground), transparent 94%) 1px,
+      transparent 1px
+    );
+  mask-image: radial-gradient(300px at bottom left, #000 26%, transparent 82%);
+  -webkit-mask-image: radial-gradient(300px at bottom left, #000 26%, transparent 82%);
+}
+.auth-grid-bright {
+  background-image:
+    linear-gradient(color-mix(in oklch, var(--foreground), transparent 84%) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      color-mix(in oklch, var(--foreground), transparent 84%) 1px,
+      transparent 1px
+    );
+}
+.auth-corner-clip {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mask-image: radial-gradient(300px at bottom left, #000 26%, transparent 82%);
+  -webkit-mask-image: radial-gradient(300px at bottom left, #000 26%, transparent 82%);
+}
+
+/* Soft brand glow above the card. JS drives a gentle parallax/breathe on top. */
+.auth-aurora {
+  position: absolute;
+  top: -180px;
+  left: 50%;
+  width: 580px;
+  height: 580px;
+  margin-left: -290px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in oklch, var(--brand), transparent 85%),
+    transparent 68%
+  );
+  filter: blur(44px);
+  pointer-events: none;
+}

@@ -1,3 +1,7 @@
+import { m } from 'motion/react'
+
+import { AuthBackground } from './auth-background'
+
 export function AuthShell({
   title,
   description,
@@ -8,8 +12,14 @@ export function AuthShell({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex min-h-svh items-center justify-center bg-surface-1 px-4 py-12">
-      <div className="w-full max-w-sm">
+    <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-surface-1 px-4 py-12">
+      <AuthBackground />
+      <m.div
+        className="relative z-10 w-full max-w-sm"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      >
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <img src="/vac-logo.svg" alt="VAC" className="size-10 rounded-lg" />
           <div>
@@ -20,7 +30,7 @@ export function AuthShell({
           </div>
         </div>
         {children}
-      </div>
+      </m.div>
     </div>
   )
 }
