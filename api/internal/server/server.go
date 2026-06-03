@@ -313,6 +313,8 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Post("/{id}/stop", handler.StopApp(s, docker, proxyMgr))
 					r.Post("/{id}/restart", handler.RestartApp(s, docker, proxyMgr))
 					r.Post("/{id}/services/{name}/restart", handler.RestartService(s, docker, proxyMgr))
+					r.Post("/{id}/services/{name}/stop", handler.StopService(s, docker, proxyMgr))
+					r.Post("/{id}/services/{name}/start", handler.StartService(s, docker, proxyMgr))
 				}
 
 				// Per-app real-time streams (Phase 4). Server-push only.

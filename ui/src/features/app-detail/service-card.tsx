@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Cog, RotateCw, ShieldAlert } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Cog, Play, RotateCw, ScrollText, ShieldAlert, Square } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { StatusPill } from '@/components/common/status-pill'
@@ -15,7 +16,12 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useRestartService, useUpdateService } from '@/lib/api/services'
+import {
+  useRestartService,
+  useStartService,
+  useStopService,
+  useUpdateService,
+} from '@/lib/api/services'
 import { useAppStatsContext } from '@/features/app-detail/stats-context'
 import { formatBytes, formatDuration, formatPercent } from '@/lib/format'
 import type { Service } from '@/types/api'
@@ -32,6 +38,11 @@ export function ServiceCard({
   const stats = useAppStatsContext()
   const live = stats[service.name]
   const restart = useRestartService(appId)
+  const stop = useStopService(appId)
+  const start = useStartService(appId)
+
+  const stopped = service.status === 'stopped'
+  const busy = restart.isPending || stop.isPending || start.isPending
 
   return (
     <Card className="gap-0 p-0">
@@ -51,20 +62,59 @@ export function ServiceCard({
         </div>
         <div className="flex gap-1">
           <ConfigureDialog appId={appId} service={service} />
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={restart.isPending}
-            onClick={() =>
-              restart.mutate(service.name, {
-                onSuccess: () => toast.success(`Restarting ${service.name}`),
-                onError: (e) => toast.error(e.message),
-              })
-            }
-          >
-            <RotateCw className="size-3.5" />
-            Restart
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/apps/$appId/logs" params={{ appId }} search={{ service: service.name }}>
+              <ScrollText className="size-3.5" />
+              View logs
+            </Link>
           </Button>
+          {stopped ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                start.mutate(service.name, {
+                  onSuccess: () => toast.success(`Starting ${service.name}`),
+                  onError: (e) => toast.error(e.message),
+                })
+              }
+            >
+              <Play className="size-3.5" />
+              Start
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  restart.mutate(service.name, {
+                    onSuccess: () => toast.success(`Restarting ${service.name}`),
+                    onError: (e) => toast.error(e.message),
+                  })
+                }
+              >
+                <RotateCw className="size-3.5" />
+                Restart
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  stop.mutate(service.name, {
+                    onSuccess: () => toast.success(`Stopping ${service.name}`),
+                    onError: (e) => toast.error(e.message),
+                  })
+                }
+              >
+                <Square className="size-3.5" />
+                Stop
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -162,8 +212,8 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
               onChange={(e) => setInternalPort(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              The port the container actually serves on. Saving re-routes traffic to it
-              immediately — no restart needed.
+              The port the container actually serves on. Saving re-routes traffic to it immediately
+              — no restart needed.
             </p>
           </div>
           <div className="grid gap-2">

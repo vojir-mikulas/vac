@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/vojir-mikulas/vac/api/internal/audit"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
@@ -118,6 +119,53 @@ func RestartService(s *store.Store, ctrl StackController, pm ProxyManager) http.
 		_ = s.UpdateServiceStatus(r.Context(), app.ID, name, deploy.ServiceStatusRunning, nil)
 		proxySync(r.Context(), pm, app.ID)
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "restarted"})
+	}
+}
+
+// StopService stops a single named service and pulls it from Caddy's upstreams
+// so a stopped container doesn't linger as a dead route. The rest of the stack
+// keeps serving.
+func StopService(s *store.Store, ctrl StackController, pm ProxyManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		app, err := loadApp(w, r, s)
+		if err != nil {
+			return
+		}
+		name := chi.URLParam(r, "name")
+		project := "vac-" + app.Slug
+		if err := ctrl.Stop(r.Context(), project, name); err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not stop service: "+err.Error())
+			return
+		}
+		_ = s.UpdateServiceStatus(r.Context(), app.ID, name, deploy.ServiceStatusStopped, nil)
+		// Re-sync rather than teardown: only this service should leave the
+		// upstreams; the rest of the app's routes stay up.
+		proxySync(r.Context(), pm, app.ID)
+		audit.SetTarget(r.Context(), "app", app.ID)
+		audit.Describe(r.Context(), "stopped service "+name)
+		WriteJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
+	}
+}
+
+// StartService starts a single previously-stopped service without cycling the
+// whole stack, then re-syncs Caddy so its upstream comes back.
+func StartService(s *store.Store, ctrl StackController, pm ProxyManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		app, err := loadApp(w, r, s)
+		if err != nil {
+			return
+		}
+		name := chi.URLParam(r, "name")
+		project := "vac-" + app.Slug
+		if err := ctrl.Start(r.Context(), project, name); err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not start service: "+err.Error())
+			return
+		}
+		_ = s.UpdateServiceStatus(r.Context(), app.ID, name, deploy.ServiceStatusRunning, nil)
+		proxySync(r.Context(), pm, app.ID)
+		audit.SetTarget(r.Context(), "app", app.ID)
+		audit.Describe(r.Context(), "started service "+name)
+		WriteJSON(w, http.StatusOK, map[string]string{"status": "started"})
 	}
 }
 

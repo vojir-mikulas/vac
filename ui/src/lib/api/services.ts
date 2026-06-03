@@ -10,6 +10,10 @@ export const servicesApi = {
     api.patch<Service>(`apps/${appId}/services/${name}`, input),
   restart: (appId: string, name: string) =>
     api.post<{ status: string }>(`apps/${appId}/services/${name}/restart`),
+  stop: (appId: string, name: string) =>
+    api.post<{ status: string }>(`apps/${appId}/services/${name}/stop`),
+  start: (appId: string, name: string) =>
+    api.post<{ status: string }>(`apps/${appId}/services/${name}/start`),
 }
 
 export function useServices(appId: string) {
@@ -32,6 +36,22 @@ export function useRestartService(appId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (name: string) => servicesApi.restart(appId, name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.apps.services(appId) }),
+  })
+}
+
+export function useStopService(appId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => servicesApi.stop(appId, name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.apps.services(appId) }),
+  })
+}
+
+export function useStartService(appId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => servicesApi.start(appId, name),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.apps.services(appId) }),
   })
 }

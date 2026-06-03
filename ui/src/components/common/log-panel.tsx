@@ -32,15 +32,17 @@ const LEVEL_RANK: Record<LogLevel, number> = { info: 0, ok: 0, warn: 1, error: 2
 export function LogPanel({
   lines,
   services,
+  initialService,
   exportName = 'logs',
 }: {
   lines: LogLine[]
   services?: string[]
+  initialService?: string
   exportName?: string
 }) {
   const [autoScroll, setAutoScroll] = useState(true)
   const [level, setLevel] = useState('all')
-  const [service, setService] = useState('all')
+  const [service, setService] = useState(initialService ?? 'all')
   const deferredLines = useDeferredValue(lines)
 
   const filtered = useMemo(() => {
