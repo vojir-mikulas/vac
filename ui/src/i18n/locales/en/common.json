@@ -1,0 +1,19 @@
+{
+  "actions": {
+    "copy": "Copy",
+    "copied": "Copied",
+    "reload": "Reload",
+    "backToApps": "Back to apps"
+  },
+  "toast": {
+    "copyFailed": "Copy failed — select the text and copy manually."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The page you're looking for doesn't exist."
+  },
+  "error": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred."
+  }
+}

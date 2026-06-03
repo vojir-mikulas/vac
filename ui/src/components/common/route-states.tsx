@@ -1,15 +1,17 @@
 import { Link } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 
 export function NotFoundScreen() {
+  const { t } = useTranslation()
   return (
     <Screen
-      title="Page not found"
-      description="The page you're looking for doesn't exist."
+      title={t('notFound.title')}
+      description={t('notFound.description')}
       action={
         <Button variant="brand" asChild>
-          <Link to="/apps">Back to apps</Link>
+          <Link to="/apps">{t('actions.backToApps')}</Link>
         </Button>
       }
     />
@@ -17,13 +19,14 @@ export function NotFoundScreen() {
 }
 
 export function RouteErrorScreen({ error }: { error: Error }) {
+  const { t } = useTranslation()
   return (
     <Screen
-      title="Something went wrong"
-      description={error.message || 'An unexpected error occurred.'}
+      title={t('error.title')}
+      description={error.message || t('error.description')}
       action={
         <Button variant="outline" onClick={() => window.location.reload()}>
-          Reload
+          {t('actions.reload')}
         </Button>
       }
     />

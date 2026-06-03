@@ -1,4 +1,13 @@
-// Display formatting helpers. Pure functions — easy to unit test.
+// Display formatting helpers. Locale-sensitive ones (numbers, relative time)
+// follow the active dashboard language via the i18n singleton; the rest are pure.
+
+import i18n from '@/i18n'
+
+// The BCP-47 locale Intl formatters should use, tracking the active language.
+// Falls back to 'en' before i18n has resolved (and in non-i18n contexts).
+function activeLocale(): string {
+  return i18n.resolvedLanguage || i18n.language || 'en'
+}
 
 export function formatBytes(bytes: number, fractionDigits = 1): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB'
@@ -20,7 +29,7 @@ export function formatPercent(value: number, fractionDigits = 1): string {
 }
 
 export function formatNumber(value: number): string {
-  return value.toLocaleString('en-US')
+  return value.toLocaleString(activeLocale())
 }
 
 // Compact uptime / duration from seconds → "3d 4h", "12m 04s".
@@ -55,7 +64,17 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['second', 1],
 ]
 
-const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+// One formatter per locale, built lazily and reused as the language switches.
+const rtfCache = new Map<string, Intl.RelativeTimeFormat>()
+function relativeTimeFormat(): Intl.RelativeTimeFormat {
+  const locale = activeLocale()
+  let fmt = rtfCache.get(locale)
+  if (!fmt) {
+    fmt = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+    rtfCache.set(locale, fmt)
+  }
+  return fmt
+}
 
 export function relativeTime(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -63,6 +82,7 @@ export function relativeTime(iso: string | null | undefined): string {
   if (!Number.isFinite(then)) return '—'
   const deltaSeconds = (then - Date.now()) / 1000
   const abs = Math.abs(deltaSeconds)
+  const rtf = relativeTimeFormat()
   for (const [unit, secs] of UNITS) {
     if (abs >= secs || unit === 'second') {
       return rtf.format(Math.round(deltaSeconds / secs), unit)

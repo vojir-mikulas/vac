@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 
 import {
@@ -22,12 +23,14 @@ const chartConfig = {
   errors: { label: 'Errors', color: 'var(--chart-1)' },
 } satisfies ChartConfig
 
-function formatTick(ts: string): string {
+function formatTick(ts: string, locale: string): string {
   const d = new Date(ts)
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 }
 
 export function TrafficChart({ appId }: { appId: string }) {
+  const { i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? 'en'
   const [range, setRange] = useState<string>('6h')
   const { data, isLoading } = useAppMetrics(appId, range)
 
@@ -80,12 +83,14 @@ export function TrafficChart({ appId }: { appId: string }) {
                 axisLine={false}
                 tickMargin={8}
                 minTickGap={32}
-                tickFormatter={formatTick}
+                tickFormatter={(ts) => formatTick(ts, locale)}
               />
               <YAxis tickLine={false} axisLine={false} width={32} />
               <ChartTooltip
                 content={
-                  <ChartTooltipContent labelFormatter={(_, p) => formatTick(p?.[0]?.payload?.ts)} />
+                  <ChartTooltipContent
+                    labelFormatter={(_, p) => formatTick(p?.[0]?.payload?.ts, locale)}
+                  />
                 }
               />
               <Area
@@ -116,7 +121,7 @@ export function TrafficChart({ appId }: { appId: string }) {
             <tbody>
               {data.map((d) => (
                 <tr key={d.ts}>
-                  <td>{formatTick(d.ts)}</td>
+                  <td>{formatTick(d.ts, locale)}</td>
                   <td>{d.requests}</td>
                   <td>{d.errors}</td>
                 </tr>

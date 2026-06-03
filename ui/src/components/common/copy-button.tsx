@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 
@@ -36,7 +37,8 @@ export async function copyToClipboard(value: string): Promise<boolean> {
   }
 }
 
-export function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }) {
+export function CopyButton({ value, label }: { value: string; label?: string }) {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
 
   const copy = async () => {
@@ -45,14 +47,14 @@ export function CopyButton({ value, label = 'Copy' }: { value: string; label?: s
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } else {
-      toast.error('Copy failed — select the text and copy manually.')
+      toast.error(t('toast.copyFailed'))
     }
   }
 
   return (
     <Button variant="outline" size="sm" onClick={copy}>
       {copied ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />}
-      {copied ? 'Copied' : label}
+      {copied ? t('actions.copied') : (label ?? t('actions.copy'))}
     </Button>
   )
 }

@@ -1,10 +1,14 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { LazyMotion, MotionConfig, domAnimation } from 'motion/react'
 
 import './index.css'
+// Initialize the i18n singleton before anything renders. English is bundled, so
+// this resolves synchronously today; the <Suspense> below covers lazy locale
+// loads once additional languages ship.
+import './i18n'
 import { routeTree } from './routeTree.gen'
 import { ThemeProvider } from '@/components/theme/theme-provider'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -57,7 +61,9 @@ async function bootstrap() {
           <QueryClientProvider client={queryClient}>
             <ThemeProvider>
               <TooltipProvider delayDuration={200}>
-                <RouterProvider router={router} />
+                <Suspense fallback={null}>
+                  <RouterProvider router={router} />
+                </Suspense>
                 <Toaster />
               </TooltipProvider>
             </ThemeProvider>

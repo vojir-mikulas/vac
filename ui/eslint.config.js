@@ -3,6 +3,7 @@ import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import jsxA11y from 'eslint-plugin-jsx-a11y'
+import i18next from 'eslint-plugin-i18next'
 import tseslint from 'typescript-eslint'
 import prettier from 'eslint-config-prettier'
 import { defineConfig, globalIgnores } from 'eslint/config'
@@ -43,6 +44,16 @@ export default defineConfig([
     files: ['src/routes/**/*.{ts,tsx}'],
     rules: {
       'react-refresh/only-export-components': 'off',
+    },
+  },
+  // i18n guard against new hardcoded user-facing strings, scoped to feature code.
+  // Intentionally OFF during the scaffold — flip to 'error' per feature folder as
+  // each is migrated to t() (i18n plan, Phase C).
+  {
+    files: ['src/features/**/*.{ts,tsx}'],
+    plugins: { i18next },
+    rules: {
+      'i18next/no-literal-string': 'off',
     },
   },
 ])

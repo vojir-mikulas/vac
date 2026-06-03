@@ -45,9 +45,10 @@ lint: lint-go lint-ui ## Run all linters
 lint-go: ## golangci-lint
 	cd api && golangci-lint run
 
-lint-ui: ## ESLint + Prettier check
+lint-ui: ## ESLint + Prettier + i18n catalog check
 	pnpm --filter ui lint
 	pnpm --filter ui format:check
+	pnpm --filter ui i18n:check
 
 test: test-go test-ui ## Run all unit tests (excludes integration; use test-integration for those)
 

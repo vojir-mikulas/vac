@@ -1,10 +1,20 @@
+import { useTranslation } from 'react-i18next'
+
 import { SectionHeader } from '@/components/common/section-header'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useInstanceInfo } from '@/lib/api/instance'
+import { SUPPORTED_LANGUAGES } from '@/i18n'
 
 const CHANNELS = ['stable', 'beta', 'edge'] as const
 
@@ -56,7 +66,38 @@ export function InstanceSection() {
           </Row>
         </Card>
       </div>
+
+      <LanguageSection />
     </section>
+  )
+}
+
+function LanguageSection() {
+  const { t, i18n } = useTranslation('settings')
+
+  return (
+    <div>
+      <SectionHeader>{t('language.heading')}</SectionHeader>
+      <Card className="gap-5 p-5">
+        <Row label={t('language.label')} hint={t('language.hint')}>
+          <Select
+            value={i18n.resolvedLanguage}
+            onValueChange={(lng) => void i18n.changeLanguage(lng)}
+          >
+            <SelectTrigger className="w-40" aria-label={t('language.label')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SUPPORTED_LANGUAGES.map((lang) => (
+                <SelectItem key={lang.code} value={lang.code}>
+                  {lang.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Row>
+      </Card>
+    </div>
   )
 }
 

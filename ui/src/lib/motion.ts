@@ -42,12 +42,6 @@ export const fade: Variants = {
   exit: { opacity: 0, transition: transition.fast },
 }
 
-export const fadeUp: Variants = {
-  hidden: { opacity: 0, y: RISE },
-  visible: { opacity: 1, y: 0, transition: transition.base },
-  exit: { opacity: 0, y: -RISE, transition: transition.fast },
-}
-
 // How many leading rows get a staggered delay. Beyond this they all settle together,
 // so a 200-row list never cascades for seconds.
 const STAGGER_CAP = 12

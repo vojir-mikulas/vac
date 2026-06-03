@@ -1,7 +1,6 @@
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 
 import { AppShell } from '@/components/layout/app-shell'
-import { PageTransition } from '@/components/layout/page-transition'
 import { ApiError } from '@/lib/api/client'
 import { authApi } from '@/lib/api/auth'
 import { setupApi } from '@/lib/api/setup'
@@ -37,9 +36,7 @@ export const Route = createFileRoute('/_app')({
 function AppLayout() {
   return (
     <AppShell>
-      <PageTransition>
-        <Outlet />
-      </PageTransition>
+      <Outlet />
     </AppShell>
   )
 }
