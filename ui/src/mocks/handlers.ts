@@ -8,6 +8,7 @@ import type { EnvVarInput } from '@/lib/api/env'
 import {
   addDomainHub,
   appMetrics,
+  auditDiff,
   createApp,
   createDomain,
   deleteApp,
@@ -264,6 +265,21 @@ const routes: Route[] = [
     method: 'GET',
     pattern: 'audit',
     handler: (ctx) => ok(listAudit(Number(ctx.query.get('limit') ?? '100'))),
+  },
+  {
+    method: 'GET',
+    pattern: 'audit/:id/diff',
+    handler: (ctx) => {
+      const res = auditDiff(ctx.params.id ?? '')
+      switch (res.status) {
+        case 'ok':
+          return ok(res.diff)
+        case 'not_diffable':
+          throw new MockHttpError(422, 'not_diffable', 'no preview available for this action')
+        default:
+          throw notFound('activity entry')
+      }
+    },
   },
   {
     method: 'POST',

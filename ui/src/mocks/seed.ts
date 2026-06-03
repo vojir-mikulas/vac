@@ -335,6 +335,7 @@ function buildAuditSeed(
       summary: `replaced environment for ${storefront.slug}`,
       status_code: 200,
       revertable: true,
+      has_preview: true,
       created_at: minutesAgoISO(14),
     },
     {
@@ -347,6 +348,7 @@ function buildAuditSeed(
       summary: `updated configuration for ${marketing.slug}`,
       status_code: 200,
       revertable: true,
+      has_preview: true,
       created_at: minutesAgoISO(42),
     },
     {
@@ -359,6 +361,7 @@ function buildAuditSeed(
       summary: `triggered deployment of ${gateway.slug}`,
       status_code: 202,
       revertable: false,
+      has_preview: false,
       created_at: minutesAgoISO(67),
     },
     {
@@ -369,6 +372,9 @@ function buildAuditSeed(
       summary: 'set base domain to apps.example.com',
       status_code: 200,
       revertable: false,
+      // Already reverted: the Revert button is gone, but Preview stays — a
+      // reverted entry is still inspectable (plan 22).
+      has_preview: true,
       reverted_at: minutesAgoISO(120),
       created_at: minutesAgoISO(130),
     },
@@ -382,6 +388,7 @@ function buildAuditSeed(
       summary: `auto-deployed ${storefront.slug} from push to main`,
       status_code: 202,
       revertable: false,
+      has_preview: false,
       created_at: minutesAgoISO(200),
     },
     {
@@ -392,6 +399,7 @@ function buildAuditSeed(
       summary: undefined,
       status_code: 401,
       revertable: false,
+      has_preview: false,
       created_at: minutesAgoISO(305),
     },
   ]

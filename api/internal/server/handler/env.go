@@ -211,7 +211,7 @@ func ReplaceAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 // envVarSnap is the per-row shape stored in the revert before-snapshot. Value is
 // base64 of the *sealed* bytes — the audit_log is not encrypted, so plaintext
 // must never land here; the reverter feeds the sealed bytes straight back into
-// ReplaceEnvVars without ever decrypting. Mirrors revert.envEntrySnap.
+// ReplaceEnvVars without ever decrypting. Mirrors revert.EnvEntry.
 type envVarSnap struct {
 	Key       string `json:"key"`
 	Value     string `json:"value"`

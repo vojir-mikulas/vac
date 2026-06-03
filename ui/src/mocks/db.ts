@@ -17,7 +17,7 @@ import type {
 } from '@/types/api'
 import type { CreateAppInput, UpdateAppInput } from '@/types/api'
 import type { EnvVarInput } from '@/lib/api/env'
-import type { AuditEntry } from '@/lib/api/audit'
+import type { ActivityDiff, AuditEntry } from '@/lib/api/audit'
 import type { AppRecord, DeployRecord, MockState } from './types'
 import { buildInitialState } from './seed'
 import { fakeSha, nowISO, pick, randBetween, randInt, uid } from './util'
@@ -92,9 +92,91 @@ export function revertAudit(id: string): RevertOutcome {
     summary: `reverted: ${summary}`,
     status_code: 200,
     revertable: false,
+    has_preview: false,
     created_at: nowISO(),
   })
   return { status: 'ok', summary }
+}
+
+// curatedKind maps an audit action to the diff kind it previews, or null for a
+// non-curated action (mirrors the backend's auditdiff dispatch).
+function curatedKind(action: string): ActivityDiff['kind'] | null {
+  if (/PUT .*\/apps\/\{id\}\/env$/.test(action)) return 'env'
+  if (/PATCH .*\/apps\/\{id\}$/.test(action)) return 'app'
+  if (/PUT .*\/instance\/base-domain$/.test(action)) return 'base_domain'
+  return null
+}
+
+export type DiffOutcome =
+  | { status: 'ok'; diff: ActivityDiff }
+  | { status: 'not_found' | 'not_diffable' }
+
+// auditDiff returns a representative before→current diff for a curated entry,
+// driven off the entry's action so the kind matches. Mirrors the real endpoint:
+// secrets are masked, never sent as plaintext.
+export function auditDiff(id: string): DiffOutcome {
+  const entry = state.audit.find((e) => e.id === id)
+  if (!entry) return { status: 'not_found' }
+  const kind = curatedKind(entry.action)
+  if (!kind) return { status: 'not_diffable' }
+  return {
+    status: 'ok',
+    diff: { ...DIFF_FIXTURES[kind], current_as_of: nowISO(), changed_since: false },
+  }
+}
+
+const DIFF_FIXTURES: Record<
+  ActivityDiff['kind'],
+  Omit<ActivityDiff, 'current_as_of' | 'changed_since'>
+> = {
+  env: {
+    kind: 'env',
+    rows: [
+      {
+        label: 'DATABASE_URL',
+        status: 'changed',
+        before: 'postgres://old',
+        after: 'postgres://new',
+        masked: false,
+      },
+      { label: 'FEATURE_FLAG', status: 'added', after: 'true', masked: false },
+      { label: 'LEGACY_KEY', status: 'removed', before: 'gone', masked: false },
+      { label: 'API_SECRET', status: 'changed', masked: true },
+      { label: 'LOG_LEVEL', status: 'unchanged', before: 'info', after: 'info', masked: false },
+    ],
+  },
+  app: {
+    kind: 'app',
+    rows: [
+      {
+        label: 'Name',
+        status: 'changed',
+        before: 'Marketing',
+        after: 'Marketing Site',
+        masked: false,
+      },
+      { label: 'Branch', status: 'changed', before: 'main', after: 'release', masked: false },
+      {
+        label: 'Memory limit',
+        status: 'changed',
+        before: '256 MB',
+        after: 'unlimited',
+        masked: false,
+      },
+    ],
+  },
+  base_domain: {
+    kind: 'base_domain',
+    rows: [
+      {
+        label: 'Base domain',
+        status: 'changed',
+        before: 'apps.example.com',
+        after: '(cleared)',
+        masked: false,
+      },
+    ],
+  },
 }
 
 function revertSummary(entry: AuditEntry): string {

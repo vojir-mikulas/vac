@@ -100,12 +100,12 @@ func (rv *Reverter) Revert(ctx context.Context, id string) (string, error) {
 // apply dispatches on the recorded action and reapplies the before-snapshot.
 func (rv *Reverter) apply(ctx context.Context, entry store.AuditLog, before json.RawMessage) (string, error) {
 	switch {
-	case actionMatches(entry.Action, "PUT", "/apps/{id}/env"):
-		return rv.revertEnv(ctx, targetID(entry), before)
-	case actionMatches(entry.Action, "PUT", "/instance/base-domain"):
+	case ActionMatches(entry.Action, "PUT", "/apps/{id}/env"):
+		return rv.revertEnv(ctx, TargetID(entry), before)
+	case ActionMatches(entry.Action, "PUT", "/instance/base-domain"):
 		return rv.revertBaseDomain(ctx, before)
-	case actionMatches(entry.Action, "PATCH", "/apps/{id}"):
-		return rv.revertApp(ctx, targetID(entry), before)
+	case ActionMatches(entry.Action, "PATCH", "/apps/{id}"):
+		return rv.revertApp(ctx, TargetID(entry), before)
 	default:
 		return "", fmt.Errorf("%w: %s", ErrNotRevertable, entry.Action)
 	}
@@ -113,22 +113,26 @@ func (rv *Reverter) apply(ctx context.Context, entry store.AuditLog, before json
 
 // --- env vars ---
 
-type envEntrySnap struct {
+// EnvEntry is one env-var row in an env before-snapshot. Value is base64 of the
+// *sealed* bytes — the audit_log is not encrypted, so plaintext never lands here.
+// Shared with the auditdiff builder so the before-shape can't drift.
+type EnvEntry struct {
 	Key       string `json:"key"`
 	Value     string `json:"value"` // base64 of the sealed bytes
 	Sensitive bool   `json:"sensitive"`
 	WriteOnly bool   `json:"write_only"`
 }
 
-type envSnap struct {
-	Env []envEntrySnap `json:"env"`
+// EnvSnapshot is the full prior env set captured before a replace.
+type EnvSnapshot struct {
+	Env []EnvEntry `json:"env"`
 }
 
 func (rv *Reverter) revertEnv(ctx context.Context, appID string, before json.RawMessage) (string, error) {
 	if appID == "" {
 		return "", fmt.Errorf("%w: env snapshot has no app target", ErrNotRevertable)
 	}
-	var snap envSnap
+	var snap EnvSnapshot
 	if err := json.Unmarshal(before, &snap); err != nil {
 		return "", fmt.Errorf("%w: env snapshot: %v", ErrNotRevertable, err)
 	}
@@ -148,12 +152,13 @@ func (rv *Reverter) revertEnv(ctx context.Context, appID string, before json.Raw
 
 // --- base domain ---
 
-type baseDomainSnap struct {
+// BaseDomainSnapshot is the prior base-domain string captured before a change.
+type BaseDomainSnapshot struct {
 	BaseDomain string `json:"base_domain"`
 }
 
 func (rv *Reverter) revertBaseDomain(ctx context.Context, before json.RawMessage) (string, error) {
-	var snap baseDomainSnap
+	var snap BaseDomainSnapshot
 	if err := json.Unmarshal(before, &snap); err != nil {
 		return "", fmt.Errorf("%w: base-domain snapshot: %v", ErrNotRevertable, err)
 	}
@@ -171,7 +176,9 @@ func (rv *Reverter) revertBaseDomain(ctx context.Context, before json.RawMessage
 
 // --- app config ---
 
-type appFields struct {
+// AppFields is the prior app-config field set; pointer fields distinguish
+// "absent" from a zero value when reapplying a partial patch.
+type AppFields struct {
 	Name        *string         `json:"name"`
 	GitURL      *string         `json:"git_url"`
 	GitBranch   *string         `json:"git_branch"`
@@ -181,15 +188,16 @@ type appFields struct {
 	MemLimitMB  *int            `json:"mem_limit_mb"`
 }
 
-type appSnap struct {
-	App appFields `json:"app"`
+// AppSnapshot wraps the prior app-config fields captured before a PATCH.
+type AppSnapshot struct {
+	App AppFields `json:"app"`
 }
 
 func (rv *Reverter) revertApp(ctx context.Context, appID string, before json.RawMessage) (string, error) {
 	if appID == "" {
 		return "", fmt.Errorf("%w: app snapshot has no app target", ErrNotRevertable)
 	}
-	var snap appSnap
+	var snap AppSnapshot
 	if err := json.Unmarshal(before, &snap); err != nil {
 		return "", fmt.Errorf("%w: app snapshot: %v", ErrNotRevertable, err)
 	}
@@ -206,16 +214,17 @@ func (rv *Reverter) revertApp(ctx context.Context, appID string, before json.Raw
 	return "restored app configuration", nil
 }
 
-// actionMatches reports whether an audit Action ("PUT /api/apps/{id}/env") has
+// ActionMatches reports whether an audit Action ("PUT /api/apps/{id}/env") has
 // the given method and route suffix. Matching on suffix keeps it robust to the
-// /api mount prefix that chi includes in the recorded route pattern.
-func actionMatches(action, method, suffix string) bool {
+// /api mount prefix that chi includes in the recorded route pattern. Exported so
+// the auditdiff builder shares the exact same action-dispatch logic.
+func ActionMatches(action, method, suffix string) bool {
 	m, path, ok := strings.Cut(action, " ")
 	return ok && m == method && strings.HasSuffix(path, suffix)
 }
 
-// targetID returns the audit entry's recorded target id, or "".
-func targetID(entry store.AuditLog) string {
+// TargetID returns the audit entry's recorded target id, or "".
+func TargetID(entry store.AuditLog) string {
 	if entry.TargetID != nil {
 		return *entry.TargetID
 	}

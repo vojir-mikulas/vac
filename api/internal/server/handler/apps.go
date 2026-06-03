@@ -355,7 +355,7 @@ func UpdateApp(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 
 // appConfigSnapshot is the before-state stored for a revertable app-config
 // update. Every field is the prior value (pointers so the reverter feeds them
-// straight back into UpdateApp's partial-patch shape). Mirrors revert.appSnap.
+// straight back into UpdateApp's partial-patch shape). Mirrors revert.AppSnapshot.
 func appConfigSnapshot(a store.App) map[string]any {
 	bc := a.BuildConfig
 	if len(bc) == 0 {

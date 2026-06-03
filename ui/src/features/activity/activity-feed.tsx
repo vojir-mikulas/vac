@@ -1,4 +1,5 @@
-import { Bot, Undo2, User } from 'lucide-react'
+import { useState } from 'react'
+import { Bot, Eye, Undo2, User } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
@@ -9,10 +10,12 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useActivity, useRevertActivity, type AuditEntry } from '@/lib/api/audit'
 import { relativeTime } from '@/lib/format'
+import { ActivityDiffDialog } from './activity-diff-dialog'
 
 export function ActivityFeed() {
   const { data, isLoading } = useActivity()
   const revert = useRevertActivity()
+  const [preview, setPreview] = useState<AuditEntry | null>(null)
   const entries = data ?? []
 
   const onRevert = (e: AuditEntry) => {
@@ -45,11 +48,14 @@ export function ActivityFeed() {
               entry={e}
               first={i === 0}
               onRevert={() => onRevert(e)}
+              onPreview={() => setPreview(e)}
               reverting={revert.isPending && revert.variables === e.id}
             />
           ))}
         </Card>
       )}
+
+      {preview && <ActivityDiffDialog entry={preview} onClose={() => setPreview(null)} />}
     </PageContainer>
   )
 }
@@ -58,11 +64,13 @@ function ActivityRow({
   entry,
   first,
   onRevert,
+  onPreview,
   reverting,
 }: {
   entry: AuditEntry
   first: boolean
   onRevert: () => void
+  onPreview: () => void
   reverting: boolean
 }) {
   const failed = entry.status_code >= 400
@@ -78,6 +86,13 @@ function ActivityRow({
           {actorLabel(entry)} · {relativeTime(entry.created_at)}
         </div>
       </div>
+      {/* Preview stays available even after an entry is reverted; Revert does not. */}
+      {entry.has_preview ? (
+        <Button variant="ghost" size="sm" onClick={onPreview}>
+          <Eye className="size-3.5" />
+          Preview
+        </Button>
+      ) : null}
       {entry.reverted_at ? (
         <span className="shrink-0 text-2xs text-muted-foreground">reverted</span>
       ) : entry.revertable ? (

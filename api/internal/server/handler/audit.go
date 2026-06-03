@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/vojir-mikulas/vac/api/internal/audit"
+	"github.com/vojir-mikulas/vac/api/internal/auditdiff"
 	"github.com/vojir-mikulas/vac/api/internal/revert"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
@@ -18,15 +19,19 @@ import (
 // metadata is deliberately NOT exposed — it can hold sealed secrets and is only
 // the engine's business — so the DTO carries just the displayable fields.
 type auditLogDTO struct {
-	ID         string     `json:"id"`
-	ActorType  string     `json:"actor_type"`
-	Actor      string     `json:"actor"` // resolved username, or "" for system/anonymous
-	Action     string     `json:"action"`
-	TargetType *string    `json:"target_type,omitempty"`
-	TargetID   *string    `json:"target_id,omitempty"`
-	Summary    *string    `json:"summary,omitempty"`
-	StatusCode int        `json:"status_code"`
-	Revertable bool       `json:"revertable"`
+	ID         string  `json:"id"`
+	ActorType  string  `json:"actor_type"`
+	Actor      string  `json:"actor"` // resolved username, or "" for system/anonymous
+	Action     string  `json:"action"`
+	TargetType *string `json:"target_type,omitempty"`
+	TargetID   *string `json:"target_id,omitempty"`
+	Summary    *string `json:"summary,omitempty"`
+	StatusCode int     `json:"status_code"`
+	Revertable bool    `json:"revertable"`
+	// HasPreview marks entries that carry a before-snapshot and can be diffed
+	// (plan 22). Unlike Revertable it tracks the raw column, independent of
+	// RevertedAt — a reverted entry loses its Revert button but stays previewable.
+	HasPreview bool       `json:"has_preview"`
 	RevertedAt *time.Time `json:"reverted_at,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 }
@@ -87,6 +92,31 @@ func RevertAudit(rv *revert.Reverter) http.HandlerFunc {
 	}
 }
 
+// PreviewAudit returns a sanitized before→current diff for a curated audit entry
+// (plan 22). Secrets never leave the server: sensitive/write-only env values are
+// masked; only non-sensitive values are decrypted (same rule as ListAppEnv).
+// 404 if the entry is gone, 422 for a non-diffable action.
+//
+// GET /api/audit/{id}/diff
+func PreviewAudit(db *auditdiff.Builder) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		diff, err := db.Compute(r.Context(), id)
+		if err != nil {
+			switch {
+			case errors.Is(err, store.ErrNotFound):
+				WriteError(w, http.StatusNotFound, "activity entry not found")
+			case errors.Is(err, auditdiff.ErrNotDiffable):
+				WriteErrorCode(w, http.StatusUnprocessableEntity, "not_diffable", "no preview available for this action")
+			default:
+				WriteError(w, http.StatusInternalServerError, "could not build preview")
+			}
+			return
+		}
+		WriteJSON(w, http.StatusOK, diff)
+	}
+}
+
 func toAuditDTO(a store.AuditLog, names map[string]string) auditLogDTO {
 	dto := auditLogDTO{
 		ID:         a.ID,
@@ -97,6 +127,7 @@ func toAuditDTO(a store.AuditLog, names map[string]string) auditLogDTO {
 		Summary:    a.Summary,
 		StatusCode: a.StatusCode,
 		Revertable: a.Revertable && a.RevertedAt == nil,
+		HasPreview: a.Revertable,
 		RevertedAt: a.RevertedAt,
 		CreatedAt:  a.CreatedAt,
 	}

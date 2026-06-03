@@ -13,6 +13,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/vojir-mikulas/vac/api/internal/addon"
+	"github.com/vojir-mikulas/vac/api/internal/auditdiff"
 	"github.com/vojir-mikulas/vac/api/internal/auth"
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
@@ -197,6 +198,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			// revert reapplies the before-snapshot of the safely-invertible set.
 			r.Get("/audit", handler.ListAudit(s))
 			r.Post("/audit/{id}/revert", handler.RevertAudit(revert.New(s, baseDom)))
+			// Change preview (plan 22): a sanitized before→current diff, secrets
+			// masked. Read-only; reverted entries stay previewable.
+			r.Get("/audit/{id}/diff", handler.PreviewAudit(auditdiff.New(s, box)))
 
 			// Notification settings (Phase 4).
 			r.Get("/settings/notifications", handler.GetNotificationSettings(s, box))
