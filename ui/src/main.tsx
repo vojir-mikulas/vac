@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
+import { LazyMotion, MotionConfig, domAnimation } from 'motion/react'
 
 import './index.css'
 import { routeTree } from './routeTree.gen'
@@ -47,14 +48,22 @@ async function bootstrap() {
 
   createRoot(rootEl).render(
     <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <TooltipProvider delayDuration={200}>
-            <RouterProvider router={router} />
-            <Toaster />
-          </TooltipProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
+      {/* LazyMotion + domAnimation: load only the DOM animation features (~5kb)
+          and use `m.*` components instead of the full `motion.*` bundle.
+          MotionConfig reducedMotion="user" disables all motion under the OS
+          reduce-motion setting — complements the CSS override in index.css. */}
+      <LazyMotion features={domAnimation} strict>
+        <MotionConfig reducedMotion="user">
+          <QueryClientProvider client={queryClient}>
+            <ThemeProvider>
+              <TooltipProvider delayDuration={200}>
+                <RouterProvider router={router} />
+                <Toaster />
+              </TooltipProvider>
+            </ThemeProvider>
+          </QueryClientProvider>
+        </MotionConfig>
+      </LazyMotion>
     </StrictMode>,
   )
 }
