@@ -1,19 +1,16 @@
-import { Play, RotateCw, Square } from 'lucide-react'
-import { toast } from 'sonner'
-
 import { SectionHeader } from '@/components/common/section-header'
-import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/common/empty-state'
 import { ServiceCard } from '@/features/app-detail/service-card'
+import { StackControls } from '@/features/app-detail/stack-controls'
 import { useServices } from '@/lib/api/services'
-import { useStackControl } from '@/lib/api/apps'
+import { useApp } from '@/lib/api/apps'
 import { useBackups } from '@/lib/api/backups'
 import { useInstanceInfo } from '@/lib/api/instance'
 
 export function ServicesTab({ appId }: { appId: string }) {
   const { data: services, isLoading } = useServices(appId)
-  const stack = useStackControl(appId)
+  const { data: app } = useApp(appId)
   const { data: instance } = useInstanceInfo()
   const managed = instance?.managed_services ?? false
   // Only fetch backups when the managed-services gate is open, so the warning
@@ -21,45 +18,11 @@ export function ServicesTab({ appId }: { appId: string }) {
   const { data: backups } = useBackups(appId, managed)
   const backedUp = new Set((backups ?? []).map((b) => b.service_name))
 
-  const control = (action: 'start' | 'stop' | 'restart') =>
-    stack.mutate(action, {
-      onSuccess: () => toast.success(`Stack ${action}ed`),
-      onError: (e) => toast.error(e.message),
-    })
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <SectionHeader className="mb-0">Stack control</SectionHeader>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={stack.isPending}
-            onClick={() => control('start')}
-          >
-            <Play className="size-3.5" />
-            Start
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={stack.isPending}
-            onClick={() => control('restart')}
-          >
-            <RotateCw className="size-3.5" />
-            Restart
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            disabled={stack.isPending}
-            onClick={() => control('stop')}
-          >
-            <Square className="size-3.5" />
-            Stop
-          </Button>
-        </div>
+        <StackControls appId={appId} status={app?.status} />
       </div>
 
       {isLoading ? (

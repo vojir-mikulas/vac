@@ -5,6 +5,7 @@ import { PageContainer } from '@/components/layout/app-shell'
 import { BrandIcon, brandFor } from '@/components/common/brand-icon'
 import { AppStatsProvider } from '@/features/app-detail/stats-context'
 import { LiveDeployBanner } from '@/features/app-detail/live-deploy-banner'
+import { StackControls } from '@/features/app-detail/stack-controls'
 import { StatusPill } from '@/components/common/status-pill'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -95,19 +96,22 @@ function AppDetailLayout() {
           ) : null}
         </div>
 
-        <Button
-          variant="brand"
-          disabled={deploy.isPending}
-          onClick={() =>
-            deploy.mutate(undefined, {
-              onSuccess: () => toast.success('Deploy triggered'),
-              onError: (e) => toast.error(e.message),
-            })
-          }
-        >
-          <RotateCw className="size-4" />
-          Deploy from HEAD
-        </Button>
+        <div className="flex items-center gap-3">
+          {app ? <StackControls appId={appId} status={app.status} compact /> : null}
+          <Button
+            variant="brand"
+            disabled={deploy.isPending}
+            onClick={() =>
+              deploy.mutate(undefined, {
+                onSuccess: () => toast.success('Deploy triggered'),
+                onError: (e) => toast.error(e.message),
+              })
+            }
+          >
+            <RotateCw className="size-4" />
+            Deploy from HEAD
+          </Button>
+        </div>
       </div>
 
       <LiveDeployBanner appId={appId} />
