@@ -1,4 +1,5 @@
 import { useDeferredValue, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { m } from 'motion/react'
 import { Link } from '@tanstack/react-router'
 import {
@@ -48,6 +49,7 @@ import { OnboardingChecklist } from '@/features/onboarding/onboarding-checklist'
 import type { App } from '@/types/api'
 
 export function AppsDashboard() {
+  const { t } = useTranslation('apps')
   const { data: apps, isLoading } = useApps()
   const { data: host } = useHostStats()
   const { data: budget } = useBoxBudget()
@@ -71,18 +73,18 @@ export function AppsDashboard() {
   return (
     <PageContainer>
       <PageHeader
-        title="Apps"
-        description={`${counts.all} application${counts.all === 1 ? '' : 's'} · ${counts.running} running`}
+        title={t('dashboard.title')}
+        description={t('dashboard.summary', { count: counts.all, running: counts.running })}
         actions={
           <>
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <Download className="size-4" />
-              Import
+              {t('actions.import')}
             </Button>
             <Button variant="brand" asChild>
               <Link to="/apps/new">
                 <Plus className="size-4" />
-                New App
+                {t('actions.newApp')}
               </Link>
             </Button>
           </>
@@ -96,25 +98,33 @@ export function AppsDashboard() {
       <div className="mb-6">
         <StatStrip>
           <StatTile
-            label="Running apps"
+            label={t('dashboard.stats.runningApps')}
             value={String(counts.running)}
-            sub={`of ${counts.all} deployed`}
+            sub={t('dashboard.stats.ofDeployed', { count: counts.all })}
             accent
           />
           <StatTile
-            label="Host RAM"
+            label={t('dashboard.stats.hostRam')}
             value={host ? formatBytes(host.mem_used_bytes) : '—'}
-            sub={host ? `of ${formatBytes(host.mem_total_bytes)}` : undefined}
+            sub={
+              host
+                ? t('dashboard.stats.ofSize', { size: formatBytes(host.mem_total_bytes) })
+                : undefined
+            }
           />
           <StatTile
-            label="Host CPU"
+            label={t('dashboard.stats.hostCpu')}
             value={host ? formatPercent(host.cpu_percent, 0) : '—'}
-            sub="across all cores"
+            sub={t('dashboard.stats.allCores')}
           />
           <StatTile
-            label="Disk"
+            label={t('dashboard.stats.disk')}
             value={host ? formatBytes(host.disk_used_bytes) : '—'}
-            sub={host ? `of ${formatBytes(host.disk_total_bytes)}` : undefined}
+            sub={
+              host
+                ? t('dashboard.stats.ofSize', { size: formatBytes(host.disk_total_bytes) })
+                : undefined
+            }
           />
         </StatStrip>
       </div>
@@ -127,32 +137,32 @@ export function AppsDashboard() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Filter apps…"
-                aria-label="Filter apps"
+                placeholder={t('dashboard.filterPlaceholder')}
+                aria-label={t('dashboard.filterAria')}
                 className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
               />
             </div>
             <div className="flex flex-wrap gap-1.5">
               <FilterChip
-                label="All"
+                label={t('dashboard.filters.all')}
                 count={counts.all}
                 active={filter === 'all'}
                 onClick={() => setFilter('all')}
               />
               <FilterChip
-                label="Running"
+                label={t('dashboard.filters.running')}
                 count={counts.running}
                 active={filter === 'running'}
                 onClick={() => setFilter('running')}
               />
               <FilterChip
-                label="Issues"
+                label={t('dashboard.filters.issues')}
                 count={counts.issues}
                 active={filter === 'issues'}
                 onClick={() => setFilter('issues')}
               />
               <FilterChip
-                label="Stopped"
+                label={t('dashboard.filters.stopped')}
                 count={counts.stopped}
                 active={filter === 'stopped'}
                 onClick={() => setFilter('stopped')}
@@ -166,19 +176,19 @@ export function AppsDashboard() {
             ) : list.length === 0 ? (
               <EmptyState
                 icon={Boxes}
-                title="No apps yet"
-                description="Connect a repository to deploy your first app, or import an existing vac.app.yaml spec."
+                title={t('dashboard.empty.title')}
+                description={t('dashboard.empty.description')}
                 action={
                   <>
                     <Button variant="brand" asChild>
                       <Link to="/apps/new">
                         <Plus className="size-4" />
-                        New App
+                        {t('actions.newApp')}
                       </Link>
                     </Button>
                     <Button variant="outline" onClick={() => setImportOpen(true)}>
                       <Download className="size-4" />
-                      Import
+                      {t('actions.import')}
                     </Button>
                   </>
                 }
@@ -189,11 +199,17 @@ export function AppsDashboard() {
                   <TableHeader>
                     <TableRow className="bg-surface-1 hover:bg-surface-1">
                       <TableHead className="text-2xs uppercase tracking-wider">
-                        Application
+                        {t('dashboard.table.application')}
                       </TableHead>
-                      <TableHead className="text-2xs uppercase tracking-wider">Status</TableHead>
-                      <TableHead className="text-2xs uppercase tracking-wider">Compose</TableHead>
-                      <TableHead className="text-2xs uppercase tracking-wider">Updated</TableHead>
+                      <TableHead className="text-2xs uppercase tracking-wider">
+                        {t('dashboard.table.status')}
+                      </TableHead>
+                      <TableHead className="text-2xs uppercase tracking-wider">
+                        {t('dashboard.table.compose')}
+                      </TableHead>
+                      <TableHead className="text-2xs uppercase tracking-wider">
+                        {t('dashboard.table.updated')}
+                      </TableHead>
                       <TableHead className="w-10" />
                     </TableRow>
                   </TableHeader>
@@ -207,7 +223,7 @@ export function AppsDashboard() {
                           colSpan={5}
                           className="py-10 text-center text-sm text-muted-foreground"
                         >
-                          No apps match the current filter.
+                          {t('dashboard.table.noMatch')}
                         </TableCell>
                       </TableRow>
                     ) : null}
@@ -219,20 +235,20 @@ export function AppsDashboard() {
         </div>
 
         <div className="lg:w-80 lg:shrink-0">
-          <SectionHeader>Container budget</SectionHeader>
+          <SectionHeader>{t('dashboard.budget.heading')}</SectionHeader>
           <Card className="gap-0 p-5">
             <div className="flex flex-col gap-3.5">
               <RunningAppsRow running={counts.running} all={counts.all} issues={counts.issues} />
               {host ? (
                 <>
                   <BudgetRow
-                    label="Host RAM"
+                    label={t('dashboard.budget.hostRam')}
                     current={host.mem_used_bytes}
                     total={host.mem_total_bytes}
                     bytes
                   />
                   <BudgetRow
-                    label="Disk"
+                    label={t('dashboard.budget.disk')}
                     current={host.disk_used_bytes}
                     total={host.disk_total_bytes}
                     bytes
@@ -241,7 +257,7 @@ export function AppsDashboard() {
               ) : null}
               {budget && budget.total_ram_mb > 0 ? (
                 <BudgetRow
-                  label="Allocated RAM"
+                  label={t('dashboard.budget.allocatedRam')}
                   current={budget.allocated_mb}
                   total={budget.total_ram_mb}
                   unit="MiB"
@@ -249,22 +265,20 @@ export function AppsDashboard() {
               ) : null}
             </div>
             {budget?.over_committed ? (
-              <p className="mt-3 text-2xs text-err">
-                Apps have reserved more RAM than the box has — over-committed.
-              </p>
+              <p className="mt-3 text-2xs text-err">{t('dashboard.budget.overCommitted')}</p>
             ) : budget && budget.apps_total > budget.apps_with_limit ? (
               <Badge variant="info" className="mt-3 text-2xs">
                 <Info className="size-3" aria-hidden />
-                {budget.apps_total - budget.apps_with_limit} app
-                {budget.apps_total - budget.apps_with_limit === 1 ? '' : 's'} without a RAM limit
-                aren&apos;t budgeted.
+                {t('dashboard.budget.unbudgeted', {
+                  count: budget.apps_total - budget.apps_with_limit,
+                })}
               </Badge>
             ) : null}
             {host ? (
               <div className="mt-4 flex items-center justify-between border-t pt-3.5 text-xs text-muted-foreground">
-                <span>Request rate</span>
+                <span>{t('dashboard.budget.requestRate')}</span>
                 <span className="font-mono text-foreground">
-                  {host.request_rate.toFixed(1)} req/s
+                  {t('dashboard.budget.reqPerSecond', { rate: host.request_rate.toFixed(1) })}
                 </span>
               </div>
             ) : null}
@@ -279,6 +293,7 @@ export function AppsDashboard() {
 // rows above a filtered-out one glide up instead of snapping. Carries TableRow's
 // own classes inline since motion needs to own the <tr> element directly.
 function AppRow({ app, index }: { app: App; index: number }) {
+  const { t } = useTranslation('apps')
   const isAddon = app.source === 'template'
   const brand = isAddon ? brandFor(app.template_icon) : null
   return (
@@ -304,7 +319,11 @@ function AppRow({ app, index }: { app: App; index: number }) {
             {isAddon ? (
               <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
                 <Blocks className="size-2.5" />
-                <span className="truncate">Installed from {app.template_name ?? 'add-on'}</span>
+                <span className="truncate">
+                  {t('dashboard.table.installedFrom', {
+                    name: app.template_name ?? t('dashboard.table.addonFallback'),
+                  })}
+                </span>
               </span>
             ) : (
               <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
@@ -379,9 +398,10 @@ function RunningAppsRow({
   all: number
   issues: number
 }) {
+  const { t } = useTranslation('apps')
   return (
     <div className="flex items-center justify-between text-xs">
-      <span className="text-muted-foreground">Running apps</span>
+      <span className="text-muted-foreground">{t('dashboard.stats.runningApps')}</span>
       <Badge
         variant={appsBadgeVariant({ running, all, issues })}
         className="font-mono tabular-nums"

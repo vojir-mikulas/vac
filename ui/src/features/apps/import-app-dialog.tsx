@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Upload } from 'lucide-react'
 
@@ -38,6 +39,7 @@ export function ImportAppDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { t } = useTranslation('apps')
   const [spec, setSpec] = useState('')
   const navigate = useNavigate()
   const importApp = useImportApp()
@@ -51,9 +53,13 @@ export function ImportAppDialog({
   const onImport = () => {
     importApp.mutate(spec, {
       onSuccess: (res) => {
-        toast.success(`${res.created ? 'Imported' : 'Updated'} ${res.slug}`)
+        toast.success(
+          res.created
+            ? t('import.toast.imported', { slug: res.slug })
+            : t('import.toast.updated', { slug: res.slug }),
+        )
         if (res.secrets_needed?.length) {
-          toast.warning(`Re-enter secret values: ${res.secrets_needed.join(', ')}`)
+          toast.warning(t('import.toast.reenterSecrets', { values: res.secrets_needed.join(', ') }))
         }
         onOpenChange(false)
         setSpec('')
@@ -67,19 +73,21 @@ export function ImportAppDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Import app</DialogTitle>
+          <DialogTitle>{t('import.title')}</DialogTitle>
           <DialogDescription>
-            Paste a <span className="font-mono">vac.app.yaml</span> spec (or upload one) to create
-            or update an app. Re-importing the same slug updates it in place. Sensitive env values
-            aren&apos;t carried — you re-enter them afterwards.
+            <Trans
+              t={t}
+              i18nKey="import.description"
+              components={[<span className="font-mono" />]}
+            />
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2 py-2">
           <div className="flex items-center justify-between">
-            <Label htmlFor="spec">Spec</Label>
+            <Label htmlFor="spec">{t('import.spec')}</Label>
             <label className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
               <input type="file" accept=".yaml,.yml,.txt" className="hidden" onChange={onFile} />
-              Upload file…
+              {t('import.upload')}
             </label>
           </div>
           <Textarea
@@ -93,7 +101,7 @@ export function ImportAppDialog({
         </div>
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('import.cancel')}
           </Button>
           <Button
             variant="brand"
@@ -102,7 +110,7 @@ export function ImportAppDialog({
             onClick={onImport}
           >
             <Upload className="size-4" />
-            Import
+            {t('import.import')}
           </Button>
         </DialogFooter>
       </DialogContent>

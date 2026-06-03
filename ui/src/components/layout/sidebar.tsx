@@ -80,10 +80,12 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           security.severity === 'error'
             ? `${security.count} issue${security.count === 1 ? '' : 's'} need attention`
             : `${security.count} warning${security.count === 1 ? '' : 's'}`,
+        // Subtle tinted chip (matches StatusPill): readable in both themes,
+        // unlike the solid --warn/--err which clash with their own foreground.
         className:
           security.severity === 'error'
-            ? 'bg-err text-err-foreground'
-            : 'bg-warn text-warn-foreground',
+            ? 'border border-err-border bg-err-bg text-err-foreground'
+            : 'border border-warn-border bg-warn-bg text-warn-foreground',
       }
     }
     return null
@@ -134,7 +136,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 <span
                   aria-label={badge.label}
                   className={cn(
-                    'relative grid min-w-5 place-items-center rounded-full px-1.5 text-2xs font-semibold leading-5',
+                    'relative grid min-w-5 place-items-center rounded px-1.5 text-2xs font-semibold leading-5',
                     badge.className,
                   )}
                 >

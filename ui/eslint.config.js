@@ -47,13 +47,21 @@ export default defineConfig([
     },
   },
   // i18n guard against new hardcoded user-facing strings, scoped to feature code.
-  // Intentionally OFF during the scaffold — flip to 'error' per feature folder as
-  // each is migrated to t() (i18n plan, Phase C).
+  // OFF by default; flipped to 'error' per feature folder below as each is
+  // migrated to t() (i18n plan, Phase C). Tests are exempt (they assert on text).
   {
     files: ['src/features/**/*.{ts,tsx}'],
     plugins: { i18next },
     rules: {
       'i18next/no-literal-string': 'off',
+    },
+  },
+  // Migrated features — guard is live. Add a folder here once it's fully on t().
+  {
+    files: ['src/features/apps/**/*.{ts,tsx}'],
+    ignores: ['src/features/apps/**/*.test.{ts,tsx}'],
+    rules: {
+      'i18next/no-literal-string': 'error',
     },
   },
 ])

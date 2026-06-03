@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Box, FileCode2, Layers, Sparkles, Wand2 } from 'lucide-react'
 
 import { Input } from '@/components/ui/input'
@@ -12,13 +13,15 @@ export interface BuildSourceValue {
   build_config: BuildConfig
 }
 
-const KIND_OPTIONS: { kind: BuildKind; label: string; hint: string; icon: typeof Box }[] = [
-  { kind: 'auto', label: 'Auto-detect', hint: 'compose → Dockerfile → React', icon: Wand2 },
-  { kind: 'compose', label: 'Compose', hint: 'docker compose stack', icon: Layers },
-  { kind: 'dockerfile', label: 'Dockerfile', hint: 'single Dockerfile build', icon: FileCode2 },
-  { kind: 'framework', label: 'Framework', hint: 'React (more soon)', icon: Sparkles },
-  { kind: 'static', label: 'Static', hint: 'serve a built directory', icon: Box },
-]
+// `satisfies` keeps `kind` inferred as the literal union, so the
+// `buildSource.kinds.<kind>.*` translation keys below stay type-checked.
+const KIND_OPTIONS = [
+  { kind: 'auto', icon: Wand2 },
+  { kind: 'compose', icon: Layers },
+  { kind: 'dockerfile', icon: FileCode2 },
+  { kind: 'framework', icon: Sparkles },
+  { kind: 'static', icon: Box },
+] satisfies { kind: BuildKind; icon: typeof Box }[]
 
 // Frameworks: React works today; the rest are scaffolded as "coming soon".
 const FRAMEWORKS: { id: string; label: string; soon?: boolean }[] = [
@@ -40,6 +43,7 @@ export function BuildSourcePicker({
   /** When set, the matching kind card shows a "detected" badge. */
   detectedKind?: BuildKind
 }) {
+  const { t } = useTranslation('apps')
   const setKind = (kind: BuildKind) => onChange({ ...value, build_kind: kind })
   const setConfig = (patch: Partial<BuildConfig>) =>
     onChange({ ...value, build_config: { ...value.build_config, ...patch } })
@@ -63,14 +67,18 @@ export function BuildSourcePicker({
             >
               <div className="flex items-center gap-2">
                 <Icon className={cn('size-4', active ? 'text-brand' : 'text-muted-foreground')} />
-                <span className="text-sm font-medium">{opt.label}</span>
+                <span className="text-sm font-medium">
+                  {t(`buildSource.kinds.${opt.kind}.label`)}
+                </span>
                 {detectedKind === opt.kind ? (
                   <span className="rounded-full border border-ok-border bg-ok-bg px-1.5 py-0.5 text-2xs font-medium text-ok-foreground">
-                    detected
+                    {t('buildSource.detected')}
                   </span>
                 ) : null}
               </div>
-              <span className="text-2xs text-muted-foreground">{opt.hint}</span>
+              <span className="text-2xs text-muted-foreground">
+                {t(`buildSource.kinds.${opt.kind}.hint`)}
+              </span>
             </button>
           )
         })}
@@ -78,13 +86,12 @@ export function BuildSourcePicker({
 
       {value.build_kind === 'auto' ? (
         <p className="rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
-          VAC inspects the repo at deploy time and picks the first match: a compose file, then a
-          Dockerfile, then a known framework. Override above if you want a specific build.
+          {t('buildSource.autoNote')}
         </p>
       ) : null}
 
       {value.build_kind === 'compose' ? (
-        <Field label="Compose file path" hint="Relative to the repo root.">
+        <Field label={t('buildSource.composePath')} hint={t('buildSource.relativeToRoot')}>
           <Input
             value={cfg.composePath ?? ''}
             onChange={(e) => setConfig({ composePath: e.target.value })}
@@ -95,7 +102,7 @@ export function BuildSourcePicker({
       ) : null}
 
       {value.build_kind === 'dockerfile' ? (
-        <Field label="Dockerfile path" hint="Relative to the repo root.">
+        <Field label={t('buildSource.dockerfilePath')} hint={t('buildSource.relativeToRoot')}>
           <Input
             value={cfg.dockerfilePath ?? ''}
             onChange={(e) => setConfig({ dockerfilePath: e.target.value })}
@@ -107,7 +114,7 @@ export function BuildSourcePicker({
 
       {value.build_kind === 'framework' ? (
         <div className="flex flex-col gap-5">
-          <Field label="Framework">
+          <Field label={t('buildSource.framework')}>
             <div className="grid grid-cols-3 gap-2">
               {FRAMEWORKS.map((f) => {
                 const active = (cfg.framework ?? 'react') === f.id
@@ -128,14 +135,16 @@ export function BuildSourcePicker({
                   >
                     {f.label}
                     {f.soon ? (
-                      <span className="ml-1 text-2xs text-muted-foreground">soon</span>
+                      <span className="ml-1 text-2xs text-muted-foreground">
+                        {t('buildSource.soon')}
+                      </span>
                     ) : null}
                   </button>
                 )
               })}
             </div>
           </Field>
-          <Field label="Build command" hint="Runs in the build stage. Leave empty for the default.">
+          <Field label={t('buildSource.buildCommand')} hint={t('buildSource.buildCommandHint')}>
             <Input
               value={cfg.buildCommand ?? ''}
               onChange={(e) => setConfig({ buildCommand: e.target.value })}
@@ -148,10 +157,7 @@ export function BuildSourcePicker({
 
       {value.build_kind === 'static' ? (
         <div className="flex flex-col gap-5">
-          <Field
-            label="Output directory"
-            hint="Folder containing index.html, relative to the repo root."
-          >
+          <Field label={t('buildSource.outputDir')} hint={t('buildSource.outputDirHint')}>
             <Input
               value={cfg.staticDir ?? ''}
               onChange={(e) => setConfig({ staticDir: e.target.value })}
@@ -161,9 +167,9 @@ export function BuildSourcePicker({
           </Field>
           <label className="flex items-center justify-between gap-3">
             <span className="text-sm">
-              SPA fallback
+              {t('buildSource.spaFallback')}
               <span className="block text-2xs text-muted-foreground">
-                Serve index.html for unknown paths (client-side routing).
+                {t('buildSource.spaFallbackHint')}
               </span>
             </span>
             <Switch

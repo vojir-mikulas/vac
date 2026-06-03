@@ -1,1 +1,155 @@
-{}
+{
+  "actions": {
+    "import": "Import",
+    "newApp": "New App",
+    "cancel": "Cancel",
+    "back": "Back",
+    "continue": "Continue"
+  },
+  "dashboard": {
+    "title": "Apps",
+    "summary_one": "{{count}} application · {{running}} running",
+    "summary_other": "{{count}} applications · {{running}} running",
+    "filterPlaceholder": "Filter apps…",
+    "filterAria": "Filter apps",
+    "filters": {
+      "all": "All",
+      "running": "Running",
+      "issues": "Issues",
+      "stopped": "Stopped"
+    },
+    "stats": {
+      "runningApps": "Running apps",
+      "ofDeployed": "of {{count}} deployed",
+      "hostRam": "Host RAM",
+      "hostCpu": "Host CPU",
+      "allCores": "across all cores",
+      "disk": "Disk",
+      "ofSize": "of {{size}}"
+    },
+    "table": {
+      "application": "Application",
+      "status": "Status",
+      "compose": "Compose",
+      "updated": "Updated",
+      "noMatch": "No apps match the current filter.",
+      "installedFrom": "Installed from {{name}}",
+      "addonFallback": "add-on"
+    },
+    "empty": {
+      "title": "No apps yet",
+      "description": "Connect a repository to deploy your first app, or import an existing vac.app.yaml spec."
+    },
+    "budget": {
+      "heading": "Container budget",
+      "hostRam": "Host RAM",
+      "disk": "Disk",
+      "allocatedRam": "Allocated RAM",
+      "overCommitted": "Apps have reserved more RAM than the box has — over-committed.",
+      "unbudgeted_one": "{{count}} app without a RAM limit isn't budgeted.",
+      "unbudgeted_other": "{{count}} apps without a RAM limit aren't budgeted.",
+      "requestRate": "Request rate",
+      "reqPerSecond": "{{rate}} req/s"
+    }
+  },
+  "new": {
+    "steps": {
+      "source": "Source",
+      "build": "Build",
+      "domain": "Domain",
+      "deploy": "Deploy"
+    },
+    "backToApps": "Back to apps",
+    "title": "New application",
+    "subtitle": "Connect a Git repository — VAC handles build, deploy, HTTPS and routing.",
+    "create": "Create application",
+    "source": {
+      "title": "Connect a repository",
+      "subtitle": "Paste a Git URL. VAC creates a read-only deploy key for private repos.",
+      "repoUrl": "Repository URL",
+      "repoHint": "HTTPS for public repos, or SSH (git@…) for private repos with a deploy key.",
+      "appName": "App name",
+      "appNameFallback": "my-app",
+      "branch": "Branch"
+    },
+    "build": {
+      "title": "Build configuration",
+      "subtitle": "Choose how VAC builds this repo, or let it auto-detect."
+    },
+    "domain": {
+      "title": "Domain",
+      "subtitle": "Optional. HTTPS is automatic via Let's Encrypt once a domain points here.",
+      "label": "Custom domain",
+      "note": "Point a <0>CNAME</0> (or A record) at this VPS, then add the domain from the app's <1>Domains</1> tab after the first deploy — certificates are issued on the first request."
+    },
+    "review": {
+      "title": "Review and deploy",
+      "subtitle": "VAC will create the app, then run the pipeline.",
+      "name": "Name",
+      "source": "Source",
+      "branch": "Branch",
+      "build": "Build",
+      "domain": "Domain"
+    },
+    "summary": {
+      "auto": "Auto-detect",
+      "compose": "Compose ({{path}})",
+      "dockerfile": "Dockerfile ({{path}})",
+      "framework": "Framework: {{name}}",
+      "static": "Static ({{path}})"
+    },
+    "created": {
+      "title": "Almost there",
+      "subtitle": "{{name}} is created. Verify access, then run the first deploy."
+    },
+    "connect": {
+      "verifyAccess": "Verify access",
+      "reach": "Confirm VAC can reach <0>{{url}}</0> before the first deploy.",
+      "testConnection": "Test connection",
+      "testFailed": "Failed",
+      "succeeded": "Connection succeeded",
+      "connectionFailed": "Connection failed",
+      "goToApp": "Go to app",
+      "deployNow": "Deploy now"
+    },
+    "toast": {
+      "created": "App created",
+      "deployTriggered": "Deploy triggered"
+    }
+  },
+  "buildSource": {
+    "kinds": {
+      "auto": { "label": "Auto-detect", "hint": "compose → Dockerfile → React" },
+      "compose": { "label": "Compose", "hint": "docker compose stack" },
+      "dockerfile": { "label": "Dockerfile", "hint": "single Dockerfile build" },
+      "framework": { "label": "Framework", "hint": "React (more soon)" },
+      "static": { "label": "Static", "hint": "serve a built directory" }
+    },
+    "detected": "detected",
+    "soon": "soon",
+    "autoNote": "VAC inspects the repo at deploy time and picks the first match: a compose file, then a Dockerfile, then a known framework. Override above if you want a specific build.",
+    "composePath": "Compose file path",
+    "dockerfilePath": "Dockerfile path",
+    "relativeToRoot": "Relative to the repo root.",
+    "framework": "Framework",
+    "buildCommand": "Build command",
+    "buildCommandHint": "Runs in the build stage. Leave empty for the default.",
+    "outputDir": "Output directory",
+    "outputDirHint": "Folder containing index.html, relative to the repo root.",
+    "spaFallback": "SPA fallback",
+    "spaFallbackHint": "Serve index.html for unknown paths (client-side routing)."
+  },
+  "import": {
+    "title": "Import app",
+    "description": "Paste a <0>vac.app.yaml</0> spec (or upload one) to create or update an app. Re-importing the same slug updates it in place. Sensitive env values aren't carried — you re-enter them afterwards.",
+    "spec": "Spec",
+    "upload": "Upload file…",
+    "cancel": "Cancel",
+    "import": "Import",
+    "toast": {
+      "imported": "Imported {{slug}}",
+      "updated": "Updated {{slug}}",
+      "reenterSecrets": "Re-enter secret values: {{values}}"
+    }
+  }
+}
