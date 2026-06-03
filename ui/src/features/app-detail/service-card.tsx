@@ -22,6 +22,8 @@ import {
   useStopService,
   useUpdateService,
 } from '@/lib/api/services'
+import { useInstanceInfo } from '@/lib/api/instance'
+import { ShellDialog } from '@/features/app-detail/shell-dialog'
 import { useAppStatsContext } from '@/features/app-detail/stats-context'
 import { formatBytes, formatDuration, formatPercent } from '@/lib/format'
 import type { Service } from '@/types/api'
@@ -40,8 +42,10 @@ export function ServiceCard({
   const restart = useRestartService(appId)
   const stop = useStopService(appId)
   const start = useStartService(appId)
+  const { data: instance } = useInstanceInfo()
 
   const stopped = service.status === 'stopped'
+  const running = service.status === 'running'
   const busy = restart.isPending || stop.isPending || start.isPending
 
   return (
@@ -62,6 +66,9 @@ export function ServiceCard({
         </div>
         <div className="flex gap-1">
           <ConfigureDialog appId={appId} service={service} />
+          {instance?.enable_shell && running ? (
+            <ShellDialog appId={appId} service={service.name} />
+          ) : null}
           <Button variant="ghost" size="sm" asChild>
             <Link to="/apps/$appId/logs" params={{ appId }} search={{ service: service.name }}>
               <ScrollText className="size-3.5" />

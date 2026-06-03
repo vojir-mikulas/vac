@@ -10,6 +10,8 @@ export interface InstanceInfo {
   channel: string
   /** Track D master gate — hides backups/databases/add-ons surfaces when off. */
   managed_services: boolean
+  /** P3.4 gate — hides the interactive container-shell affordance when off. */
+  enable_shell: boolean
 }
 
 export interface BaseDomainInfo {

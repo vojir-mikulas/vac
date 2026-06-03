@@ -323,6 +323,15 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Get("/{id}/services/{name}/logs", handler.RuntimeLogsWS(s, hub, wsOpts))
 					r.Get("/{id}/stats", handler.StatsWS(s, hub, wsOpts))
 				}
+
+				// Interactive container shell (P3.4). Privileged + highest
+				// blast-radius: the sandboxed control plane shells into a user app
+				// container. Off unless explicitly enabled; each session is
+				// audit-logged from the handler (the WS GET escapes the audit
+				// middleware, which only wraps mutating verbs).
+				if docker != nil && cfg.EnableShell {
+					r.Get("/{id}/services/{name}/exec", handler.ExecWS(s, docker, wsOpts))
+				}
 			})
 
 			// Add-on catalog (Track D / D3). Global surface (installs become

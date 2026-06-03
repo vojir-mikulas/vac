@@ -100,6 +100,13 @@ type Config struct {
 	ManagedServices   bool `yaml:"managed_services"`
 	ManagedDBIsolated bool `yaml:"managed_db_isolated"`
 
+	// EnableShell gates the interactive container-shell endpoint (P3.4). Off by
+	// default: it lets the operator open a root-capable shell into a *user app*
+	// container from the deliberately-sandboxed control plane — the highest
+	// blast-radius feature — so it stays closed until explicitly opted in. The UI
+	// hides the Shell affordance on the same flag (instance info → enable_shell).
+	EnableShell bool `yaml:"enable_shell"`
+
 	// Track E / E2 (security dashboard). SecurityMonitor gates the always-on
 	// traffic-anomaly detector that rides the existing Caddy access-log tail
 	// (default on — it holds only bounded in-memory counters, near-zero cost).
@@ -368,6 +375,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("VAC_MANAGED_DB_ISOLATED"); v != "" {
 		cfg.ManagedDBIsolated = v == "true" || v == "1"
+	}
+	if v := os.Getenv("VAC_ENABLE_SHELL"); v != "" {
+		cfg.EnableShell = v == "true" || v == "1"
 	}
 
 	if v := os.Getenv("VAC_SECURITY_MONITOR"); v != "" {

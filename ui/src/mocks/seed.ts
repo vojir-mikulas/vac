@@ -307,6 +307,7 @@ export function buildInitialState(): MockState {
       built_at: daysAgoISO(1),
       channel: 'preview',
       managed_services: true,
+      enable_shell: true,
     },
     baseDomain: 'apps.example.com',
     apps: [storefront, marketing, gateway, analytics],

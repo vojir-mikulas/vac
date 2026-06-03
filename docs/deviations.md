@@ -392,6 +392,32 @@ footprint on a box that uses none — the `<200 MB` claim holds.
 - **Trade-off:** an unassigned-but-pointed domain still passes `CaddyAsk`, so Caddy may pre-issue a
   cert for a host not yet serving — intended cert pre-warming, not a leak (the operator added it).
 
+### P3.4 — Interactive container shell crosses the control-plane sandbox (gated + audited)
+
+- **Context:** `vac-api` is deliberately off the `vac-edge` network and never reaches into user
+  app containers — user code can't reach the control plane and vice-versa. The control plane does
+  already `docker exec` into containers non-interactively (managed backups, Track D).
+- **We do instead:** `GET /api/apps/{id}/services/{name}/exec` (WebSocket) opens an interactive
+  `docker exec -i -t {container} sh` over a PTY (`dockercli.ExecInteractive`, `creack/pty`),
+  rendered in xterm.js. This exposes the existing exec capability *interactively* to the operator.
+- **Why:** Docker-Desktop-style "shell into a container" is the single most-requested debugging
+  affordance; doing it in-product beats handing operators raw `docker exec` on the host.
+- **Guardrails (this crosses a trust boundary, so all three hold):**
+  - **Feature-flagged off by default** — `VAC_ENABLE_SHELL` (config `enable_shell`). The route is
+    not even registered unless set; the UI hides the Shell affordance on the same flag
+    (instance info → `enable_shell`). Highest blast-radius feature, so default-closed.
+  - **Audit-logged** — the handler writes an `audit_log` row on session open (target `app`,
+    summary "opened shell into service web", metadata `{service, container_id}`). The audit
+    middleware only wraps mutating HTTP verbs, so a WS GET escapes it — the handler calls
+    `InsertAuditLog` directly (mirrors the env-reveal pattern).
+  - **Running-only** — a stopped/crashed service has no live `container_id`; the endpoint rejects
+    with 409 before the upgrade, and the UI only renders Shell for a `running` service.
+- **Trade-off:** an enabled shell is a root-capable foothold into a user container from the
+  control plane — accepted because it is off by default, gated by an explicit operator confirm in
+  the UI, and recorded. The PTY process is reaped on disconnect (`PtySession.Close` kills + waits
+  the `docker exec` child) so a dropped socket leaves no orphan. New direct dependency:
+  `github.com/creack/pty` (was already an indirect dep); UI deps `@xterm/xterm` + `@xterm/addon-fit`.
+
 ---
 
 > Maintenance note: when a deviation is later reconciled (e.g. we adopt the mvp's original

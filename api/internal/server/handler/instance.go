@@ -102,6 +102,9 @@ func InstanceInfo(cfg config.Config) http.HandlerFunc {
 			// Track D master gate. The UI hides managed-services surfaces (backups,
 			// databases, add-ons) until this is on.
 			"managed_services": cfg.ManagedServices,
+			// P3.4 gate. The UI hides the per-service Shell affordance until the
+			// operator opts into the interactive container-shell endpoint.
+			"enable_shell": cfg.EnableShell,
 		})
 	}
 }

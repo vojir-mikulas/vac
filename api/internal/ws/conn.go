@@ -64,6 +64,35 @@ func (c *Conn) WriteText(ctx context.Context, msg []byte) error {
 	return c.ws.Write(wctx, websocket.MessageText, msg)
 }
 
+// WriteBinary sends one binary frame with a bounded deadline. Used by the
+// interactive exec PTY (P3.4) to carry raw terminal output untouched — JSON
+// wrapping is reserved for the text-framed resize control messages.
+func (c *Conn) WriteBinary(ctx context.Context, msg []byte) error {
+	wctx, cancel := context.WithTimeout(ctx, writeTimeout)
+	defer cancel()
+	return c.ws.Write(wctx, websocket.MessageBinary, msg)
+}
+
+// Read blocks for the next inbound frame. isText distinguishes a text frame (a
+// JSON control message, e.g. resize) from a binary frame (raw stdin bytes). It
+// is the bidirectional counterpart to Pump and must not be combined with it on
+// the same connection — Pump's CloseRead drains inbound frames itself.
+func (c *Conn) Read(ctx context.Context) (isText bool, data []byte, err error) {
+	typ, b, err := c.ws.Read(ctx)
+	if err != nil {
+		return false, nil, err
+	}
+	return typ == websocket.MessageText, b, nil
+}
+
+// Ping sends a WebSocket ping with a bounded deadline — a keepalive for the
+// interactive shell, which may sit idle between keystrokes.
+func (c *Conn) Ping(ctx context.Context) error {
+	pctx, cancel := context.WithTimeout(ctx, writeTimeout)
+	defer cancel()
+	return c.ws.Ping(pctx)
+}
+
 // Close tears the connection down with a normal close code.
 func (c *Conn) Close(reason string) {
 	_ = c.ws.Close(websocket.StatusNormalClosure, reason)
