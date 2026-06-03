@@ -25,10 +25,11 @@ set -eu
 # Which knobs did the caller pre-set via env? A pre-set knob skips its wizard
 # question — this is what keeps `curl | sh` fully unattended for automation.
 # Captured before defaults are applied (defaults would mask the distinction).
-[ -n "${VAC_DOMAIN+x}" ]           && DOMAIN_PRESET=1  || DOMAIN_PRESET=0
-[ -n "${VAC_MANAGED_SERVICES+x}" ] && MANAGED_PRESET=1 || MANAGED_PRESET=0
-[ -n "${VAC_ENABLE_SHELL+x}" ]     && SHELL_PRESET=1   || SHELL_PRESET=0
-[ -n "${VAC_GRANT_ACCESS+x}" ]     && GRANT_PRESET=1   || GRANT_PRESET=0
+[ -n "${VAC_DOMAIN+x}" ]           && DOMAIN_PRESET=1   || DOMAIN_PRESET=0
+[ -n "${VAC_MANAGED_SERVICES+x}" ] && MANAGED_PRESET=1  || MANAGED_PRESET=0
+[ -n "${VAC_ENABLE_SHELL+x}" ]     && SHELL_PRESET=1    || SHELL_PRESET=0
+[ -n "${VAC_SECURITY_AGENT+x}" ]   && SECAGENT_PRESET=1 || SECAGENT_PRESET=0
+[ -n "${VAC_GRANT_ACCESS+x}" ]     && GRANT_PRESET=1    || GRANT_PRESET=0
 
 VAC_VERSION="${VAC_VERSION:-latest}"
 VAC_INSTALL_DIR="${VAC_INSTALL_DIR:-/opt/vac}"
@@ -44,6 +45,10 @@ VAC_MANAGED_SERVICES="${VAC_MANAGED_SERVICES:-}"
 # open a root-capable shell into a user app container (confirm-gated + audited).
 # Highest blast-radius feature, so it's opt-in: `vac container-shell on|off`.
 VAC_ENABLE_SHELL="${VAC_ENABLE_SHELL:-}"
+# Host security agent (read-only fail2ban/firewall collector). Off by default —
+# it installs a host-level systemd timer/cron outside the compose stack, so it's
+# opt-in. Toggle any time with `vac security-agent on|off`.
+VAC_SECURITY_AGENT="${VAC_SECURITY_AGENT:-}"
 # When installed via sudo, also let the invoking user run `vac` without sudo:
 # add them to the `docker` group and give them the install dir (which holds the
 # root-only .env). Opt out with --no-grant or VAC_GRANT_ACCESS=0.
@@ -232,7 +237,8 @@ run_wizard() {
   if [ "$INTERACTIVE" != 1 ]; then
     VAC_MANAGED_SERVICES="$(normalize_bool "${VAC_MANAGED_SERVICES:-false}")"
     VAC_ENABLE_SHELL="$(normalize_bool "${VAC_ENABLE_SHELL:-false}")"
-    info "Running non-interactively — using defaults (domain: ${VAC_DOMAIN:-none}, managed services: ${VAC_MANAGED_SERVICES}, container shell: ${VAC_ENABLE_SHELL})."
+    VAC_SECURITY_AGENT="$(normalize_bool "${VAC_SECURITY_AGENT:-false}")"
+    info "Running non-interactively — using defaults (domain: ${VAC_DOMAIN:-none}, managed services: ${VAC_MANAGED_SERVICES}, container shell: ${VAC_ENABLE_SHELL}, security agent: ${VAC_SECURITY_AGENT})."
     return 0
   fi
 
@@ -241,6 +247,7 @@ run_wizard() {
   wizard_ask_domain
   wizard_ask_managed_services
   wizard_ask_container_shell
+  wizard_ask_security_agent
   wizard_ask_grant
   wizard_confirm
 }
@@ -312,6 +319,26 @@ wizard_ask_container_shell() {
   fi
 }
 
+wizard_ask_security_agent() {
+  if [ "$SECAGENT_PRESET" = 1 ]; then
+    VAC_SECURITY_AGENT="$(normalize_bool "$VAC_SECURITY_AGENT")"
+    return 0
+  fi
+  say ""
+  say "${B}${C}Security monitoring${N}  (read-only fail2ban + firewall status on the Security tab)"
+  say "  VAC's control plane is sandboxed and can't read host firewall/fail2ban"
+  say "  state on its own. Opting in installs a tiny ${B}read-only${N} host collector"
+  say "  (a systemd timer that runs 'ufw status' / 'fail2ban-client status' every"
+  say "  ~60s) so the dashboard can show your firewall/ban status and warn if no"
+  say "  firewall is active. It never changes host state."
+  say "  You can turn it on or off any time with: ${B}vac security-agent on|off${N}"
+  if confirm 'Enable host security monitoring now?' n; then
+    VAC_SECURITY_AGENT=true
+  else
+    VAC_SECURITY_AGENT=false
+  fi
+}
+
 wizard_ask_grant() {
   # Only meaningful when invoked via sudo from a real user account.
   [ "$GRANT_PRESET" = 1 ] && return 0
@@ -337,6 +364,7 @@ wizard_confirm() {
   say "  domain:            ${VAC_DOMAIN:-none (reach by IP)}"
   say "  managed services:  ${VAC_MANAGED_SERVICES}"
   say "  container shell:    ${VAC_ENABLE_SHELL}"
+  say "  security agent:    ${VAC_SECURITY_AGENT}"
   say "  sudo-free access:  ${_grant}"
   say ""
   confirm 'Proceed?' y || die "Aborted — nothing was changed."
@@ -407,6 +435,7 @@ VAC_HOST_PORT=$VAC_HOST_PORT
 VAC_BASE_DOMAIN=$VAC_DOMAIN
 VAC_MANAGED_SERVICES=$(normalize_bool "${VAC_MANAGED_SERVICES:-false}")
 VAC_ENABLE_SHELL=$(normalize_bool "${VAC_ENABLE_SHELL:-false}")
+VAC_SECURITY_AGENT=$(normalize_bool "${VAC_SECURITY_AGENT:-false}")
 EOF
     chmod 600 "$ENV_FILE"
   fi
@@ -491,6 +520,107 @@ case "$cmd" in
         echo "Container shell disabled." ;;
       *) echo "usage: vac container-shell on|off" >&2; exit 1 ;;
     esac ;;
+  security-check)
+    # Opt in/out of the firewall / fail2ban posture warnings. A box with no
+    # firewall is dangerous, so both warn by default; turn one off if you
+    # deliberately don't run it and don't want the Security tab to flag it.
+    _what="${1:-}"; _state="${2:-}"
+    case "$_what" in
+      firewall) _var=VAC_SECURITY_EXPECT_FIREWALL ;;
+      fail2ban) _var=VAC_SECURITY_EXPECT_FAIL2BAN ;;
+      *) echo "usage: vac security-check firewall|fail2ban on|off" >&2; exit 1 ;;
+    esac
+    case "$_state" in
+      on|true|1)  set_env "$_var" true;  dc up -d vac-api; echo "$_what posture warnings enabled." ;;
+      off|false|0) set_env "$_var" false; dc up -d vac-api; echo "$_what posture warnings disabled." ;;
+      *) echo "usage: vac security-check firewall|fail2ban on|off" >&2; exit 1 ;;
+    esac ;;
+  security-agent)
+    # Install/remove the read-only host security collector. It runs ON THE HOST
+    # (the sandboxed control plane can't read host firewall/fail2ban state), so
+    # it's a host-level artifact (systemd timer / cron) — opt-in, and needs root.
+    case "${1:-}" in
+      on|true|1)
+        [ "$(id -u)" -eq 0 ] || { echo "vac security-agent on must run as root (sudo)" >&2; exit 1; }
+        mkdir -p /var/lib/vac/security /usr/local/lib/vac
+        cat > /usr/local/lib/vac/vac-security-agent.sh <<'AGENTEOF'
+#!/bin/sh
+# vac-security-agent — host-side, read-only security collector for VAC. Writes
+# $VAC_SECURITY_DIR/host.snapshot (fail2ban + firewall) for the sandboxed vac-api,
+# which can't read host state directly. Strictly read-only (status/list only).
+set -eu
+DIR="${VAC_SECURITY_DIR:-/var/lib/vac/security}"
+OUT="$DIR/host.snapshot"
+PATH="/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+mkdir -p "$DIR"
+TMP="$(mktemp "$DIR/.host.snapshot.XXXXXX")"
+trap 'rm -f "$TMP"' EXIT
+printf 'generated_at: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$TMP"
+if command -v fail2ban-client >/dev/null 2>&1; then
+  if status="$(fail2ban-client status 2>/dev/null)"; then
+    printf '@@@ fail2ban-status\n%s\n' "$status" >> "$TMP"
+    jails="$(printf '%s\n' "$status" | sed -n 's/.*Jail list:[[:space:]]*//p' | tr ',' ' ')"
+    for jail in $jails; do
+      [ -n "$jail" ] || continue
+      if jout="$(fail2ban-client status "$jail" 2>/dev/null)"; then
+        printf '@@@ fail2ban-jail %s\n%s\n' "$jail" "$jout" >> "$TMP"
+      fi
+    done
+  fi
+fi
+if command -v ufw >/dev/null 2>&1 && fw="$(ufw status verbose 2>/dev/null)"; then
+  printf '@@@ firewall ufw\n%s\n' "$fw" >> "$TMP"
+elif command -v nft >/dev/null 2>&1 && fw="$(nft list ruleset 2>/dev/null)"; then
+  printf '@@@ firewall nftables\n%s\n' "$fw" >> "$TMP"
+else
+  printf '@@@ firewall none\n' >> "$TMP"
+fi
+chmod 0644 "$TMP"
+mv -f "$TMP" "$OUT"
+trap - EXIT
+AGENTEOF
+        chmod 0755 /usr/local/lib/vac/vac-security-agent.sh
+        if command -v systemctl >/dev/null 2>&1; then
+          cat > /etc/systemd/system/vac-security-agent.service <<'UNITEOF'
+[Unit]
+Description=VAC host security collector (read-only fail2ban/firewall snapshot)
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/vac/vac-security-agent.sh
+UNITEOF
+          cat > /etc/systemd/system/vac-security-agent.timer <<'UNITEOF'
+[Unit]
+Description=Run the VAC host security collector periodically
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=10s
+[Install]
+WantedBy=timers.target
+UNITEOF
+          systemctl daemon-reload >/dev/null 2>&1 || true
+          systemctl enable --now vac-security-agent.timer >/dev/null 2>&1 \
+            || echo "warning: could not enable the vac-security-agent timer" >&2
+        else
+          printf '%s\n' '* * * * * root /usr/local/lib/vac/vac-security-agent.sh >/dev/null 2>&1' \
+            > /etc/cron.d/vac-security-agent
+        fi
+        /usr/local/lib/vac/vac-security-agent.sh >/dev/null 2>&1 || true
+        set_env VAC_SECURITY_AGENT true; dc up -d vac-api
+        echo "Host security agent enabled — read-only fail2ban/firewall snapshots (~60s)." ;;
+      off|false|0|"")
+        [ "$(id -u)" -eq 0 ] || { echo "vac security-agent off must run as root (sudo)" >&2; exit 1; }
+        if command -v systemctl >/dev/null 2>&1; then
+          systemctl disable --now vac-security-agent.timer >/dev/null 2>&1 || true
+          rm -f /etc/systemd/system/vac-security-agent.timer \
+                /etc/systemd/system/vac-security-agent.service
+          systemctl daemon-reload >/dev/null 2>&1 || true
+        fi
+        rm -f /etc/cron.d/vac-security-agent /usr/local/lib/vac/vac-security-agent.sh
+        set_env VAC_SECURITY_AGENT false; dc up -d vac-api
+        echo "Host security agent disabled and removed." ;;
+      *) echo "usage: vac security-agent on|off" >&2; exit 1 ;;
+    esac ;;
   config)    cat "$ENVF" ;;
   version|--version|-v)
     pinned="$(grep '^VAC_VERSION=' "$ENVF" 2>/dev/null | cut -d= -f2-)"
@@ -531,6 +661,10 @@ vac — manage this VAC install ($DIR)
   vac unset-domain                 disable HTTPS dashboard and app subdomains
   vac managed-services on|off      toggle backups, databases & the add-on catalog
   vac container-shell on|off       toggle the in-dashboard container shell (privileged)
+  vac security-agent on|off        install/remove the read-only host security
+                                   collector (fail2ban/firewall; root required)
+  vac security-check firewall|fail2ban on|off
+                                   toggle the firewall/fail2ban posture warnings
   vac reset-password <username>    set a new password and revoke sessions
   vac up | down | restart [service]
   vac config                       print the .env
@@ -573,6 +707,23 @@ grant_user_access() {
 
   info "Giving ${B}${TARGET_USER}${N} ownership of ${VAC_INSTALL_DIR} (so 'vac' reads .env without sudo)…"
   chown -R "$TARGET_USER" "$VAC_INSTALL_DIR" || warn "  could not chown $VAC_INSTALL_DIR"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Host security agent (read-only fail2ban/firewall collector)
+# ─────────────────────────────────────────────────────────────────────────────
+ensure_security_agent() {
+  # The host security agent is opt-in (it installs a host-level systemd timer /
+  # cron outside the compose stack). Install/refresh it only when the effective
+  # config says so — on a fresh install that's the wizard choice (written to
+  # .env by generate_env), on an upgrade it's whatever the operator set. The
+  # actual install lives in the `vac` CLI (`vac security-agent on`), so it's the
+  # single source of truth and toggleable any time.
+  _sa="$(grep '^VAC_SECURITY_AGENT=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)"
+  [ "$(normalize_bool "${_sa:-false}")" = "true" ] || return 0
+  info "Installing the host security agent (read-only fail2ban/firewall snapshot)…"
+  /usr/local/bin/vac security-agent on >/dev/null 2>&1 \
+    || warn "  could not install the host security agent (run 'sudo vac security-agent on' to retry)"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -629,6 +780,9 @@ print_summary() {
   if [ "$(normalize_bool "${VAC_ENABLE_SHELL:-false}")" = "true" ]; then
     printf '  Container shell is %son%s — a privileged, audited shell into app containers.\n' "$B" "$N"
   fi
+  if [ "$(normalize_bool "${VAC_SECURITY_AGENT:-false}")" = "true" ]; then
+    printf '  Security monitoring is %son%s — read-only fail2ban/firewall status on the Security tab.\n' "$B" "$N"
+  fi
   printf '  Manage:  %svac status | vac logs | vac upgrade | vac down%s\n' "$B" "$N"
   if [ "${RELOGIN:-0}" = "1" ]; then
     printf '\n  %sLog out and back in%s (or run %snewgrp docker%s) so %s%s%s can run\n' "$B" "$N" "$B" "$N" "$B" "${SUDO_USER:-your user}" "$N"
@@ -654,6 +808,7 @@ main() {
   generate_env
   start_stack
   install_cli
+  ensure_security_agent
   grant_user_access
   print_summary
 }
