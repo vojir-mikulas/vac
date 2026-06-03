@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
 import { SwapFade } from '@/components/common/swap-fade'
+import { ErrorState } from '@/components/common/error-state'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -35,7 +36,7 @@ const newUid = () => ++nextUid
 
 export function EnvTab({ appId }: { appId: string }) {
   const { t } = useTranslation('app-detail')
-  const { data: vars, isLoading } = useEnvVars(appId)
+  const { data: vars, isLoading, isError, refetch } = useEnvVars(appId)
   const replace = useReplaceEnv(appId)
   const stack = useStackControl(appId)
 
@@ -213,7 +214,9 @@ export function EnvTab({ appId }: { appId: string }) {
           ) : null}
 
           <Card className="gap-0 p-0">
-            <SwapFade id={isLoading ? 'loading' : list.length === 0 ? 'empty' : 'rows'}>
+            <SwapFade
+              id={isLoading ? 'loading' : isError ? 'error' : list.length === 0 ? 'empty' : 'rows'}
+            >
               {isLoading ? (
                 <div className="flex flex-col">
                   {Array.from({ length: 4 }).map((_, i) => (
@@ -226,6 +229,8 @@ export function EnvTab({ appId }: { appId: string }) {
                     </div>
                   ))}
                 </div>
+              ) : isError ? (
+                <ErrorState onRetry={() => refetch()} className="border-0 bg-transparent py-10" />
               ) : list.length === 0 ? (
                 <p className="px-4 py-10 text-center text-sm text-muted-foreground">
                   <Trans t={t} i18nKey="env.emptyState" components={[<strong />, <strong />]} />

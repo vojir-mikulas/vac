@@ -6,6 +6,7 @@ import { SectionHeader } from '@/components/common/section-header'
 import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { StatusPill } from '@/components/common/status-pill'
 import { EmptyState } from '@/components/common/empty-state'
+import { ErrorState } from '@/components/common/error-state'
 import { ListSkeleton } from '@/components/common/list-skeleton'
 import { StatStripSkeleton } from '@/components/common/stat-strip-skeleton'
 import { Card } from '@/components/ui/card'
@@ -51,12 +52,14 @@ const SEVERITY_STATUS: Record<SecuritySeverity, string> = {
 
 function PosturePanel() {
   const { t } = useTranslation('security')
-  const { data, isLoading } = useSecurityPosture()
+  const { data, isLoading, isError, refetch } = useSecurityPosture()
   return (
     <>
       <SectionHeader>{t('posture.heading')}</SectionHeader>
       {isLoading ? (
         <ListSkeleton rows={5} avatar />
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : !data || data.length === 0 ? (
         <EmptyState title={t('posture.empty.title')} description={t('posture.empty.description')} />
       ) : (
@@ -150,7 +153,7 @@ function severityIcon(s: SecuritySeverity) {
 
 function TrafficPanel() {
   const { t } = useTranslation('security')
-  const { data, isLoading } = useSecurityTraffic()
+  const { data, isLoading, isError, refetch } = useSecurityTraffic()
   const windowLabel = data
     ? t('traffic.windowLabel', { seconds: data.window_seconds })
     : t('traffic.live')
@@ -162,6 +165,8 @@ function TrafficPanel() {
           <StatStripSkeleton />
           <ListSkeleton rows={4} />
         </div>
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : (
         <>
           <div className="mb-4">
@@ -349,12 +354,14 @@ function AnomaliesList({
 
 function Fail2banPanel() {
   const { t } = useTranslation('security')
-  const { data, isLoading } = useFail2ban()
+  const { data, isLoading, isError, refetch } = useFail2ban()
   return (
     <div>
       <SectionHeader>{t('fail2ban.heading')}</SectionHeader>
       {isLoading ? (
         <ListSkeleton rows={3} />
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : !data?.source ? (
         <MonitoringOffState />
       ) : data.stale ? (
@@ -435,12 +442,14 @@ function HostSourceFooter({ source, generatedAt }: { source?: string; generatedA
 
 function FirewallPanel() {
   const { t } = useTranslation('security')
-  const { data, isLoading } = useFirewall()
+  const { data, isLoading, isError, refetch } = useFirewall()
   return (
     <div>
       <SectionHeader>{t('firewall.heading')}</SectionHeader>
       {isLoading ? (
         <ListSkeleton rows={3} />
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : !data?.source ? (
         <MonitoringOffState />
       ) : data.stale ? (

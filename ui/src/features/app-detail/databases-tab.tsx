@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { SectionHeader } from '@/components/common/section-header'
 import { BrandIcon } from '@/components/common/brand-icon'
 import { EmptyState } from '@/components/common/empty-state'
+import { ErrorState } from '@/components/common/error-state'
 import { StatusPill } from '@/components/common/status-pill'
 import { CardStackSkeleton } from '@/components/common/card-stack-skeleton'
 import { SwapFade } from '@/components/common/swap-fade'
@@ -43,7 +44,7 @@ function pillStatus(status: string): string {
 
 export function DatabasesTab({ appId }: { appId: string }) {
   const { t } = useTranslation('app-detail')
-  const { data: databases, isLoading } = useDatabases(appId)
+  const { data: databases, isLoading, isError, refetch } = useDatabases(appId)
 
   return (
     <div className="flex flex-col gap-4">
@@ -52,9 +53,21 @@ export function DatabasesTab({ appId }: { appId: string }) {
         <AddDatabaseDialog appId={appId} />
       </div>
 
-      <SwapFade id={isLoading ? 'loading' : databases && databases.length > 0 ? 'cards' : 'empty'}>
+      <SwapFade
+        id={
+          isLoading
+            ? 'loading'
+            : isError
+              ? 'error'
+              : databases && databases.length > 0
+                ? 'cards'
+                : 'empty'
+        }
+      >
         {isLoading ? (
           <CardStackSkeleton count={1} rowHeight="h-36" />
+        ) : isError ? (
+          <ErrorState onRetry={() => refetch()} />
         ) : databases && databases.length > 0 ? (
           <div className="flex flex-col gap-4">
             {databases.map((db) => (

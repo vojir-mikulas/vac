@@ -15,5 +15,16 @@
   "error": {
     "title": "Something went wrong",
     "description": "An unexpected error occurred."
+  },
+  "errorState": {
+    "title": "Couldn't load this",
+    "description": "The request failed. The backend may be unreachable.",
+    "retry": "Retry"
+  },
+  "connection": {
+    "live": "Live",
+    "connecting": "Connecting",
+    "reconnecting": "Reconnecting",
+    "disconnected": "Disconnected"
   }
 }

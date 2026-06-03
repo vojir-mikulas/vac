@@ -141,6 +141,11 @@ func readNewPassword(stdin io.Reader, stdout io.Writer) (string, error) {
 	if len(pw) < minPasswordLen {
 		return "", fmt.Errorf("password must be at least %d characters", minPasswordLen)
 	}
+	// bcrypt ignores everything past the first 72 bytes; reject longer up front so
+	// the operator isn't misled and HashPassword can't fail late.
+	if len(pw) > auth.MaxPasswordBytes {
+		return "", fmt.Errorf("password must be at most %d bytes", auth.MaxPasswordBytes)
+	}
 	confirm, err := prompt("Confirm password: ")
 	if err != nil {
 		return "", err

@@ -9,6 +9,7 @@ import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { StatusPill } from '@/components/common/status-pill'
 import { Card } from '@/components/ui/card'
 import { EmptyState } from '@/components/common/empty-state'
+import { ErrorState } from '@/components/common/error-state'
 import { ListSkeleton } from '@/components/common/list-skeleton'
 import { SwapFade } from '@/components/common/swap-fade'
 import { listItem } from '@/lib/motion'
@@ -26,7 +27,7 @@ interface Row extends Deployment {
 
 export function DeploymentsPage() {
   const { t } = useTranslation('deployments')
-  const { data: apps } = useApps()
+  const { data: apps, isError: appsError, refetch: refetchApps } = useApps()
   const appList = apps ?? []
   const { data: queue } = useActiveDeployments()
 
@@ -38,6 +39,13 @@ export function DeploymentsPage() {
   })
 
   const isLoading = results.some((r) => r.isLoading)
+  // The timeline fails if the apps list itself failed, or every per-app deploy
+  // query did — a partial failure still renders the apps that loaded.
+  const isError = appsError || (results.length > 0 && results.every((r) => r.isError))
+  const refetch = () => {
+    refetchApps()
+    results.forEach((r) => r.refetch())
+  }
 
   // Cheap to recompute each render (≤100 rows × app count); merge + sort inline.
   const rows: Row[] = []
@@ -84,9 +92,13 @@ export function DeploymentsPage() {
       <DeployQueue />
 
       <SectionHeader>{t('page.timeline')}</SectionHeader>
-      <SwapFade id={isLoading ? 'loading' : rows.length === 0 ? 'empty' : 'timeline'}>
+      <SwapFade
+        id={isLoading ? 'loading' : isError ? 'error' : rows.length === 0 ? 'empty' : 'timeline'}
+      >
         {isLoading ? (
           <ListSkeleton header rows={6} />
+        ) : isError ? (
+          <ErrorState onRetry={refetch} />
         ) : rows.length === 0 ? (
           <EmptyState title={t('page.empty.title')} description={t('page.empty.description')} />
         ) : (

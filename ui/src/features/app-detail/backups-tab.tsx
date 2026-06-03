@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
 import { EmptyState } from '@/components/common/empty-state'
+import { ErrorState } from '@/components/common/error-state'
 import { StatusPill } from '@/components/common/status-pill'
 import { CardStackSkeleton } from '@/components/common/card-stack-skeleton'
 import { SwapFade } from '@/components/common/swap-fade'
@@ -91,7 +92,7 @@ function scheduleSummary(c: BackupConfig, t: AppDetailT): string {
 
 export function BackupsTab({ appId }: { appId: string }) {
   const { t } = useTranslation('app-detail')
-  const { data: configs, isLoading } = useBackups(appId)
+  const { data: configs, isLoading, isError, refetch } = useBackups(appId)
 
   return (
     <div className="flex flex-col gap-4">
@@ -100,9 +101,21 @@ export function BackupsTab({ appId }: { appId: string }) {
         <BackupDialog appId={appId} />
       </div>
 
-      <SwapFade id={isLoading ? 'loading' : configs && configs.length > 0 ? 'cards' : 'empty'}>
+      <SwapFade
+        id={
+          isLoading
+            ? 'loading'
+            : isError
+              ? 'error'
+              : configs && configs.length > 0
+                ? 'cards'
+                : 'empty'
+        }
+      >
         {isLoading ? (
           <CardStackSkeleton count={1} rowHeight="h-36" />
+        ) : isError ? (
+          <ErrorState onRetry={() => refetch()} />
         ) : configs && configs.length > 0 ? (
           <div className="flex flex-col gap-4">
             {configs.map((c) => (

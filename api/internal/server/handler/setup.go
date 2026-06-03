@@ -16,8 +16,11 @@ type setupStatusResponse struct {
 }
 
 type setupAdminRequest struct {
+	// Password max mirrors bcrypt's 72-byte input ceiling (auth.MaxPasswordBytes).
+	// validate's `max` counts runes, so it's a loose upper bound; the exact
+	// byte-length check happens in the handler before hashing.
 	Username   string `json:"username" validate:"required,min=1,max=64"`
-	Password   string `json:"password" validate:"required,min=12,max=256"`
+	Password   string `json:"password" validate:"required,min=12,max=72"`
 	SetupToken string `json:"setup_token" validate:"required"`
 }
 
@@ -59,6 +62,13 @@ func SetupAdmin(s *store.Store, sm *auth.SessionManager, cfg config.Config) http
 		}
 		if msg, ok := validateStruct(req); !ok {
 			WriteError(w, http.StatusBadRequest, msg)
+			return
+		}
+		// bcrypt only hashes the first 72 bytes; reject longer passwords up front
+		// so the operator gets a clear message instead of a generic hashing 500
+		// (and isn't misled that the ignored tail adds strength).
+		if len(req.Password) > auth.MaxPasswordBytes {
+			WriteError(w, http.StatusBadRequest, "password must be at most 72 bytes")
 			return
 		}
 

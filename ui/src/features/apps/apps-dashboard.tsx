@@ -26,6 +26,7 @@ import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { StatusPill } from '@/components/common/status-pill'
 import { Meter } from '@/components/common/meter'
 import { EmptyState } from '@/components/common/empty-state'
+import { ErrorState } from '@/components/common/error-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -74,7 +75,7 @@ import type { App } from '@/types/api'
 
 export function AppsDashboard() {
   const { t } = useTranslation('apps')
-  const { data: apps, isLoading } = useApps()
+  const { data: apps, isLoading, isError, refetch } = useApps()
   const { data: host } = useHostStats()
   const { data: budget } = useBoxBudget()
   const [query, setQuery] = useState('')
@@ -194,9 +195,13 @@ export function AppsDashboard() {
             </div>
           </div>
 
-          <SwapFade id={isLoading ? 'loading' : list.length === 0 ? 'empty' : 'table'}>
+          <SwapFade
+            id={isLoading ? 'loading' : isError ? 'error' : list.length === 0 ? 'empty' : 'table'}
+          >
             {isLoading ? (
               <AppsTableSkeleton />
+            ) : isError ? (
+              <ErrorState onRetry={() => refetch()} />
             ) : list.length === 0 ? (
               <EmptyState
                 icon={Boxes}

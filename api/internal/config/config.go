@@ -36,6 +36,8 @@ type Config struct {
 	SessionTTLExtended time.Duration `yaml:"session_ttl_extended"`
 	LoginRateLimit     int           `yaml:"login_rate_limit"`
 	LoginRateWindow    time.Duration `yaml:"login_rate_window"`
+	WebhookRateLimit   int           `yaml:"webhook_rate_limit"`
+	WebhookRateWindow  time.Duration `yaml:"webhook_rate_window"`
 
 	// Phase 2: deployment pipeline configuration.
 	WorkDir               string        `yaml:"work_dir"`
@@ -165,6 +167,12 @@ func Default() Config {
 		SessionTTLExtended: 30 * 24 * time.Hour,
 		LoginRateLimit:     5,
 		LoginRateWindow:    15 * time.Minute,
+		// Webhook deliveries are unauthenticated (HMAC-verified, not session-gated)
+		// and per-push, so the budget is far more generous than login — enough that
+		// a busy repo / several triggers never trip it, but still bounding abuse of
+		// the deploy-enqueue + HMAC-compute path.
+		WebhookRateLimit:  60,
+		WebhookRateWindow: time.Minute,
 
 		WorkDir:               "/var/lib/vac/repos",
 		DockerSocket:          "/var/run/docker.sock",
@@ -286,6 +294,16 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("VAC_LOGIN_RATE_WINDOW"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			cfg.LoginRateWindow = d
+		}
+	}
+	if v := os.Getenv("VAC_WEBHOOK_RATE_LIMIT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.WebhookRateLimit = n
+		}
+	}
+	if v := os.Getenv("VAC_WEBHOOK_RATE_WINDOW"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.WebhookRateWindow = d
 		}
 	}
 

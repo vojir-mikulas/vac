@@ -21,6 +21,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { SectionHeader } from '@/components/common/section-header'
+import { ErrorState } from '@/components/common/error-state'
 import { AutoDeploySection } from '@/features/app-detail/auto-deploy-section'
 import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
 import { AppDomainsSection } from '@/features/app-detail/domains-section'
@@ -32,7 +33,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import type { App } from '@/types/api'
 
 export function SettingsTab({ appId }: { appId: string }) {
-  const { data: app } = useApp(appId)
+  const { data: app, isError, refetch } = useApp(appId)
+  if (isError) return <ErrorState onRetry={() => refetch()} />
   if (!app) return <Skeleton className="h-96 w-full rounded-xl" />
   // Remount the form when the app identity changes so its fields re-initialise
   // from props without a seed effect.

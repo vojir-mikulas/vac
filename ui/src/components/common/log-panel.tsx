@@ -30,11 +30,13 @@ export function LogPanel({
   services,
   initialService,
   exportName = 'logs',
+  status,
 }: {
   lines: LogLine[]
   services?: string[]
   initialService?: string
   exportName?: string
+  status?: React.ReactNode
 }) {
   const { t } = useTranslation('logs')
   const [autoScroll, setAutoScroll] = useState(true)
@@ -89,6 +91,7 @@ export function LogPanel({
         </label>
 
         <div className="ml-auto flex items-center gap-3">
+          {status}
           <span className="font-mono text-2xs text-muted-foreground">
             {t('panel.lineCount', { count: filtered.length })}
           </span>

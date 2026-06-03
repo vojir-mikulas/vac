@@ -88,8 +88,11 @@ export function useDeploymentLogs(did: string, enabled = true, onDone?: () => vo
   )
 
   // Disable once done so the socket closes and does not reconnect/replay.
-  useWebSocket(`/api/deployments/${did}/logs`, { enabled: enabled && !done, onFrame })
-  return { lines, done }
+  const status = useWebSocket(`/api/deployments/${did}/logs`, {
+    enabled: enabled && !done,
+    onFrame,
+  })
+  return { lines, done, status }
 }
 
 // Live runtime-log stream for an app (optionally one service).
@@ -113,6 +116,6 @@ export function useRuntimeLogs(appId: string, service?: string, enabled = true) 
 
   const path = service ? `/api/apps/${appId}/services/${service}/logs` : `/api/apps/${appId}/logs`
 
-  useWebSocket(path, { enabled, onFrame })
-  return { lines }
+  const status = useWebSocket(path, { enabled, onFrame })
+  return { lines, status }
 }

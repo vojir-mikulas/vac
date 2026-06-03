@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { SectionHeader } from '@/components/common/section-header'
 import { EmptyState } from '@/components/common/empty-state'
+import { ErrorState } from '@/components/common/error-state'
 import { ListSkeleton } from '@/components/common/list-skeleton'
 import { SwapFade } from '@/components/common/swap-fade'
 import { Button } from '@/components/ui/button'
@@ -18,7 +19,7 @@ import { ActivityDiffDialog } from './activity-diff-dialog'
 
 export function ActivityFeed() {
   const { t } = useTranslation('activity')
-  const { data, isLoading } = useActivity()
+  const { data, isLoading, isError, refetch } = useActivity()
   const revert = useRevertActivity()
   const [preview, setPreview] = useState<AuditEntry | null>(null)
   const entries = data ?? []
@@ -35,9 +36,13 @@ export function ActivityFeed() {
       <PageHeader title={t('page.title')} description={t('page.description')} />
 
       <SectionHeader>{t('sectionHeader')}</SectionHeader>
-      <SwapFade id={isLoading ? 'loading' : entries.length === 0 ? 'empty' : 'feed'}>
+      <SwapFade
+        id={isLoading ? 'loading' : isError ? 'error' : entries.length === 0 ? 'empty' : 'feed'}
+      >
         {isLoading ? (
           <ListSkeleton rows={6} avatar />
+        ) : isError ? (
+          <ErrorState onRetry={() => refetch()} />
         ) : entries.length === 0 ? (
           <EmptyState title={t('empty.title')} description={t('empty.description')} />
         ) : (

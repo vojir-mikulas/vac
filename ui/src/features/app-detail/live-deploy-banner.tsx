@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { Card } from '@/components/ui/card'
 import { StatusPill } from '@/components/common/status-pill'
+import { ConnectionBadge } from '@/components/common/connection-badge'
 import { LogViewer } from '@/components/common/log-viewer'
 import { DeploySteps } from '@/features/app-detail/deploy-steps'
 import { useDeployments } from '@/lib/api/deployments'
@@ -28,7 +29,7 @@ function ActiveDeploy({ appId, deployment }: { appId: string; deployment: Deploy
   const { t } = useTranslation('app-detail')
   const qc = useQueryClient()
   const elapsed = useElapsed(deployment.started_at ?? deployment.triggered_at)
-  const { lines } = useDeploymentLogs(deployment.id, true, () => {
+  const { lines, done, status } = useDeploymentLogs(deployment.id, true, () => {
     qc.invalidateQueries({ queryKey: queryKeys.apps.deployments(appId) })
   })
 
@@ -39,6 +40,9 @@ function ActiveDeploy({ appId, deployment }: { appId: string; deployment: Deploy
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium">{t('liveBanner.deploying')}</span>
             <StatusPill status={deployment.status} size="sm" />
+            {/* Hide the badge once the stream terminates — the socket closes by
+                design then, which isn't a connectivity problem. */}
+            {!done ? <ConnectionBadge status={status} /> : null}
           </div>
           <div className="mt-1 font-mono text-2xs text-muted-foreground">
             {deployment.commit_message ?? t('liveBanner.deployFallback')} ·{' '}

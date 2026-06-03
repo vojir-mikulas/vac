@@ -136,7 +136,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	// session — so it lives OUTSIDE the /api Auth+CSRF group. Body-limited like
 	// the API surface. Mounted only when the deploy worker is wired.
 	if worker != nil {
-		r.With(middleware.BodyLimit(middleware.MaxBodyBytes)).
+		// Per-IP limiter, separate from the auth bucket: the webhook is
+		// unauthenticated, so without it an attacker can drive unbounded
+		// deploy-enqueue / HMAC-compute attempts. Budget is generous (per-push,
+		// legit Git hosts won't trip it) — see WebhookRateLimit defaults.
+		webhookLimiter := middleware.NewRateLimiter(ctx, cfg.WebhookRateLimit, cfg.WebhookRateWindow)
+		r.With(middleware.BodyLimit(middleware.MaxBodyBytes), webhookLimiter.Middleware).
 			Post("/webhooks/{appID}", handler.Webhook(s, box, worker))
 	}
 

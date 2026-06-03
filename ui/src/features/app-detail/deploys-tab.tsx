@@ -20,6 +20,7 @@ import { Card } from '@/components/ui/card'
 import { CardStackSkeleton } from '@/components/common/card-stack-skeleton'
 import { SwapFade } from '@/components/common/swap-fade'
 import { EmptyState } from '@/components/common/empty-state'
+import { ErrorState } from '@/components/common/error-state'
 import { SectionHeader } from '@/components/common/section-header'
 import { StatusPill } from '@/components/common/status-pill'
 import { LogViewer } from '@/components/common/log-viewer'
@@ -34,7 +35,7 @@ import type { Deployment } from '@/types/api'
 
 export function DeploysTab({ appId }: { appId: string }) {
   const { t } = useTranslation('app-detail')
-  const { data: deployments, isLoading } = useDeployments(appId)
+  const { data: deployments, isLoading, isError, refetch } = useDeployments(appId)
 
   // The newest successful deployment is the version currently live — rolling
   // back to it is a no-op, so the Roll back action is hidden on that row.
@@ -45,10 +46,20 @@ export function DeploysTab({ appId }: { appId: string }) {
       <SectionHeader className="mb-0">{t('deploys.history')}</SectionHeader>
 
       <SwapFade
-        id={isLoading ? 'loading' : deployments && deployments.length > 0 ? 'rows' : 'empty'}
+        id={
+          isLoading
+            ? 'loading'
+            : isError
+              ? 'error'
+              : deployments && deployments.length > 0
+                ? 'rows'
+                : 'empty'
+        }
       >
         {isLoading ? (
           <CardStackSkeleton count={5} rowHeight="h-12" gap="gap-2" />
+        ) : isError ? (
+          <ErrorState onRetry={() => refetch()} />
         ) : deployments && deployments.length > 0 ? (
           <div className="flex flex-col gap-2">
             {deployments.map((d) => (

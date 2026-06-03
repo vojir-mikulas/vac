@@ -7,12 +7,14 @@ import { SectionHeader } from '@/components/common/section-header'
 import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { StatusPill } from '@/components/common/status-pill'
 import { ListSkeleton } from '@/components/common/list-skeleton'
+import { ErrorState } from '@/components/common/error-state'
 import { SwapFade } from '@/components/common/swap-fade'
 import { Card } from '@/components/ui/card'
+import { ConnectionBadge } from '@/components/common/connection-badge'
 import { OverviewPanel } from '@/features/app-detail/overview-panel'
 import { ServicesTable } from '@/features/app-detail/services-table'
 import { TrafficChart } from '@/features/app-detail/traffic-chart'
-import { useAppStatsContext } from '@/features/app-detail/stats-context'
+import { useAppStatsContext, useAppStatsStatus } from '@/features/app-detail/stats-context'
 import { useServices } from '@/lib/api/services'
 import { useDomains } from '@/lib/api/domains'
 import { useDeployments } from '@/lib/api/deployments'
@@ -20,10 +22,11 @@ import { durationBetween, formatBytes, formatPercent, relativeTime, shortSha } f
 
 export function OverviewTab({ appId }: { appId: string }) {
   const { t } = useTranslation('app-detail')
-  const { data: services, isLoading } = useServices(appId)
+  const { data: services, isLoading, isError, refetch } = useServices(appId)
   const { data: domains } = useDomains(appId)
   const { data: deployments } = useDeployments(appId)
   const stats = useAppStatsContext()
+  const statsStatus = useAppStatsStatus()
 
   const aggregate = useMemo(() => {
     let cpu = 0
@@ -72,10 +75,14 @@ export function OverviewTab({ appId }: { appId: string }) {
 
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 flex-1">
-          <SectionHeader>{t('overview.servicesSection')}</SectionHeader>
-          <SwapFade id={isLoading ? 'loading' : 'table'}>
+          <SectionHeader action={<ConnectionBadge status={statsStatus} />}>
+            {t('overview.servicesSection')}
+          </SectionHeader>
+          <SwapFade id={isLoading ? 'loading' : isError ? 'error' : 'table'}>
             {isLoading ? (
               <ListSkeleton header rows={4} />
+            ) : isError ? (
+              <ErrorState onRetry={() => refetch()} />
             ) : (
               <ServicesTable appId={appId} services={services ?? []} />
             )}

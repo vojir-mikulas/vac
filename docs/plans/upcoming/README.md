@@ -24,6 +24,12 @@ trustworthy and effortless," not by what's technically interesting.
 > yet fleshed out: **20 database section**, **21 budget-card visual states**, **22 activity
 > change preview**. Overview-level seeds; detail them before building.
 
+> **Newly captured (2026-06-04)** — tech-debt/hygiene remainder from a codebase sweep:
+> **23 polish-and-hardening** (five independent S-sized cleanups). The sweep's higher-priority
+> correctness/UX items — page error-states, WS connection-state badges, `/health` docker-fork
+> throttle, bcrypt-72 validation, webhook rate-limit, `internal/admin` tests — are tracked as
+> active work, not in this folder.
+
 > **Shipped** (moved to [`../done/`](../done/)): **01 push-to-deploy** and **02 rollback** are
 > implemented (Track A1/A2). **05 zero-downtime** is **deferred** — detailed design captured in
 > [`A3-zero-downtime-detail.md`](A3-zero-downtime-detail.md), to be evaluated later.
@@ -68,6 +74,7 @@ trustworthy and effortless," not by what's technically interesting.
 | 20 | [20-database-section.md](20-database-section.md) | Managed Services / observability | Box-wide Database section: data-driven engine tabs (Postgres/MariaDB live; Redis out of scope), per-DB disk usage + backups + app links, VAC control-plane Postgres highlighted | M |
 | 21 | [21-budget-card-states.md](21-budget-card-states.md) | Observability / UX polish | Fix inverted budget-card colours (all-running = green, not red) + turn unbudgeted-RAM notice into a blue info badge | S |
 | 22 | [22-activity-change-preview.md](22-activity-change-preview.md) | Trust / observability | Activity-feed "Preview" → before/after diff window (env/app-config/base-domain), secrets masked, reusing stored audit snapshots | M |
+| 23 | [23-polish-and-hardening.md](23-polish-and-hardening.md) | Tech-debt / hygiene | À-la-carte cleanups: dead Log Explorer route, i18n chrome guard, DRY client-IP helpers, tunable DB pool, trusted-proxy verify | S each |
 
 ## Suggested order
 

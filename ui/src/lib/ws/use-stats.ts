@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 
-import { useWebSocket } from '@/lib/ws/use-websocket'
+import { useWebSocket, type WsStatus } from '@/lib/ws/use-websocket'
 import type { ServiceStatsData, WsFrame } from '@/types/api'
 
 export interface ServiceStatsSample extends ServiceStatsData {
@@ -10,9 +10,15 @@ export interface ServiceStatsSample extends ServiceStatsData {
 
 export type StatsByService = Record<string, ServiceStatsSample>
 
+export interface AppStats {
+  stats: StatsByService
+  status: WsStatus
+}
+
 // Live per-service stats for an app, keyed by service name. The newest sample
 // per service replaces the previous one (the table shows current values).
-export function useAppStats(appId: string, enabled = true): StatsByService {
+// `status` is the stream's connection state for a ConnectionBadge.
+export function useAppStats(appId: string, enabled = true): AppStats {
   const [stats, setStats] = useState<StatsByService>({})
 
   const onFrame = useCallback((frame: WsFrame) => {
@@ -25,6 +31,6 @@ export function useAppStats(appId: string, enabled = true): StatsByService {
     }))
   }, [])
 
-  useWebSocket(`/api/apps/${appId}/stats`, { enabled, onFrame })
-  return stats
+  const status = useWebSocket(`/api/apps/${appId}/stats`, { enabled, onFrame })
+  return { stats, status }
 }

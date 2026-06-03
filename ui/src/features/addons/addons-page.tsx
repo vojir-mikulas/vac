@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { BrandIcon, brandFor } from '@/components/common/brand-icon'
 import { EmptyState } from '@/components/common/empty-state'
+import { ErrorState } from '@/components/common/error-state'
 import { Button } from '@/components/ui/button'
 import { MotionCard } from '@/components/common/motion-card'
 import { Input } from '@/components/ui/input'
@@ -45,7 +46,7 @@ import type { Addon, App } from '@/types/api'
 
 export function AddonsPage() {
   const { t } = useTranslation('addons')
-  const { data: addons, isLoading } = useAddons()
+  const { data: addons, isLoading, isError, refetch } = useAddons()
   const { data: apps } = useApps()
   const { data: inventory } = useDatabaseInventory()
 
@@ -75,6 +76,8 @@ export function AddonsPage() {
           <Skeleton className="h-44 rounded-xl" />
           <Skeleton className="h-44 rounded-xl" />
         </div>
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : addons && addons.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {addons.map((a) =>

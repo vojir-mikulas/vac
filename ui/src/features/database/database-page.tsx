@@ -6,6 +6,7 @@ import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { StatStrip, StatTile } from '@/components/common/stat-tile'
 import { BrandIcon } from '@/components/common/brand-icon'
 import { EmptyState } from '@/components/common/empty-state'
+import { ErrorState } from '@/components/common/error-state'
 import { StatusPill } from '@/components/common/status-pill'
 import { ListSkeleton } from '@/components/common/list-skeleton'
 import { StatStripSkeleton } from '@/components/common/stat-strip-skeleton'
@@ -30,15 +31,25 @@ import type { DBEngineGroup, DBInventoryEntry } from '@/types/api'
 
 export function DatabasePage() {
   const { t } = useTranslation('database')
-  const { data: instance } = useInstanceInfo()
+  const { data: instance, isError, refetch } = useInstanceInfo()
 
   return (
     <PageContainer>
       <PageHeader title={t('page.title')} description={t('page.description')} />
       <SwapFade
-        id={instance == null ? 'loading' : instance.managed_services ? 'inventory' : 'control'}
+        id={
+          isError
+            ? 'error'
+            : instance == null
+              ? 'loading'
+              : instance.managed_services
+                ? 'inventory'
+                : 'control'
+        }
       >
-        {instance == null ? (
+        {isError ? (
+          <ErrorState onRetry={() => refetch()} />
+        ) : instance == null ? (
           <DatabaseSkeleton />
         ) : instance.managed_services ? (
           <InventoryView />
@@ -82,9 +93,12 @@ function engineTotal(g: DBEngineGroup): { total: number; unknown: number } {
 
 function InventoryView() {
   const { t } = useTranslation('database')
-  const { data, isLoading } = useDatabaseInventory()
+  const { data, isLoading, isError, refetch } = useDatabaseInventory()
   const { data: host } = useHostStats()
 
+  if (isError) {
+    return <ErrorState onRetry={() => refetch()} />
+  }
   if (isLoading || !data) {
     return <DatabaseSkeleton />
   }
