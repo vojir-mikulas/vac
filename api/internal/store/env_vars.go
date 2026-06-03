@@ -18,6 +18,10 @@ type EnvVar struct {
 	Key       string
 	Value     []byte
 	Sensitive bool
+	// WriteOnly marks a secret as unrevealable: it can be set/replaced or
+	// deleted, but its plaintext is never returned (reveal → 403). Implies
+	// Sensitive. See docs/deviations.md D9.
+	WriteOnly bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -27,11 +31,12 @@ type EnvVarInput struct {
 	Key       string
 	Value     []byte
 	Sensitive bool
+	WriteOnly bool
 }
 
 func (s *Store) ListEnvVarsForApp(ctx context.Context, appID string) ([]EnvVar, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, app_id, key, value, sensitive, created_at, updated_at
+		SELECT id, app_id, key, value, sensitive, write_only, created_at, updated_at
 		FROM env_vars WHERE app_id = $1
 		ORDER BY key
 	`, appID)
@@ -42,7 +47,7 @@ func (s *Store) ListEnvVarsForApp(ctx context.Context, appID string) ([]EnvVar, 
 	var out []EnvVar
 	for rows.Next() {
 		var v EnvVar
-		if err := rows.Scan(&v.ID, &v.AppID, &v.Key, &v.Value, &v.Sensitive, &v.CreatedAt, &v.UpdatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.AppID, &v.Key, &v.Value, &v.Sensitive, &v.WriteOnly, &v.CreatedAt, &v.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -64,8 +69,8 @@ func (s *Store) ReplaceEnvVars(ctx context.Context, appID string, vars []EnvVarI
 	}
 	for _, v := range vars {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO env_vars (app_id, key, value, sensitive) VALUES ($1, $2, $3, $4)
-		`, appID, v.Key, v.Value, v.Sensitive); err != nil {
+			INSERT INTO env_vars (app_id, key, value, sensitive, write_only) VALUES ($1, $2, $3, $4, $5)
+		`, appID, v.Key, v.Value, v.Sensitive, v.WriteOnly); err != nil {
 			return err
 		}
 	}
@@ -96,9 +101,9 @@ func (s *Store) DeleteEnvVar(ctx context.Context, appID, key string) error {
 func (s *Store) GetEnvVar(ctx context.Context, appID, key string) (EnvVar, error) {
 	var v EnvVar
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, app_id, key, value, sensitive, created_at, updated_at
+		SELECT id, app_id, key, value, sensitive, write_only, created_at, updated_at
 		FROM env_vars WHERE app_id = $1 AND key = $2
-	`, appID, key).Scan(&v.ID, &v.AppID, &v.Key, &v.Value, &v.Sensitive, &v.CreatedAt, &v.UpdatedAt)
+	`, appID, key).Scan(&v.ID, &v.AppID, &v.Key, &v.Value, &v.Sensitive, &v.WriteOnly, &v.CreatedAt, &v.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return EnvVar{}, ErrNotFound
 	}

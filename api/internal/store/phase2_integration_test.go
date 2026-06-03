@@ -577,5 +577,53 @@ func TestEnvVarsReplaceAll(t *testing.T) {
 	}
 }
 
+// TestEnvVarsWriteOnlyRoundTrip locks in P6.1: the write_only flag survives
+// ReplaceEnvVars → ListEnvVarsForApp / GetEnvVar, defaulting to false for rows
+// that don't set it.
+func TestEnvVarsWriteOnlyRoundTrip(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	box := newBox(t)
+	a := testApp(t, s, "env-write-only-app")
+
+	sealedSecret, _ := box.Seal([]byte("s3cr3t"))
+	sealedPlain, _ := box.Seal([]byte("plain"))
+	in := []store.EnvVarInput{
+		{Key: "API_TOKEN", Value: sealedSecret, Sensitive: true, WriteOnly: true},
+		{Key: "LOG_LEVEL", Value: sealedPlain, Sensitive: false, WriteOnly: false},
+	}
+	if err := s.ReplaceEnvVars(ctx, a.ID, in); err != nil {
+		t.Fatalf("ReplaceEnvVars: %v", err)
+	}
+
+	got, err := s.ListEnvVarsForApp(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("ListEnvVarsForApp: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(got) = %d, want 2", len(got))
+	}
+	// ORDER BY key → API_TOKEN, LOG_LEVEL.
+	if !got[0].WriteOnly {
+		t.Errorf("API_TOKEN should be write-only")
+	}
+	if got[1].WriteOnly {
+		t.Errorf("LOG_LEVEL should not be write-only")
+	}
+	// Sealed bytes still round-trip for a write-only row (it's set/replaceable).
+	opened, err := box.Open(got[0].Value)
+	if err != nil || string(opened) != "s3cr3t" {
+		t.Errorf("decrypt API_TOKEN = %q err=%v", opened, err)
+	}
+
+	v, err := s.GetEnvVar(ctx, a.ID, "API_TOKEN")
+	if err != nil {
+		t.Fatalf("GetEnvVar: %v", err)
+	}
+	if !v.WriteOnly {
+		t.Errorf("GetEnvVar API_TOKEN write_only = false, want true")
+	}
+}
+
 func stringPtr(s string) *string { return &s }
 func intPtr(i int) *int          { return &i }

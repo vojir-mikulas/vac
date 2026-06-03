@@ -20,6 +20,7 @@ import (
 type envVarDTO struct {
 	Key       string `json:"key"`
 	Sensitive bool   `json:"sensitive"`
+	WriteOnly bool   `json:"write_only"`
 	Value     string `json:"value,omitempty"`
 }
 
@@ -38,8 +39,8 @@ func ListAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 		}
 		out := make([]envVarDTO, 0, len(rows))
 		for _, v := range rows {
-			dto := envVarDTO{Key: v.Key, Sensitive: v.Sensitive}
-			if !v.Sensitive {
+			dto := envVarDTO{Key: v.Key, Sensitive: v.Sensitive, WriteOnly: v.WriteOnly}
+			if !v.Sensitive && !v.WriteOnly {
 				if box == nil {
 					WriteErrorCode(w, http.StatusServiceUnavailable, CodeServiceUnavailable, "VAC_MASTER_KEY not configured; env vars cannot be decrypted")
 					return
@@ -77,6 +78,13 @@ func RevealAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "could not load env var")
 			return
 		}
+		// A write-only secret is a one-way latch — refuse to disclose it before
+		// any decryption happens. A refused reveal is not a disclosure, so it is
+		// not audit-logged (unlike the success path below).
+		if v.WriteOnly {
+			WriteError(w, http.StatusForbidden, "this secret is write-only and cannot be revealed")
+			return
+		}
 		plain, err := box.Open(v.Value)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "could not decrypt env var")
@@ -92,6 +100,14 @@ type putEnvEntry struct {
 	Key       string `json:"key"`
 	Value     string `json:"value"`
 	Sensitive bool   `json:"sensitive"`
+	// WriteOnly marks this key as unrevealable (implies Sensitive). Once
+	// persisted write-only it cannot be downgraded — delete + recreate to change.
+	WriteOnly bool `json:"write_only"`
+	// Keep reuses the existing sealed value for this key instead of re-sealing
+	// Value. It is the only way a never-revealable write-only secret survives a
+	// full-replace PUT: the UI has no plaintext to re-send, so it asks the server
+	// to carry the prior sealed bytes forward without ever decrypting them.
+	Keep bool `json:"keep"`
 }
 
 type putEnvRequest struct {
@@ -123,10 +139,16 @@ func ReplaceAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "could not load app")
 			return
 		}
-		// Curated-revert snapshot: capture the prior env set (sealed values, never
-		// plaintext — the audit_log JSONB is not encrypted) so this replace can be
-		// undone. Best-effort: a snapshot failure must not block the save.
+		// Load the prior set once: it backs both the curated-revert snapshot and the
+		// write-only keep/downgrade logic below. priorByKey is keyed on env key.
+		priorByKey := map[string]store.EnvVar{}
 		if prior, err := s.ListEnvVarsForApp(r.Context(), id); err == nil {
+			for _, v := range prior {
+				priorByKey[v.Key] = v
+			}
+			// Curated-revert snapshot: capture the prior env set (sealed values, never
+			// plaintext — the audit_log JSONB is not encrypted) so this replace can be
+			// undone. Best-effort: a snapshot failure must not block the save.
 			audit.Snapshot(r.Context(), map[string]any{"env": envSnapshot(prior)})
 		}
 		audit.SetTarget(r.Context(), "app", id)
@@ -144,6 +166,29 @@ func ReplaceAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 				return
 			}
 			seen[k] = struct{}{}
+			// Write-only is the stronger form; normalize so the list-omission and
+			// reveal-refusal logic stays a single rule (write_only ⇒ sensitive).
+			if e.WriteOnly {
+				e.Sensitive = true
+			}
+			// One-way latch: a key already persisted write-only cannot be downgraded
+			// (that would let someone clear the flag, then reveal). Delete + recreate.
+			if prev, ok := priorByKey[k]; ok && prev.WriteOnly && !e.WriteOnly {
+				WriteError(w, http.StatusBadRequest, "cannot downgrade a write-only secret; delete and recreate it")
+				return
+			}
+			// Keep path: reuse the prior sealed bytes without decrypting. This is how
+			// a never-revealable write-only secret the operator never touched survives
+			// a full-replace PUT (the UI has no plaintext to re-send for it).
+			if e.Keep {
+				prev, ok := priorByKey[k]
+				if !ok {
+					WriteError(w, http.StatusBadRequest, "keep set for unknown key: "+k)
+					return
+				}
+				inputs = append(inputs, store.EnvVarInput{Key: k, Value: prev.Value, Sensitive: e.Sensitive, WriteOnly: e.WriteOnly})
+				continue
+			}
 			if !validEnvValue(e.Value) {
 				WriteError(w, http.StatusBadRequest, "env value for "+k+" contains forbidden characters (newline or NUL)")
 				return
@@ -153,7 +198,7 @@ func ReplaceAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 				WriteError(w, http.StatusInternalServerError, "could not encrypt env var")
 				return
 			}
-			inputs = append(inputs, store.EnvVarInput{Key: k, Value: sealed, Sensitive: e.Sensitive})
+			inputs = append(inputs, store.EnvVarInput{Key: k, Value: sealed, Sensitive: e.Sensitive, WriteOnly: e.WriteOnly})
 		}
 		if err := s.ReplaceEnvVars(r.Context(), id, inputs); err != nil {
 			WriteError(w, http.StatusInternalServerError, "could not save env vars")
@@ -171,6 +216,7 @@ type envVarSnap struct {
 	Key       string `json:"key"`
 	Value     string `json:"value"`
 	Sensitive bool   `json:"sensitive"`
+	WriteOnly bool   `json:"write_only"`
 }
 
 func envSnapshot(rows []store.EnvVar) []envVarSnap {
@@ -180,6 +226,7 @@ func envSnapshot(rows []store.EnvVar) []envVarSnap {
 			Key:       v.Key,
 			Value:     base64.StdEncoding.EncodeToString(v.Value),
 			Sensitive: v.Sensitive,
+			WriteOnly: v.WriteOnly,
 		})
 	}
 	return out

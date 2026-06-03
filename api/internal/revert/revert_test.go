@@ -73,8 +73,10 @@ func strptr(s string) *string { return &s }
 
 func TestRevertEnv(t *testing.T) {
 	sealed := []byte{0x01, 0x02, 0x03}
+	woSealed := []byte{0x04, 0x05}
 	before := map[string]any{"env": []map[string]any{
 		{"key": "FOO", "value": base64.StdEncoding.EncodeToString(sealed), "sensitive": true},
+		{"key": "SECRET", "value": base64.StdEncoding.EncodeToString(woSealed), "sensitive": true, "write_only": true},
 	}}
 	appID := "app-1"
 	f := &fakeStore{entry: store.AuditLog{
@@ -92,11 +94,22 @@ func TestRevertEnv(t *testing.T) {
 	if f.envAppID != appID {
 		t.Errorf("env applied to %q, want %q", f.envAppID, appID)
 	}
-	if len(f.envApplied) != 1 || f.envApplied[0].Key != "FOO" || !f.envApplied[0].Sensitive {
+	if len(f.envApplied) != 2 || f.envApplied[0].Key != "FOO" || !f.envApplied[0].Sensitive {
 		t.Fatalf("unexpected env applied: %+v", f.envApplied)
 	}
 	if string(f.envApplied[0].Value) != string(sealed) {
 		t.Errorf("sealed bytes not round-tripped: %v", f.envApplied[0].Value)
+	}
+	if f.envApplied[0].WriteOnly {
+		t.Errorf("FOO should not be write-only")
+	}
+	// Write-only state round-trips, and its sealed bytes are reapplied without
+	// ever being decrypted.
+	if !f.envApplied[1].WriteOnly {
+		t.Errorf("SECRET should revert as write-only")
+	}
+	if string(f.envApplied[1].Value) != string(woSealed) {
+		t.Errorf("write-only sealed bytes not round-tripped: %v", f.envApplied[1].Value)
 	}
 	if f.marked != "a1" {
 		t.Errorf("entry not marked reverted: %q", f.marked)

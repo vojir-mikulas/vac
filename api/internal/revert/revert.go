@@ -117,6 +117,7 @@ type envEntrySnap struct {
 	Key       string `json:"key"`
 	Value     string `json:"value"` // base64 of the sealed bytes
 	Sensitive bool   `json:"sensitive"`
+	WriteOnly bool   `json:"write_only"`
 }
 
 type envSnap struct {
@@ -137,7 +138,7 @@ func (rv *Reverter) revertEnv(ctx context.Context, appID string, before json.Raw
 		if err != nil {
 			return "", fmt.Errorf("%w: env value decode: %v", ErrNotRevertable, err)
 		}
-		inputs = append(inputs, store.EnvVarInput{Key: e.Key, Value: sealed, Sensitive: e.Sensitive})
+		inputs = append(inputs, store.EnvVarInput{Key: e.Key, Value: sealed, Sensitive: e.Sensitive, WriteOnly: e.WriteOnly})
 	}
 	if err := rv.store.ReplaceEnvVars(ctx, appID, inputs); err != nil {
 		return "", err
