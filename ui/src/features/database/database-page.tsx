@@ -74,11 +74,13 @@ function InventoryView() {
 
   const engines = data.engines
   const grandTotal = engines.reduce((acc, g) => acc + engineTotal(g).total, 0)
+  const dbCount = engines.reduce((acc, g) => acc + g.databases.length, 0)
 
   return (
     <div className="flex flex-col gap-6">
       <StatStrip>
         <StatTile label="Engines" value={String(engines.length)} sub="live on this box" accent />
+        <StatTile label="Databases" value={String(dbCount)} sub="managed by VAC" />
         <StatTile label="Managed disk" value={formatBytes(grandTotal)} sub="across all databases" />
         <StatTile
           label="Host disk"
@@ -140,12 +142,12 @@ function EngineTab({ group }: { group: DBEngineGroup }) {
         <Card className="gap-0 overflow-hidden p-0">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Database</TableHead>
-                <TableHead>App</TableHead>
-                <TableHead>Size</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last backup</TableHead>
+              <TableRow className="bg-surface-1 hover:bg-surface-1">
+                <TableHead className="text-2xs uppercase tracking-wider">Database</TableHead>
+                <TableHead className="text-2xs uppercase tracking-wider">App</TableHead>
+                <TableHead className="text-2xs uppercase tracking-wider">Size</TableHead>
+                <TableHead className="text-2xs uppercase tracking-wider">Status</TableHead>
+                <TableHead className="text-2xs uppercase tracking-wider">Last backup</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

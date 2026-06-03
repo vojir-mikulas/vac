@@ -71,7 +71,7 @@ export function DeploymentsPage() {
         />
       ) : (
         <Card className="gap-0 p-0">
-          <div className="flex items-center gap-4 border-b px-5 py-2.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="flex items-center gap-4 border-b bg-surface-1 px-5 py-2.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             <span className="w-32 shrink-0">App</span>
             <span className="flex-1">Commit</span>
             <span className="shrink-0">Status</span>

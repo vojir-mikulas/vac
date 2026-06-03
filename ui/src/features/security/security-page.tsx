@@ -341,10 +341,16 @@ function Fail2banPanel() {
           description="The host security agent hasn't refreshed recently, so fail2ban state may be out of date. Check the vac-security-agent timer on the host."
         />
       ) : !data.detected ? (
-        <EmptyState
-          title="Not detected"
-          description="fail2ban is not installed or readable on this host — recommended on an internet-facing box. See the Posture panel."
-        />
+        <Card className="gap-1 border-warn/40 bg-warn/5 p-4">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="size-4 text-warn" />
+            <span className="text-sm font-medium">fail2ban not detected</span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            fail2ban is not installed or readable on this host — recommended on an internet-facing
+            box to auto-ban brute-force attempts. See the Posture panel.
+          </p>
+        </Card>
       ) : !data.jails || data.jails.length === 0 ? (
         <EmptyState title="No jails" description="fail2ban is running but reports no jails." />
       ) : (
