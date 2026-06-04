@@ -1,4 +1,4 @@
-<!-- generated from commit 2f520b8 on 2026-06-03 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy}/ changed, treat as possibly stale -->
+<!-- generated from commit def192a on 2026-06-04 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy}/ changed, treat as possibly stale -->
 
 # Deployment flow — git → build → run → route
 
@@ -61,9 +61,12 @@ deployment shows at each step is in **bold**.
 - If only a `Dockerfile` is found, `compose/wrap.go` `Wrap` writes a minimal generated
   `compose.yaml` (single `app` service, `build: .`, `restart: always`, `env_file: .env`). The
   generated file is untracked and regenerated each deploy.
-- **Preflight lint** (`compose.Preflight`) runs before the build: VAC-incompatible constructs
-  (host-escape, edge-network conflicts) are hard findings that block the deploy (→ degraded);
-  others log as warnings. An allow-unsafe override exists but never downgrades host-escape.
+- **Preflight lint** runs before the build on the *resolved* compose: the pipeline first runs
+  `dockercli.Compose.Config` (`docker compose -p vac-{slug} config`) and lints the rendered
+  output via `compose.PreflightBytes`, falling back to `compose.Preflight` on the raw file if
+  `config` can't render. VAC-incompatible constructs (host-escape, edge-network conflicts) are
+  hard findings that block the deploy (→ degraded); others log as warnings. An allow-unsafe
+  override exists but never downgrades host-escape.
 - A SHA256 of the resolved compose file is stored on the deployment row for change detection.
 
 ## 3. Build (**building**)

@@ -1,4 +1,4 @@
-<!-- generated from commit 2f520b8 on 2026-06-03 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
+<!-- generated from commit def192a on 2026-06-04 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
 
 # Conventions — how the code is organized & how to add a feature
 
@@ -14,12 +14,20 @@ prettier (`make lint`) — don't restate it; this covers structure and patterns.
   Handlers are thin: parse/validate → call a store or a subsystem → write JSON. Shared
   helpers: `json.go` (responses), `validate.go` (input checks).
 - **Persistence** lives only in `store/`, one file per aggregate. Everything goes through pgx;
-  schema changes are goose migrations under `store/migrations/`. No SQL outside `store/`.
+  schema changes are goose migrations under `db/migrations/` (embedded + run by the `db`
+  package). No query SQL outside `store/`.
 - **Status/state** enums and the app/service/deployment status derivation live in
   `deploy/status.go` — reuse them, don't re-define status strings.
 - **Secrets** never touch the DB in plaintext — seal with `crypto.Box` (the same path as env
   vars / SSH keys / TOTP / webhook URLs / managed-DB credentials / backup destinations),
   redact on read.
+- **Destructive routes gate on fresh 2FA.** Wrap them with `middleware.RequireStepUp` (inside
+  the `RequireSession` group) so a TOTP-enabled user must have re-proved their second factor
+  within `auth.StepUpTTL`; on miss the handler returns `403 / step_up_required`. API-token auth
+  and TOTP-disabled users pass through.
+- **Outbound requests to user-controlled URLs** (notification webhooks, S3 backup endpoints)
+  must use the `netguard` dialer — never a default `http.Client` — so they can't be steered at
+  loopback, private ranges, or the cloud metadata service.
 - **Auditing** is automatic: the `audit` middleware persists an enriched per-request `Record`
   for mutating actions. Handlers enrich it (target, summary) via the context record rather than
   writing `audit_log` directly; revertable actions snapshot a before-state for `revert`.
@@ -41,6 +49,9 @@ prettier (`make lint`) — don't restate it; this covers structure and patterns.
   by hand; add a route file and let the generator update it.
 - **UI kit** is the shadcn/Radix-based components in `components/` + Tailwind 4. Reuse them
   before adding new primitives.
+- **User-facing strings are translated**, not hardcoded. Add keys to the per-namespace JSON
+  catalog under `i18n/locales/en/` and read them via react-i18next (`useTranslation`); a new
+  feature folder usually maps to its own namespace.
 
 ## Accessibility (a11y) — build it in by default
 
@@ -98,7 +109,7 @@ loops or large-slides.
 
 ## Adding a feature end-to-end (typical path)
 
-1. **Migration** in `store/` (goose) if there's new persisted state.
+1. **Migration** in `db/migrations/` (goose) if there's new persisted state.
 2. **Store methods** for the new reads/writes (with a `*_test.go`).
 3. **Subsystem logic** in its own `internal/` package if it's more than CRUD (a watcher, a
    pipeline step, an integration).

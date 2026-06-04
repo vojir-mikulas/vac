@@ -1,4 +1,4 @@
-<!-- generated from commit 2f520b8 on 2026-06-03 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
+<!-- generated from commit def192a on 2026-06-04 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
 
 # Architecture — current state
 
@@ -39,10 +39,10 @@ Each package owns one concern.
 | Package | Responsibility |
 |---|---|
 | `server` | HTTP wiring (chi router + middleware); `server/handler/` holds the handlers (one file per resource) |
-| `store` | PostgreSQL persistence (pgx/v5), all DB access; goose migrations live under `store/migrations/` |
-| `db` | `pgxpool` connection pool + migration runner (`Open`) |
+| `store` | PostgreSQL persistence (pgx/v5), all DB access (one file per aggregate) |
+| `db` | `pgxpool` connection pool (`Open`) + goose migration runner; the SQL migrations are embedded here under `db/migrations/*.sql` |
 | `config` | env-var / `vac.yaml` configuration (`Load` → `Config`) |
-| `auth` | sessions (`SessionManager`, SHA-256-hashed tokens), TOTP pre-auth, password, API-token auth |
+| `auth` | sessions (`SessionManager`, SHA-256-hashed tokens), TOTP pre-auth + replay/lockout, password, API-token auth, **step-up** (`StepUpTTL`, `MarkStepUp`, `StepUpFresh` for fresh-2FA gating of destructive actions) |
 | `crypto` | `crypto.Box` AES-256-GCM seal/open for secrets at rest |
 | `deploy` | the deploy pipeline (`Pipeline`) + worker pool/queue (`Worker`) + reaper; status enums (`status.go`); build-log writer (`LogWriter`) |
 | `adapter` | normalizes a build source (compose / Dockerfile / framework / static) to one compose file via `adapter.For` + `Prepare` |
@@ -57,7 +57,8 @@ Each package owns one concern.
 | `logstream` | `Supervisor` tails `docker logs --follow` per container into the `runtime_logs` ring buffer |
 | `stats` | per-app `docker stats` (`Manager`, subscriber-gated, live-only) + host stats (gopsutil) |
 | `reqmetrics` | `Collector` scrapes/aggregates the Caddy access log into per-service request rate |
-| `notify` | `Dispatcher` for Discord/Slack/webhook (deploy ok/fail, crash-loop, restarted, cert expiry) with SSRF guard |
+| `notify` | `Dispatcher` for Discord/Slack/webhook (deploy ok/fail, crash-loop, restarted, cert expiry); outbound calls go through the `netguard` dialer |
+| `netguard` | SSRF-hardened `net/http` `DialContext` for outbound requests to user-controlled URLs (notification webhooks, S3 backup endpoints): rejects loopback/private/link-local/CGNAT, dials the validated literal IP to close DNS-rebinding (`IsPrivate`, `ErrPrivateAddress`) |
 | `retention` | nightly `Pruner`: runtime logs, request metrics, audit log, per-service image prune, deployment history |
 | `webhook` | turns inbound Git webhooks into deploy decisions (per-app secret auth, `ParseRef` vs `deploy_triggers`) |
 | `dbprovision` | provisions/deprovisions managed databases (`Engine` + per-engine recipes), yields connection strings |
@@ -86,15 +87,23 @@ Each package owns one concern.
   empty-state, …), `ui/` (the shadcn/Radix primitive kit).
 - `lib/` — `api/` (typed client + per-resource modules), `ws/` (WebSocket hooks),
   `query/` (TanStack Query key factory), plus small utilities (`deploy-status`, `env-parse`,
-  `format`, `log-export`, `service-color`, `use-document-title`, `utils`).
+  `format`, `log-export`, `service-color`, `use-document-title`, `motion`, `utils`).
+- `i18n/` — react-i18next setup (`index.ts` + `resources.ts`) with per-namespace JSON catalogs
+  under `locales/{lang}/`. English ships today; the language is detected/persisted in
+  localStorage and switchable from Settings.
+- `types/` — shared TypeScript types (`api.ts`). `mocks/` — MSW-style fetch/WS mocks + seed data
+  used by the vitest suite.
 - `routes/` + `routeTree.gen.ts` — TanStack Router file-based routes. **`routeTree.gen.ts` is
   generated; don't hand-edit.**
 
 ## Data model (Postgres)
 
-Tables live in `api/internal/store/migrations/`, grouped by concern:
+Schema lives in goose migrations under `api/internal/db/migrations/` (embedded and run by the
+`db` package); query code lives in `store/`. Tables, grouped by concern:
 
-- **Auth:** `users`, `sessions`, `api_tokens`.
+- **Auth:** `users` (incl. `totp_secret`, `last_totp_step` for TOTP replay protection,
+  `failed_auth_attempts` + `auth_locked_until` for per-account lockout), `sessions` (incl.
+  `stepup_verified_at` for fresh-2FA step-up), `api_tokens`.
 - **Apps & services:** `apps` (includes `webhook_secret_enc`), `services`, `ssh_keys`,
   `env_vars`, `domains` (custom/auto hosts, cert expiry, redirects, lifecycle).
 - **Deploy:** `deployments`, `deployment_logs`, `deploy_triggers` (push-to-deploy rules).
