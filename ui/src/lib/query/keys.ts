@@ -28,6 +28,7 @@ export const queryKeys = {
     info: ['instance', 'info'] as const,
     baseDomain: ['instance', 'base-domain'] as const,
     deployConcurrency: ['instance', 'deploy-concurrency'] as const,
+    dnsCheck: (host: string) => ['instance', 'dns-check', host] as const,
     onboarding: ['instance', 'onboarding'] as const,
   },
   apps: {

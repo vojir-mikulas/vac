@@ -162,27 +162,33 @@
     "base": {
       "heading": "Base domain",
       "intro": "Apps get an automatic subdomain under this domain (e.g. <0>my-app.{{example}}</0>). Leave blank to disable automatic subdomains.",
-      "currentlyEffective": "Currently effective:",
       "none": "No base domain configured — apps get no automatic subdomain.",
       "domainLabel": "Domain",
       "save": "Save",
+      "change": "Change",
+      "set": "Set base domain",
+      "cancel": "Cancel",
       "inheritHint": "Leave blank to keep inheriting from {{origin}}; type a value to override it here.",
       "source": {
         "override": {
           "suffix": "override set here",
-          "origin": ""
+          "origin": "",
+          "badge": "override"
         },
         "env": {
           "suffix": "from the VAC_BASE_DOMAIN environment variable",
-          "origin": "the VAC_BASE_DOMAIN environment variable"
+          "origin": "the VAC_BASE_DOMAIN environment variable",
+          "badge": "from env"
         },
         "file": {
           "suffix": "from the config file",
-          "origin": "the config file"
+          "origin": "the config file",
+          "badge": "from config"
         },
         "unset": {
           "suffix": "",
-          "origin": ""
+          "origin": "",
+          "badge": "unset"
         }
       },
       "confirm": {
@@ -219,6 +225,7 @@
       "autoTitle": "Managed automatically — change the slug or base domain",
       "edit": "Edit",
       "delete": "Delete",
+      "actionsLabel": "Domain actions",
       "deleteConfirm": "Delete {{hostname}}? Its route is removed immediately.",
       "toast": {
         "deleted": "Domain deleted"
@@ -248,9 +255,10 @@
     },
     "wildcard": {
       "intro": "Want every app to get an automatic subdomain? Add a wildcard <0>*.{{baseDomain}}</0> record pointing at this VPS.",
-      "check": "Check DNS",
       "checking": "Checking…",
-      "pointsHere": "Wildcard points at this server",
+      "checkingStatus": "Checking wildcard DNS…",
+      "recheck": "Recheck",
+      "ok": "Wildcard DNS configured — every app gets an automatic subdomain.",
       "notResolving": "Not resolving here yet — add the record above and recheck"
     }
   }

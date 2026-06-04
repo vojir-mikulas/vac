@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { ChevronDown, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 
 import { SectionHeader } from '@/components/common/section-header'
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +10,12 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,10 +53,10 @@ export function DomainsSection() {
 }
 
 // Where the effective base domain comes from, so the operator can tell a
-// config-supplied value apart from a UI override. The "suffix" completes the
-// "Currently effective: … {suffix}" line; the "origin" names the inherited
-// source for the "keep inheriting from {origin}" hint (env/file only). Both are
-// keyed by the type-safe source union into the catalog (base.source.*).
+// config-supplied value apart from a UI override. The "badge" labels the source
+// on the compact summary row; the "origin" names the inherited source for the
+// "keep inheriting from {origin}" hint (env/file only). Both are keyed by the
+// type-safe source union into the catalog (base.source.*).
 type BaseDomainSource = NonNullable<BaseDomainInfo['source']>
 
 function BaseDomainCard() {
@@ -58,23 +65,29 @@ function BaseDomainCard() {
   const { data: apps } = useApps()
   const save = useSetBaseDomain()
   const [value, setValue] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
   const [confirm, setConfirm] = useState(false)
   // The input is bound to the *override* only — never pre-filled with an
   // env/file value. Pre-filling would let the next Save persist a DB override
   // that silently shadows the config source. The effective value surfaces as
-  // the placeholder + the "Currently effective" line instead.
+  // the placeholder + the summary line instead.
   const current = value ?? data?.base_domain ?? ''
   const effective = data?.effective ?? ''
   const source: BaseDomainSource = data?.source ?? 'unset'
   const changed = current.trim() !== (data?.base_domain ?? '')
   const appNames = (apps ?? []).map((a) => a.name)
 
+  const closeEditor = () => {
+    setEditing(false)
+    setValue(null)
+  }
+
   const doSave = () =>
     save.mutate(current.trim(), {
       onSuccess: () => {
         toast.success(t('domains.base.toast.saved'))
-        setValue(null)
         setConfirm(false)
+        closeEditor()
       },
       onError: (e) => toast.error(e.message),
     })
@@ -88,62 +101,78 @@ function BaseDomainCard() {
   return (
     <section>
       <SectionHeader>{t('domains.base.heading')}</SectionHeader>
-      <Card className="gap-4 p-5">
-        <p className="text-xs text-muted-foreground">
-          <Trans
-            t={t}
-            i18nKey="domains.base.intro"
-            values={{ example: effective || 'example.com' }}
-            components={[<span className="font-mono" />]}
-          />
-        </p>
+      <Card className="gap-3 p-4">
         {isLoading ? (
           <Skeleton className="h-9 w-full" />
         ) : (
           <>
-            {/* Surface the resolved value + where it came from, so a domain set
-                via env/yaml doesn't read as "nothing is configured". */}
-            <p className="text-xs">
-              {effective ? (
-                <>
-                  <span className="text-muted-foreground">
-                    {t('domains.base.currentlyEffective')}{' '}
-                  </span>
-                  <span className="font-mono">{effective}</span>
-                  <span className="text-muted-foreground">
-                    {' '}
-                    — {t(`domains.base.source.${source}.suffix`)}
-                  </span>
-                </>
-              ) : (
-                <span className="text-muted-foreground">{t('domains.base.none')}</span>
-              )}
-            </p>
-            <div className="flex items-end gap-2">
-              <div className="grid flex-1 gap-2">
-                <Label>{t('domains.base.domainLabel')}</Label>
-                <Input
-                  value={current}
-                  onChange={(e) => setValue(e.target.value)}
-                  placeholder={effective || 'example.com'}
-                  className="font-mono text-xs"
-                />
+            {/* Compact summary row: the resolved value + where it came from, with
+                Change tucked to the side. Editing is opt-in so the card stays
+                slim until the operator wants to touch it. */}
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                {effective ? (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-mono text-sm">{effective}</span>
+                    <Badge variant="outline" className="text-2xs">
+                      {t(`domains.base.source.${source}.badge`)}
+                    </Badge>
+                  </div>
+                ) : (
+                  <span className="text-sm text-muted-foreground">{t('domains.base.none')}</span>
+                )}
               </div>
               <Button
-                variant="brand"
+                variant="outline"
                 size="sm"
-                disabled={save.isPending || !changed}
-                onClick={onSave}
+                onClick={() => (editing ? closeEditor() : setEditing(true))}
               >
-                {t('domains.base.save')}
+                {editing
+                  ? t('domains.base.cancel')
+                  : effective
+                    ? t('domains.base.change')
+                    : t('domains.base.set')}
               </Button>
             </div>
-            {source !== 'override' && effective ? (
-              <p className="text-2xs text-muted-foreground">
-                {t('domains.base.inheritHint', {
-                  origin: t(`domains.base.source.${source}.origin`),
-                })}
-              </p>
+
+            {editing ? (
+              <div className="flex flex-col gap-3 rounded-md border bg-surface-1 p-3">
+                <p className="text-xs text-muted-foreground">
+                  <Trans
+                    t={t}
+                    i18nKey="domains.base.intro"
+                    values={{ example: effective || 'example.com' }}
+                    components={[<span className="font-mono" />]}
+                  />
+                </p>
+                <div className="flex items-end gap-2">
+                  <div className="grid flex-1 gap-2">
+                    <Label>{t('domains.base.domainLabel')}</Label>
+                    <Input
+                      autoFocus
+                      value={current}
+                      onChange={(e) => setValue(e.target.value)}
+                      placeholder={effective || 'example.com'}
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                  <Button
+                    variant="brand"
+                    size="sm"
+                    disabled={save.isPending || !changed}
+                    onClick={onSave}
+                  >
+                    {t('domains.base.save')}
+                  </Button>
+                </div>
+                {source !== 'override' && effective ? (
+                  <p className="text-2xs text-muted-foreground">
+                    {t('domains.base.inheritHint', {
+                      origin: t(`domains.base.source.${source}.origin`),
+                    })}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </>
         )}
@@ -365,53 +394,72 @@ function DomainRowItem({
   return (
     <div className={cn('flex flex-col gap-3 px-5 py-3.5', border && 'border-t')}>
       <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate font-mono text-sm">{domain.hostname}</span>
-            {isPrimary ? (
-              <Badge variant="secondary" className="shrink-0">
-                {t('domains.list.primary')}
-              </Badge>
-            ) : null}
-          </div>
-          <div className="text-2xs text-muted-foreground">
-            {domain.redirect_to ? (
-              <Trans
-                t={t}
-                i18nKey="domains.list.redirectsTo"
-                values={{ target: domain.redirect_to }}
-                components={[<span className="font-mono" />]}
-              />
-            ) : (
-              <>
-                {binding} · {domain.managed ? t('domains.list.managed') : t('domains.list.custom')}
-              </>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          aria-expanded={open}
+        >
+          <ChevronDown
+            className={cn(
+              'size-4 shrink-0 text-muted-foreground transition-transform',
+              open && 'rotate-180',
             )}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate font-mono text-sm">{domain.hostname}</span>
+              {isPrimary ? (
+                <Badge variant="secondary" className="shrink-0">
+                  {t('domains.list.primary')}
+                </Badge>
+              ) : null}
+              {domain.managed ? (
+                <Badge
+                  variant="outline"
+                  className="shrink-0 text-2xs"
+                  title={t('domains.list.autoTitle')}
+                >
+                  {t('domains.list.auto')}
+                </Badge>
+              ) : null}
+            </div>
+            <div className="text-2xs text-muted-foreground">
+              {domain.redirect_to ? (
+                <Trans
+                  t={t}
+                  i18nKey="domains.list.redirectsTo"
+                  values={{ target: domain.redirect_to }}
+                  components={[<span className="font-mono" />]}
+                />
+              ) : (
+                <>
+                  {binding} ·{' '}
+                  {domain.managed ? t('domains.list.managed') : t('domains.list.custom')}
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        </button>
         <DomainStatusBadge status={domain.status} />
-        <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
-          {open ? t('domains.list.hide') : t('domains.list.configure')}
-        </Button>
-        {domain.managed ? (
-          <Badge variant="outline" title={t('domains.list.autoTitle')}>
-            {t('domains.list.auto')}
-          </Badge>
-        ) : (
-          <>
-            <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-              {t('domains.list.edit')}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-err-foreground"
-              disabled={del.isPending}
-              onClick={onDelete}
-            >
-              {t('domains.list.delete')}
-            </Button>
-          </>
+        {domain.managed ? null : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label={t('domains.list.actionsLabel')}>
+                <MoreVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setEditing(true)}>
+                <Pencil />
+                {t('domains.list.edit')}
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" disabled={del.isPending} onSelect={onDelete}>
+                <Trash2 />
+                {t('domains.list.delete')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
       {open ? <DomainConfigPanel domain={domain} /> : null}

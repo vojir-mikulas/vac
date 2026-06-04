@@ -80,6 +80,21 @@ export function useSetBaseDomain() {
   })
 }
 
+/**
+ * Auto-probe a host's DNS so the UI can show wildcard status without the
+ * operator clicking "Check". Cached for a few minutes so revisiting Settings
+ * doesn't re-probe on every mount; `enabled` lets callers hold off until a
+ * base domain exists. Manual rechecks invalidate this key.
+ */
+export function useDnsCheck(host: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.instance.dnsCheck(host),
+    queryFn: () => instanceApi.dnsCheck(host),
+    enabled: enabled && host.length > 0,
+    staleTime: 5 * 60_000,
+  })
+}
+
 export function useDeployConcurrency() {
   return useQuery({
     queryKey: queryKeys.instance.deployConcurrency,
