@@ -35,6 +35,76 @@ func hasCode(fs []Finding, code string) bool {
 	return false
 }
 
+func TestServiceExposedPorts(t *testing.T) {
+	cases := []struct {
+		name    string
+		compose string
+		want    map[string]int
+	}{
+		{
+			name: "expose-only service (Grafana add-on shape)",
+			compose: `services:
+  grafana:
+    image: grafana/grafana-oss:11.3.0
+    expose:
+      - "3000"`,
+			want: map[string]int{"grafana": 3000},
+		},
+		{
+			name: "expose with protocol suffix",
+			compose: `services:
+  web:
+    image: app
+    expose:
+      - "8080/tcp"`,
+			want: map[string]int{"web": 8080},
+		},
+		{
+			name: "expose preferred over ports target",
+			compose: `services:
+  web:
+    image: app
+    expose:
+      - "9000"
+    ports:
+      - "8080:80"`,
+			want: map[string]int{"web": 9000},
+		},
+		{
+			name: "falls back to ports target when no expose",
+			compose: `services:
+  web:
+    image: app
+    ports:
+      - "8080:80"`,
+			want: map[string]int{"web": 80},
+		},
+		{
+			name: "service with neither is omitted",
+			compose: `services:
+  worker:
+    image: app`,
+			want: map[string]int{},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ServiceExposedPorts(writeCompose(t, tc.compose))
+			if err != nil {
+				t.Fatalf("ServiceExposedPorts: %v", err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+			for svc, port := range tc.want {
+				if got[svc] != port {
+					t.Errorf("service %q: got port %d, want %d", svc, got[svc], port)
+				}
+			}
+		})
+	}
+}
+
 func TestPreflightRules(t *testing.T) {
 	cases := []struct {
 		name    string

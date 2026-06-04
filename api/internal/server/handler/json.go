@@ -21,6 +21,7 @@ const (
 	CodeUnauthorized       = "unauthorized"
 	CodeInvalidCredentials = "invalid_credentials"
 	CodeForbidden          = "forbidden"
+	CodeStepUpRequired     = "step_up_required"
 	CodeCSRFMismatch       = "csrf_mismatch"
 	CodeNotFound           = "not_found"
 	CodeConflict           = "conflict"

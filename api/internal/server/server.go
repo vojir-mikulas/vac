@@ -190,7 +190,13 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			r.Get("/auth/me", handler.Me)
 			r.Post("/auth/totp/setup", handler.TOTPSetup(tm))
 			r.Post("/auth/totp/enable", handler.TOTPEnable(tm))
-			r.Delete("/auth/totp", handler.TOTPDisable(s, tm))
+			// Step-up: re-prove 2FA on a live session to unlock destructive
+			// actions for auth.StepUpTTL. Shares the auth rate-limit bucket so
+			// codes can't be brute-forced.
+			r.With(authLimiter.Middleware).Post("/auth/step-up", handler.StepUp(sm, tm))
+			// Disabling 2FA is itself a sensitive action — gate it on a fresh
+			// step-up in addition to the password re-check the handler enforces.
+			r.With(middleware.RequireStepUp).Delete("/auth/totp", handler.TOTPDisable(s, tm))
 			r.Get("/auth/sessions", handler.ListSessions(s))
 			r.Delete("/auth/sessions", handler.RevokeOtherSessions(s))
 			r.Delete("/auth/sessions/{id}", handler.RevokeSession(s, sm))
@@ -229,7 +235,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				if docker != nil {
 					r.Post("/restart-control-plane", handler.RestartControlPlane(docker))
 					r.Post("/stop-all-apps", handler.StopAllApps(s, docker, proxyMgr))
-					r.Post("/reset", handler.ResetInstance(s, docker, proxyMgr))
+					// Irreversible box-wide wipe — gate on fresh 2FA (on top of
+					// the typed "RESET" confirmation the handler enforces).
+					r.With(middleware.RequireStepUp).Post("/reset", handler.ResetInstance(s, docker, proxyMgr))
 				}
 			})
 
@@ -253,7 +261,8 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/{id}", handler.GetApp(s, addonCatalog))
 				r.Get("/{id}/export", handler.ExportApp(s, box))
 				r.Patch("/{id}", handler.UpdateApp(s, addonCatalog))
-				r.Delete("/{id}", handler.DeleteApp(s, proxyMgr, dbDeprov, docker))
+				// Deleting an app tears down its stack + volumes — gate on fresh 2FA.
+				r.With(middleware.RequireStepUp).Delete("/{id}", handler.DeleteApp(s, proxyMgr, dbDeprov, docker))
 
 				r.Get("/{id}/ssh-key", handler.GetAppSSHKey(s, keys))
 				r.Post("/{id}/ssh-key/regenerate", handler.RegenerateAppSSHKey(s, keys))

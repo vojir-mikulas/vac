@@ -122,6 +122,28 @@ func Preflight(path string) ([]Finding, error) {
 	return findings, nil
 }
 
+// ServiceExposedPorts maps each service to the container port VAC should route
+// to when the host publishes nothing: the first `expose:` entry, falling back
+// to the first `ports:` target. Services declaring neither are omitted.
+//
+// The deploy pipeline consults this when `docker compose ps` reports no
+// published port for a service. `ps` only surfaces host-published mappings, so
+// an `expose`-only service (e.g. the Grafana add-on) yields TargetPort 0 — and
+// would otherwise never be attached to vac-edge or routed by Caddy (503).
+func ServiceExposedPorts(path string) (map[string]int, error) {
+	views, err := parsePreflight(path)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]int, len(views))
+	for _, v := range views {
+		if p := v.routablePort(); p > 0 {
+			out[v.name] = p
+		}
+	}
+	return out, nil
+}
+
 // ---- richer parse pass (kept private; Service stays lean) ----
 
 type portMapping struct {
@@ -188,6 +210,27 @@ func parsePreflight(path string) ([]preflightView, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
 	return out, nil
+}
+
+// routablePort returns the container port VAC should route to when nothing is
+// published to the host: the first `expose:` entry (stripping any `/proto`),
+// else the first `ports:` target. 0 when the service declares neither.
+func (v preflightView) routablePort() int {
+	for _, e := range v.expose {
+		s := e
+		if i := strings.IndexByte(s, '/'); i >= 0 {
+			s = s[:i]
+		}
+		if n := atoiFirst(s); n > 0 {
+			return n
+		}
+	}
+	for _, p := range v.ports {
+		if p.target > 0 {
+			return p.target
+		}
+	}
+	return 0
 }
 
 func (v preflightView) hasPortTarget() bool {

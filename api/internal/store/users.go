@@ -28,6 +28,10 @@ type Session struct {
 	ExpiresAt  time.Time
 	LastSeenAt time.Time
 	PreAuth    bool
+	// StepUpVerifiedAt is the last time this session re-proved 2FA for a
+	// sensitive action. nil means never. Destructive routes require it to be
+	// recent (see auth.StepUpTTL).
+	StepUpVerifiedAt *time.Time
 }
 
 // --- users ---
@@ -102,9 +106,9 @@ func (s *Store) CreateSession(ctx context.Context, userID string, tokenHash []by
 func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Session, error) {
 	var sess Session
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, user_id, ip_address, user_agent, created_at, expires_at, last_seen_at, pre_auth
+		SELECT id, user_id, ip_address, user_agent, created_at, expires_at, last_seen_at, pre_auth, stepup_verified_at
 		FROM sessions WHERE token_hash = $1
-	`, tokenHash).Scan(&sess.ID, &sess.UserID, &sess.IPAddress, &sess.UserAgent, &sess.CreatedAt, &sess.ExpiresAt, &sess.LastSeenAt, &sess.PreAuth)
+	`, tokenHash).Scan(&sess.ID, &sess.UserID, &sess.IPAddress, &sess.UserAgent, &sess.CreatedAt, &sess.ExpiresAt, &sess.LastSeenAt, &sess.PreAuth, &sess.StepUpVerifiedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, ErrNotFound
 	}
@@ -114,6 +118,20 @@ func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (Se
 func (s *Store) UpdateSessionLastSeen(ctx context.Context, id string, at time.Time) error {
 	_, err := s.pool.Exec(ctx, `UPDATE sessions SET last_seen_at = $1 WHERE id = $2`, at, id)
 	return err
+}
+
+// TouchSessionStepUp stamps stepup_verified_at = NOW() on the session, marking
+// it as having freshly re-proved 2FA. Returns ErrNotFound if the session is
+// gone (e.g. revoked between the challenge and the stamp).
+func (s *Store) TouchSessionStepUp(ctx context.Context, id string, at time.Time) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE sessions SET stepup_verified_at = $1 WHERE id = $2`, at, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) RevokeSession(ctx context.Context, id string) error {

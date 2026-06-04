@@ -344,7 +344,7 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 	if err != nil {
 		return fmt.Errorf("ps: %w", err)
 	}
-	if err := p.upsertServices(ctx, app.ID, services); err != nil {
+	if err := p.upsertServices(ctx, app.ID, services, composeFile); err != nil {
 		return err
 	}
 
@@ -454,13 +454,24 @@ func (p *Pipeline) cloneOrPull(ctx context.Context, app store.App, dest, sshKeyP
 	return p.Git.Clone(ctx, app.GitURL, dest, app.GitBranch, sshKeyPath)
 }
 
-func (p *Pipeline) upsertServices(ctx context.Context, appID string, services []dockercli.PsService) error {
+func (p *Pipeline) upsertServices(ctx context.Context, appID string, services []dockercli.PsService, composeFile string) error {
+	// `docker compose ps` only reports host-published mappings, so an
+	// `expose`-only service (e.g. the Grafana add-on) yields TargetPort 0 and
+	// would never be attached to vac-edge or routed. Fall back to the container
+	// port declared in the compose `expose:`/`ports:` target.
+	exposed, eerr := compose.ServiceExposedPorts(composeFile)
+	if eerr != nil {
+		p.Logger.Warn("pipeline: parse compose for exposed ports", "err", eerr)
+	}
 	seen := make(map[string]bool, len(services))
 	for _, s := range services {
 		seen[s.Service] = true
 		containerID := s.ID
 		port := s.FirstPublishedPort()
 		internal := s.FirstTargetPort()
+		if internal == 0 {
+			internal = exposed[s.Service]
+		}
 		var (
 			cidPtr      *string
 			portPtr     *int

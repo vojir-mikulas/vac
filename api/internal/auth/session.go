@@ -31,6 +31,11 @@ var ErrNotPreAuth = errors.New("auth: session is not pre-auth")
 // to fetch their authenticator app.
 const PreAuthTTL = 10 * time.Minute
 
+// StepUpTTL is how long a step-up 2FA proof stays fresh. After re-verifying,
+// the user may perform sensitive actions for this window without being
+// re-challenged; past it, the next destructive request demands a new code.
+const StepUpTTL = 5 * time.Minute
+
 // SessionManager creates and validates session tokens. Raw tokens are returned
 // once at creation (for the cookie) and never persisted — only the SHA-256
 // hash lives in the DB. A leaked DB dump cannot be used to hijack live sessions.
@@ -131,4 +136,19 @@ func (m *SessionManager) lookup(ctx context.Context, rawToken string) (store.Ses
 
 func (m *SessionManager) Revoke(ctx context.Context, sessionID string) error {
 	return m.store.RevokeSession(ctx, sessionID)
+}
+
+// MarkStepUp stamps the session as having freshly re-proved 2FA. Callers invoke
+// it after a successful step-up TOTP / recovery-code check; RequireStepUp then
+// honours the session for StepUpTTL.
+func (m *SessionManager) MarkStepUp(ctx context.Context, sessionID string) error {
+	return m.store.TouchSessionStepUp(ctx, sessionID, time.Now())
+}
+
+// StepUpFresh reports whether sess re-proved 2FA within StepUpTTL of now.
+func StepUpFresh(sess store.Session) bool {
+	if sess.StepUpVerifiedAt == nil {
+		return false
+	}
+	return time.Since(*sess.StepUpVerifiedAt) < StepUpTTL
 }
