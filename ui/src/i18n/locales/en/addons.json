@@ -45,7 +45,9 @@
     "warningWithDb": "Runs on this box and uses roughly {{mb}} MB of RAM, plus a managed {{engine}} database.",
     "cancel": "Cancel",
     "install": "Install",
-    "toastSaveSecrets": "Installed. Save these now: {{secrets}}",
+    "secretsTitle": "Save these secrets",
+    "secretsHint": "Installed. These are shown only once and can't be recovered — copy each somewhere safe before closing.",
+    "secretsDone": "Done",
     "toastInstalling": "Add-on installing"
   }
 }

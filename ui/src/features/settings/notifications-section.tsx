@@ -34,7 +34,7 @@ export function NotificationsSection() {
           <Skeleton className="h-40 w-full" />
         </Card>
       ) : (
-        <NotificationsForm key={JSON.stringify(data.events)} settings={data} />
+        <NotificationsForm settings={data} />
       )}
     </section>
   )
@@ -46,6 +46,16 @@ function NotificationsForm({ settings }: { settings: NotificationSettings }) {
   const [discord, setDiscord] = useState('')
   const [slack, setSlack] = useState('')
   const [events, setEvents] = useState<NotificationEvents>(settings.events)
+
+  // Re-seed the toggles when the server value changes (a refetch yields a new
+  // reference via structural sharing) without remounting the form — that would
+  // discard the operator's unsaved Discord/Slack webhook input. Mirrors the
+  // "track the source in state" pattern in env-tab.
+  const [seeded, setSeeded] = useState(settings.events)
+  if (settings.events !== seeded) {
+    setSeeded(settings.events)
+    setEvents(settings.events)
+  }
 
   const test = useMutation({
     mutationFn: () => notificationsApi.test(),

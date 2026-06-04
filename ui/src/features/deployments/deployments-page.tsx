@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { m } from 'motion/react'
 import { Link } from '@tanstack/react-router'
 import { useQueries } from '@tanstack/react-query'
@@ -35,6 +36,9 @@ export function DeploymentsPage() {
     queries: appList.map((app) => ({
       queryKey: queryKeys.apps.deployments(app.id),
       queryFn: () => deploymentsApi.list(app.id),
+      // The fan-out is one query per app; without this every visit refetches N
+      // times. The deploy WS pushes invalidations, so a short window is safe.
+      staleTime: 30_000,
     })),
   })
 
@@ -47,16 +51,24 @@ export function DeploymentsPage() {
     results.forEach((r) => r.refetch())
   }
 
-  // Cheap to recompute each render (≤100 rows × app count); merge + sort inline.
-  const rows: Row[] = []
-  results.forEach((r, i) => {
-    const app = appList[i]
-    if (!app || !r.data) return
-    for (const d of r.data) rows.push({ ...d, appName: app.name })
-  })
-  rows.sort((a, b) => new Date(b.triggered_at).getTime() - new Date(a.triggered_at).getTime())
+  // Merge + sort the per-app deploy lists. React Query hands back stable `data`
+  // references via structural sharing, so keying the memo on each query's
+  // `dataUpdatedAt` recomputes only when a list actually changes — not on every
+  // render (the `results` array itself is fresh each render).
+  const dataSig = results.map((r) => r.dataUpdatedAt).join(',')
+  const rows = useMemo<Row[]>(() => {
+    const out: Row[] = []
+    results.forEach((r, i) => {
+      const app = appList[i]
+      if (!app || !r.data) return
+      for (const d of r.data) out.push({ ...d, appName: app.name })
+    })
+    out.sort((a, b) => new Date(b.triggered_at).getTime() - new Date(a.triggered_at).getTime())
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appList, dataSig])
 
-  const metrics = computeMetrics(rows)
+  const metrics = useMemo(() => computeMetrics(rows), [rows])
   const activeCount = queue?.length ?? 0
 
   return (

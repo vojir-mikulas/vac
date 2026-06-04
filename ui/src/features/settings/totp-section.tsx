@@ -82,9 +82,14 @@ function EnableFlow() {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <Button variant="brand" size="sm" disabled={begin.isPending} onClick={() => begin.mutate()}>
-        {t('totp.enable')}
-      </Button>
+      {/* DialogTrigger (not a bare Button) so Radix tracks the trigger and
+          returns focus to it on close, matching DisableDialog. The dialog is
+          still opened by the `begin` mutation state, not the trigger's toggle. */}
+      <DialogTrigger asChild>
+        <Button variant="brand" size="sm" disabled={begin.isPending} onClick={() => begin.mutate()}>
+          {t('totp.enable')}
+        </Button>
+      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>

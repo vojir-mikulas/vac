@@ -65,6 +65,7 @@ export function StepUpProvider({ children }: { children: React.ReactNode }) {
   }
 
   const submit = async () => {
+    if (submitting) return
     setSubmitting(true)
     setError(null)
     try {
@@ -132,7 +133,13 @@ export function StepUpProvider({ children }: { children: React.ReactNode }) {
               <Button type="button" variant="outline" onClick={() => settle(false)}>
                 {t('stepUp.cancel')}
               </Button>
-              <Button type="submit" variant="brand" disabled={submitting || code.length < 6}>
+              <Button
+                type="submit"
+                variant="brand"
+                // The 6-digit minimum is a TOTP rule; recovery codes have their
+                // own format, so gate length only when entering an authenticator code.
+                disabled={submitting || (!useRecovery && code.length < 6) || !code}
+              >
                 {t('stepUp.submit')}
               </Button>
             </DialogFooter>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
@@ -40,12 +40,18 @@ export async function copyToClipboard(value: string): Promise<boolean> {
 export function CopyButton({ value, label }: { value: string; label?: string }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // CopyButton lives in lists and dialogs that can unmount inside the 1.5s
+  // window, so clear any pending reset on unmount (and before re-scheduling).
+  useEffect(() => () => clearTimeout(resetTimer.current ?? undefined), [])
 
   const copy = async () => {
     const ok = await copyToClipboard(value)
     if (ok) {
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      clearTimeout(resetTimer.current ?? undefined)
+      resetTimer.current = setTimeout(() => setCopied(false), 1500)
     } else {
       toast.error(t('toast.copyFailed'))
     }

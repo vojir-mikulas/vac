@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { BrandIcon, brandFor } from '@/components/common/brand-icon'
+import { CopyButton } from '@/components/common/copy-button'
 import { EmptyState } from '@/components/common/empty-state'
 import { ErrorState } from '@/components/common/error-state'
 import { Button } from '@/components/ui/button'
@@ -327,27 +328,43 @@ function InstallDialog({ addon }: { addon: Addon }) {
   const { t } = useTranslation('addons')
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(addon.name)
+  // Generated secrets are sealed at rest and surfaced exactly once. Hold them
+  // locally so the operator can copy each before moving on, rather than racing a
+  // toast's lifetime. `appId` is the app to open once they're done.
+  const [secrets, setSecrets] = useState<[string, string][] | null>(null)
+  const [appId, setAppId] = useState<string | null>(null)
   const install = useInstallAddon()
   const navigate = useNavigate()
+
+  const goToApp = () => {
+    if (appId) navigate({ to: '/apps/$appId/overview', params: { appId } })
+  }
+
+  const onOpenChange = (next: boolean) => {
+    setOpen(next)
+    // Closing the secrets view: the operator is done copying — continue to the
+    // installed app. Reset so a reopen starts clean.
+    if (!next && secrets) {
+      goToApp()
+      setSecrets(null)
+      setAppId(null)
+    }
+  }
 
   const submit = () => {
     install.mutate(
       { id: addon.id, name: name.trim() || undefined },
       {
         onSuccess: (res) => {
-          setOpen(false)
-          const secrets = Object.entries(res.generated_secrets ?? {})
-          if (secrets.length > 0) {
-            // Surfaced once — they're sealed at rest and not re-derivable.
-            toast.success(
-              t('install.toastSaveSecrets', {
-                secrets: secrets.map(([k, v]) => `${k}=${v}`).join(', '),
-              }),
-              { duration: 30_000 },
-            )
-          } else {
-            toast.success(t('install.toastInstalling'))
+          const generated = Object.entries(res.generated_secrets ?? {})
+          if (generated.length > 0) {
+            // Keep the dialog open and reveal the secrets with copy buttons.
+            setAppId(res.app_id)
+            setSecrets(generated)
+            return
           }
+          setOpen(false)
+          toast.success(t('install.toastInstalling'))
           navigate({ to: '/apps/$appId/overview', params: { appId: res.app_id } })
         },
         onError: (e) => toast.error(e.message),
@@ -356,7 +373,7 @@ function InstallDialog({ addon }: { addon: Addon }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button variant="brand" size="sm" className="w-full">
           <Download className="size-3.5" />
@@ -364,37 +381,69 @@ function InstallDialog({ addon }: { addon: Addon }) {
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t('install.title', { name: addon.name })}</DialogTitle>
-        </DialogHeader>
+        {secrets ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>{t('install.secretsTitle')}</DialogTitle>
+            </DialogHeader>
 
-        <div className="flex flex-col gap-4 py-2">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium">{t('install.appName')}</span>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
+            <div className="flex flex-col gap-4 py-2">
+              <div className="flex items-start gap-2 rounded-lg border border-warn-border bg-warn-bg px-3 py-2 text-xs text-warn-foreground">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                <span>{t('install.secretsHint')}</span>
+              </div>
+              {secrets.map(([k, v]) => (
+                <div key={k} className="grid gap-1.5">
+                  <span className="font-mono text-2xs text-muted-foreground">{k}</span>
+                  <div className="flex items-center gap-2">
+                    <Input readOnly value={v} className="font-mono text-xs" />
+                    <CopyButton value={v} />
+                  </div>
+                </div>
+              ))}
+            </div>
 
-          <div className="flex items-start gap-2 rounded-lg border border-warn-border bg-warn-bg px-3 py-2 text-xs text-warn-foreground">
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            <span>
-              {addon.depends_on_db
-                ? t('install.warningWithDb', {
-                    mb: addon.footprint_mb,
-                    engine: addon.depends_on_db,
-                  })
-                : t('install.warning', { mb: addon.footprint_mb })}
-            </span>
-          </div>
-        </div>
+            <DialogFooter>
+              <Button variant="brand" onClick={() => onOpenChange(false)}>
+                {t('install.secretsDone')}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>{t('install.title', { name: addon.name })}</DialogTitle>
+            </DialogHeader>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            {t('install.cancel')}
-          </Button>
-          <Button variant="brand" disabled={install.isPending} onClick={submit}>
-            {t('install.install')}
-          </Button>
-        </DialogFooter>
+            <div className="flex flex-col gap-4 py-2">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium">{t('install.appName')}</span>
+                <Input value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+
+              <div className="flex items-start gap-2 rounded-lg border border-warn-border bg-warn-bg px-3 py-2 text-xs text-warn-foreground">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  {addon.depends_on_db
+                    ? t('install.warningWithDb', {
+                        mb: addon.footprint_mb,
+                        engine: addon.depends_on_db,
+                      })
+                    : t('install.warning', { mb: addon.footprint_mb })}
+                </span>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpen(false)}>
+                {t('install.cancel')}
+              </Button>
+              <Button variant="brand" disabled={install.isPending} onClick={submit}>
+                {t('install.install')}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )

@@ -83,6 +83,9 @@ export function AppsDashboard() {
   const [importOpen, setImportOpen] = useState(false)
   const deferredQuery = useDeferredValue(query)
 
+  // Kept memoised: while loading, `apps` is undefined, so `apps ?? []` would
+  // otherwise yield a fresh array each render and destabilise the counts/filtered
+  // memo dependencies below.
   const list = useMemo(() => apps ?? [], [apps])
   const counts = useMemo(() => countByFilter(list), [list])
 

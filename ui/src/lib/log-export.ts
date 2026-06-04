@@ -29,6 +29,10 @@ export function downloadFile(filename: string, content: string, mime: string) {
   const a = document.createElement('a')
   a.href = url
   a.download = filename
+  // Append before clicking (some browsers ignore clicks on detached anchors)
+  // and defer the revoke so it can't race/cancel the in-flight download.
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }

@@ -91,12 +91,15 @@ export function useContainerShell(appId: string, service: string) {
     return () => window.removeEventListener('resize', onResize)
   }, [sendResize])
 
-  // Tear everything down on unmount so no socket or terminal leaks.
+  // Tear everything down on unmount so no socket or terminal leaks. Null the
+  // refs too: a window resize firing during teardown must not call fit() on a
+  // disposed terminal.
   useEffect(() => {
     return () => {
       socketRef.current?.close()
       termRef.current?.dispose()
       termRef.current = null
+      fitRef.current = null
     }
   }, [])
 
