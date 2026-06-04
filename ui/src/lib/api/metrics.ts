@@ -48,12 +48,12 @@ export function useHostMetrics(since: string) {
   })
 }
 
-// useCpuHistory keeps a short client-side ring buffer of host CPU readings so the
+// useCpuHistory keeps a client-side ring buffer of host CPU readings so the
 // dashboard can draw a live trend. Host vitals are an instantaneous snapshot
 // (no server-side history), so this samples the 5s poll of useHostStats — the
 // buffer is live-only and resets when the dashboard unmounts. `maxPoints` * 5s
-// is the visible window (default ~2 min).
-export function useCpuHistory(maxPoints = 24): number[] {
+// is the visible window (default ~5 min).
+export function useCpuHistory(maxPoints = 60): number[] {
   const { data, dataUpdatedAt } = useHostStats()
   const [history, setHistory] = useState<number[]>([])
   const lastStamp = useRef(0)
