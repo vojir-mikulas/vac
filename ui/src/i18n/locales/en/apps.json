@@ -20,12 +20,20 @@
     },
     "stats": {
       "runningApps": "Running apps",
-      "ofDeployed": "of {{count}} deployed",
-      "hostRam": "Host RAM",
       "hostCpu": "Host CPU",
       "allCores": "across all cores",
-      "disk": "Disk",
-      "ofSize": "of {{size}}"
+      "cpuTrendAria": "Host CPU trend over the last few minutes",
+      "needsAttention": "Needs attention",
+      "issuesSub_one": "{{count}} app needs a look",
+      "issuesSub_other": "{{count}} apps need a look",
+      "allHealthy": "All apps healthy",
+      "traffic24h": "Traffic · 24h",
+      "trafficSub": "{{errPct}} errors · {{egress}} out",
+      "noTraffic": "No requests yet",
+      "trafficTrendAria": "Box-wide request volume over the last 24 hours",
+      "deploys": "Deploys",
+      "deploysSub": "{{building}} building · {{queued}} queued",
+      "lastDeploy": "Last deploy {{time}}"
     },
     "table": {
       "application": "Application",

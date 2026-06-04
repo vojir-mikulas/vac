@@ -137,6 +137,16 @@ func TestRequestMetricsUpsertAndSeries(t *testing.T) {
 		t.Errorf("app series = %+v, want one point with 9 requests", appSeries)
 	}
 
+	// Host series sums across every app and downsamples to wide buckets — the
+	// two services above collapse into one point with their requests summed.
+	hostSeries, err := s.QueryHostRequestSeries(ctx, bucket.Add(-time.Minute), 3600)
+	if err != nil {
+		t.Fatalf("QueryHostRequestSeries: %v", err)
+	}
+	if len(hostSeries) != 1 || hostSeries[0].Requests != 9 || hostSeries[0].Errors != 2 {
+		t.Errorf("host series = %+v, want one point with 9 requests / 2 errors", hostSeries)
+	}
+
 	// Prune everything older than now+1m removes the bucket.
 	n, err := s.DeleteRequestMetricsOlderThan(ctx, time.Now().Add(time.Minute))
 	if err != nil {

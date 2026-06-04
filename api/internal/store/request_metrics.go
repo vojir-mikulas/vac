@@ -92,6 +92,37 @@ func (s *Store) QueryRequestSeries(ctx context.Context, appID, service string, s
 	return out, rows.Err()
 }
 
+// QueryHostRequestSeries returns the request series summed across every app,
+// downsampled to fixed-width buckets of `bucketSeconds` so a wide window (e.g.
+// 24h of 10s buckets) collapses to a handful of points fit for a sparkline.
+// Each row's ts is the start of its downsampled bucket.
+func (s *Store) QueryHostRequestSeries(ctx context.Context, since time.Time, bucketSeconds int) ([]RequestPoint, error) {
+	if bucketSeconds <= 0 {
+		bucketSeconds = 60
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT to_timestamp(floor(extract(epoch FROM bucket_ts) / $2) * $2) AT TIME ZONE 'UTC' AS b,
+		       SUM(requests)::int, SUM(errors)::int, SUM(bytes_out)::bigint
+		FROM request_metrics
+		WHERE bucket_ts >= $1
+		GROUP BY b
+		ORDER BY b
+	`, since, bucketSeconds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RequestPoint
+	for rows.Next() {
+		var p RequestPoint
+		if err := rows.Scan(&p.TS, &p.Requests, &p.Errors, &p.BytesOut); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // DeleteRequestMetricsOlderThan prunes the rolling window. Called by the
 // retention pruner.
 func (s *Store) DeleteRequestMetricsOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {

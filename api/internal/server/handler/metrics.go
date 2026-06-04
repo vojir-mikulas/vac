@@ -42,6 +42,31 @@ func ServiceMetrics(s *store.Store) http.HandlerFunc {
 	}
 }
 
+// hostSeriesBuckets is the target number of points the host series is
+// downsampled to, regardless of window — keeps the dashboard sparkline light.
+const hostSeriesBuckets = 48
+
+// HostMetrics returns the request series summed across every app, for the
+// dashboard's box-wide traffic sparkline. The window is downsampled to a fixed
+// number of buckets so a 24h range stays a few dozen points.
+func HostMetrics(s *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		since := parseSince(r)
+		// Bucket width = window / target points, floored at 60s (the access-log
+		// aggregator writes 10s buckets, so anything finer just re-splits them).
+		bucketSec := int(time.Since(since).Seconds()) / hostSeriesBuckets
+		if bucketSec < 60 {
+			bucketSec = 60
+		}
+		series, err := s.QueryHostRequestSeries(r.Context(), since, bucketSec)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not load metrics")
+			return
+		}
+		writeSeries(w, series)
+	}
+}
+
 func writeSeries(w http.ResponseWriter, series []store.RequestPoint) {
 	if series == nil {
 		series = []store.RequestPoint{}

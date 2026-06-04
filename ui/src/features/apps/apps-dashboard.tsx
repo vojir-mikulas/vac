@@ -4,8 +4,11 @@ import { m } from 'motion/react'
 import { Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import {
+  Activity,
   Blocks,
   Boxes,
+  CircleCheck,
+  Cpu,
   Download,
   ExternalLink,
   GitBranch,
@@ -13,10 +16,12 @@ import {
   MoreHorizontal,
   Play,
   Plus,
+  Rocket,
   RotateCw,
   Search,
   Square,
   Trash2,
+  TriangleAlert,
 } from 'lucide-react'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
@@ -57,11 +62,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { SwapFade } from '@/components/common/swap-fade'
+import { Sparkline } from '@/components/common/sparkline'
 import { cn } from '@/lib/utils'
 import { listItem } from '@/lib/motion'
 import { useApps } from '@/lib/api/apps'
-import { useBoxBudget, useHostStats } from '@/lib/api/metrics'
-import { formatBytes, formatPercent, relativeTime } from '@/lib/format'
+import { useBoxBudget, useCpuHistory, useHostMetrics, useHostStats } from '@/lib/api/metrics'
+import { useActiveDeployments } from '@/lib/api/deployments'
+import { formatBytes, formatNumber, formatPercent, relativeTime } from '@/lib/format'
 import {
   appsBadgeVariant,
   countByFilter,
@@ -78,6 +85,9 @@ export function AppsDashboard() {
   const { data: apps, isLoading, isError, refetch } = useApps()
   const { data: host } = useHostStats()
   const { data: budget } = useBoxBudget()
+  const { data: traffic } = useHostMetrics('24h')
+  const cpuHistory = useCpuHistory()
+  const { data: active } = useActiveDeployments()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<AppFilter>('all')
   const [importOpen, setImportOpen] = useState(false)
@@ -97,6 +107,35 @@ export function AppsDashboard() {
         (!q || app.name.toLowerCase().includes(q) || app.git_url.toLowerCase().includes(q)),
     )
   }, [list, deferredQuery, filter])
+
+  // Box-wide traffic over the last 24h, plus the per-bucket request series for
+  // the sparkline. errPct gates the tile's health tone.
+  const trafficSummary = useMemo(() => {
+    const series = traffic ?? []
+    const requests = series.reduce((n, p) => n + p.requests, 0)
+    const errors = series.reduce((n, p) => n + p.errors, 0)
+    const bytesOut = series.reduce((n, p) => n + p.bytes_out, 0)
+    return {
+      requests,
+      errors,
+      bytesOut,
+      errPct: requests > 0 ? (errors / requests) * 100 : 0,
+      points: series.map((p) => p.requests),
+      hasData: series.length > 0,
+    }
+  }, [traffic])
+
+  // Live deploy queue: how many are queued vs already building, and (when idle)
+  // the most recent app change as a "last deploy" proxy.
+  const deploys = useMemo(() => {
+    const rows = active ?? []
+    const queued = rows.filter((d) => d.status === 'queued').length
+    const lastAt = list.reduce<string | null>(
+      (max, app) => (!max || app.updated_at > max ? app.updated_at : max),
+      null,
+    )
+    return { total: rows.length, queued, building: rows.length - queued, lastAt }
+  }, [active, list])
 
   return (
     <PageContainer>
@@ -125,34 +164,73 @@ export function AppsDashboard() {
 
       <div className="mb-6">
         <StatStrip>
+          {/* Health first: a click jumps the table to the issues filter. */}
           <StatTile
-            label={t('dashboard.stats.runningApps')}
-            value={String(counts.running)}
-            sub={t('dashboard.stats.ofDeployed', { count: counts.all })}
-            accent
-          />
-          <StatTile
-            label={t('dashboard.stats.hostRam')}
-            value={host ? formatBytes(host.mem_used_bytes) : '—'}
+            label={t('dashboard.stats.needsAttention')}
+            value={String(counts.issues)}
             sub={
-              host
-                ? t('dashboard.stats.ofSize', { size: formatBytes(host.mem_total_bytes) })
-                : undefined
+              counts.issues > 0
+                ? t('dashboard.stats.issuesSub', { count: counts.issues })
+                : t('dashboard.stats.allHealthy')
             }
+            tone={counts.issues > 0 ? 'err' : 'ok'}
+            icon={counts.issues > 0 ? TriangleAlert : CircleCheck}
+            onClick={() => setFilter('issues')}
+            ariaLabel={t('dashboard.stats.needsAttention')}
           />
           <StatTile
             label={t('dashboard.stats.hostCpu')}
             value={host ? formatPercent(host.cpu_percent, 0) : '—'}
             sub={t('dashboard.stats.allCores')}
+            tone={host && host.cpu_percent >= 80 ? 'warn' : undefined}
+            icon={Cpu}
+            chart={
+              <Sparkline
+                data={cpuHistory}
+                color="var(--color-brand)"
+                ariaLabel={t('dashboard.stats.cpuTrendAria')}
+              />
+            }
           />
           <StatTile
-            label={t('dashboard.stats.disk')}
-            value={host ? formatBytes(host.disk_used_bytes) : '—'}
+            label={t('dashboard.stats.traffic24h')}
+            value={trafficSummary.hasData ? formatNumber(trafficSummary.requests) : '—'}
             sub={
-              host
-                ? t('dashboard.stats.ofSize', { size: formatBytes(host.disk_total_bytes) })
-                : undefined
+              trafficSummary.hasData
+                ? t('dashboard.stats.trafficSub', {
+                    errPct: formatPercent(
+                      trafficSummary.errPct,
+                      trafficSummary.errPct < 10 ? 1 : 0,
+                    ),
+                    egress: formatBytes(trafficSummary.bytesOut),
+                  })
+                : t('dashboard.stats.noTraffic')
             }
+            tone={
+              trafficSummary.errPct >= 5 ? 'err' : trafficSummary.errPct >= 1 ? 'warn' : undefined
+            }
+            icon={Activity}
+            chart={
+              <Sparkline
+                data={trafficSummary.points}
+                color="var(--color-chart-3)"
+                ariaLabel={t('dashboard.stats.trafficTrendAria')}
+              />
+            }
+          />
+          <StatTile
+            label={t('dashboard.stats.deploys')}
+            value={String(deploys.total)}
+            sub={
+              deploys.total > 0
+                ? t('dashboard.stats.deploysSub', {
+                    building: deploys.building,
+                    queued: deploys.queued,
+                  })
+                : t('dashboard.stats.lastDeploy', { time: relativeTime(deploys.lastAt) })
+            }
+            tone={deploys.total > 0 ? 'brand' : undefined}
+            icon={Rocket}
           />
         </StatStrip>
       </div>

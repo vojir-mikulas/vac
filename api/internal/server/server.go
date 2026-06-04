@@ -396,6 +396,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			if statsProv != nil {
 				r.Get("/host/budget", handler.HostBudget(statsProv, s))
 			}
+			// Box-wide request series (all apps summed), for the dashboard's
+			// traffic sparkline. Downsampled server-side to a few dozen points.
+			r.Get("/host/metrics", handler.HostMetrics(s))
 
 			// Security dashboard (plan 15 / E2). Read-only: posture checklist,
 			// live traffic snapshot, and capability-detected fail2ban/firewall

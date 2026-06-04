@@ -12,6 +12,7 @@ export const queryKeys = {
   host: {
     stats: ['host', 'stats'] as const,
     budget: ['host', 'budget'] as const,
+    metrics: (since: string) => ['host', 'metrics', since] as const,
   },
   notifications: ['notifications'] as const,
   activity: ['activity'] as const,
