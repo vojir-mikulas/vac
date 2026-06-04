@@ -43,7 +43,7 @@ func (f *fakeRecorder) waitEntry(t *testing.T) (store.AuditEntry, bool) {
 // populated, with a handler that runs enrich against the request context.
 func routedAudit(rec AuditRecorder, pattern string, enrich func(*http.Request)) http.Handler {
 	r := chi.NewRouter()
-	r.Use(Audit(rec))
+	r.Use(Audit(context.Background(), rec))
 	r.Handle(pattern, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if enrich != nil {
 			enrich(req)
@@ -110,7 +110,7 @@ func TestAudit_AttributesAPITokenActor(t *testing.T) {
 			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	})
-	r.Use(Audit(rec))
+	r.Use(Audit(context.Background(), rec))
 	r.Handle("/apps", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))

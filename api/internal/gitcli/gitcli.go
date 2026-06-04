@@ -27,9 +27,10 @@ var (
 
 // LsRemote is the pre-deploy probe — fast, no working tree on disk. If
 // `branch` is non-empty git exits 2 when the ref is missing, which we map
-// to ErrBranchNotFound.
+// to ErrBranchNotFound. The `--` separator stops git from interpreting a
+// hostile URL/ref as an option flag.
 func LsRemote(ctx context.Context, gitURL, branch, sshKeyPath string) error {
-	args := []string{"ls-remote", "--exit-code", gitURL}
+	args := []string{"ls-remote", "--exit-code", "--", gitURL}
 	if branch != "" {
 		args = append(args, branch)
 	}
@@ -40,13 +41,15 @@ func LsRemote(ctx context.Context, gitURL, branch, sshKeyPath string) error {
 	return classify(err, out, branch != "")
 }
 
-// Clone shallow-clones a single branch. `dest` must not exist yet.
+// Clone shallow-clones a single branch. `dest` must not exist yet. The `--`
+// separator before the positional URL/dest keeps a URL that begins with `-`
+// from being parsed as a flag (defense-in-depth alongside GIT_ALLOW_PROTOCOL).
 func Clone(ctx context.Context, gitURL, dest, branch, sshKeyPath string) error {
 	args := []string{"clone", "--depth=1", "--single-branch"}
 	if branch != "" {
 		args = append(args, "--branch", branch)
 	}
-	args = append(args, gitURL, dest)
+	args = append(args, "--", gitURL, dest)
 	out, err := run(ctx, buildEnv(sshKeyPath), args...)
 	if err == nil {
 		return nil
@@ -112,8 +115,16 @@ func HeadCommit(ctx context.Context, dest string) (sha, message string, err erro
 // run is the single os/exec entry point so the env handling is consistent.
 // Returns combined stdout+stderr — git interleaves its progress output and
 // we want both for classification.
+//
+// Every invocation hard-disables git's `ext::` transport, which runs an
+// arbitrary shell command (e.g. `ext::sh -c id` ⇒ RCE). Upstream callers already
+// constrain URLs to http(s)/ssh via gitURLRe, so this is defense-in-depth for
+// any path that reaches gitcli with a less-validated URL. The dumb `file`
+// transport is left enabled (local fixture clones rely on it); a file:// URL is
+// rejected by gitURLRe at the boundary and at worst clones a local repo dir.
 func run(ctx context.Context, env []string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // G204: deliberate single git exec entry point; args are built internally, not from user input
+	full := append([]string{"-c", "protocol.ext.allow=never"}, args...)
+	cmd := exec.CommandContext(ctx, "git", full...) //nolint:gosec // G204: deliberate single git exec entry point; args are built internally, not from user input
 	if env != nil {
 		cmd.Env = env
 	}

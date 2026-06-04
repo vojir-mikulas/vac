@@ -143,15 +143,22 @@ func sanitizeIdent(s string) string {
 	return out
 }
 
-// randString returns n characters drawn uniformly from alphabet using crypto/rand.
+// randString returns n characters drawn uniformly from alphabet using
+// crypto/rand. Rejection sampling avoids the modulo bias of `byte % len`, which
+// would otherwise slightly favour the first few alphabet characters.
 func randString(n int, alphabet string) (string, error) {
-	buf := make([]byte, n)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("dbprovision: rand: %w", err)
-	}
+	limit := 256 - (256 % len(alphabet)) // largest multiple of len that fits in a byte
 	out := make([]byte, n)
-	for i, b := range buf {
-		out[i] = alphabet[int(b)%len(alphabet)]
+	var b [1]byte
+	for i := 0; i < n; {
+		if _, err := rand.Read(b[:]); err != nil {
+			return "", fmt.Errorf("dbprovision: rand: %w", err)
+		}
+		if int(b[0]) >= limit {
+			continue // reject to keep the distribution uniform
+		}
+		out[i] = alphabet[int(b[0])%len(alphabet)]
+		i++
 	}
 	return string(out), nil
 }

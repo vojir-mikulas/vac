@@ -36,6 +36,9 @@ type DockerClient interface {
 	Build(ctx context.Context, projectDir, composeFile, projectName string, out io.Writer) error
 	Up(ctx context.Context, projectDir, composeFile, projectName, envFile string, overrideFiles ...string) error
 	Ps(ctx context.Context, projectName string) ([]dockercli.PsService, error)
+	// Config renders the fully merged compose document (include/extends/overrides
+	// resolved) so the preflight lints what `up` will actually run.
+	Config(ctx context.Context, projectDir, composeFile, projectName string) ([]byte, error)
 }
 
 // Router projects an app's domains into the reverse proxy and gates a deploy on
@@ -267,28 +270,55 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 	// warnings are logged and the deploy proceeds. allow_unsafe_compose
 	// downgrades the edge-conflict class (the operator's call) but never the
 	// host-escape class.
-	if findings, perr := compose.Preflight(composeFile); perr != nil {
-		_ = p.logSystem(ctx, deploymentID, "compose preflight skipped: "+perr.Error())
+	// Resolve the merged compose (include/extends/override files + interpolation)
+	// via `docker compose config` and lint THAT, so a host-escape construct hidden
+	// behind an `include:`/`extends:` — which `up` resolves but a raw-file parse
+	// never sees — can't slip past. Fail CLOSED: a parse failure blocks the deploy
+	// rather than silently skipping the guard and building the file anyway.
+	preflightProject := composeProject(app.Slug)
+	var (
+		findings []compose.Finding
+		perr     error
+	)
+	if resolved, cerr := p.Docker.Config(ctx, repoDir, composeFile, preflightProject); cerr == nil {
+		findings, perr = compose.PreflightBytes(resolved)
 	} else {
-		var blocking []compose.Finding
-		for _, f := range findings {
-			_ = p.logSystem(ctx, deploymentID, f.Format())
-			if f.Severity == compose.SeverityError && (!cfg.AllowUnsafeCompose || f.IsHostEscape()) {
-				blocking = append(blocking, f)
-			}
+		// `docker compose config` itself failed (e.g. a required `${VAR:?}` not yet
+		// in the env file we render later): fall back to linting the raw file so the
+		// guard still runs — and a genuine parse error below still blocks.
+		_ = p.logSystem(ctx, deploymentID, "compose preflight: resolved config unavailable, linting raw compose ("+cerr.Error()+")")
+		findings, perr = compose.Preflight(composeFile)
+	}
+	if perr != nil {
+		msg := "compose preflight failed: " + perr.Error()
+		_ = p.logSystem(ctx, deploymentID, msg)
+		_ = p.Store.MarkDeploymentFinished(ctx, deploymentID, DeploymentStatusError, &msg)
+		_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusDegraded)
+		markHTTPServicesDegraded(ctx, p.Store, app.ID)
+		logger.Warn("pipeline: blocked — compose preflight could not parse the compose")
+		if p.Notifier != nil {
+			p.Notifier.DeployFailed(app.Name, app.ID, msg, time.Since(runStart))
 		}
-		if len(blocking) > 0 {
-			msg := "compose preflight failed:\n" + compose.JoinFindings(blocking)
-			_ = p.logSystem(ctx, deploymentID, msg)
-			_ = p.Store.MarkDeploymentFinished(ctx, deploymentID, DeploymentStatusError, &msg)
-			_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusDegraded)
-			markHTTPServicesDegraded(ctx, p.Store, app.ID)
-			logger.Warn("pipeline: blocked by compose preflight")
-			if p.Notifier != nil {
-				p.Notifier.DeployFailed(app.Name, app.ID, msg, time.Since(runStart))
-			}
-			return nil
+		return nil
+	}
+	var blocking []compose.Finding
+	for _, f := range findings {
+		_ = p.logSystem(ctx, deploymentID, f.Format())
+		if f.Severity == compose.SeverityError && (!cfg.AllowUnsafeCompose || f.IsHostEscape()) {
+			blocking = append(blocking, f)
 		}
+	}
+	if len(blocking) > 0 {
+		msg := "compose preflight failed:\n" + compose.JoinFindings(blocking)
+		_ = p.logSystem(ctx, deploymentID, msg)
+		_ = p.Store.MarkDeploymentFinished(ctx, deploymentID, DeploymentStatusError, &msg)
+		_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusDegraded)
+		markHTTPServicesDegraded(ctx, p.Store, app.ID)
+		logger.Warn("pipeline: blocked by compose preflight")
+		if p.Notifier != nil {
+			p.Notifier.DeployFailed(app.Name, app.ID, msg, time.Since(runStart))
+		}
+		return nil
 	}
 
 	// ---- Env file ----

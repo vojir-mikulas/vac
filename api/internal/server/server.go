@@ -36,6 +36,10 @@ import (
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
 func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost) (*http.Server, error) {
+	// Gate X-Forwarded-Proto trust (cookie Secure decision) on config — the
+	// bundled vac-proxy sets the header; a raw-HTTP box can disable trusting it.
+	handler.SetTrustForwardedProto(cfg.TrustProxyHeaders)
+
 	// Convert the concrete (possibly-nil) manager into nil-able interface
 	// values so handlers' `== nil` guards behave (a typed-nil pointer in an
 	// interface is not nil).
@@ -170,7 +174,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		r.Use(middleware.CSRF)
 		// Innermost: the actor is resolved (Auth) and CSRF has passed, so every
 		// mutating request that reaches a handler is audited with its outcome.
-		r.Use(middleware.Audit(s))
+		r.Use(middleware.Audit(ctx, s))
 
 		// Public — no session required. Setup-admin and the login endpoints
 		// are the brute-force surface, so they sit behind the rate limiter.

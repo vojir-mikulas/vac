@@ -17,11 +17,29 @@ package appspec
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/vojir-mikulas/vac/api/internal/adapter"
+)
+
+// maxSlugLen mirrors the create handler's slug cap.
+const maxSlugLen = 63
+
+// gitURLRe / gitRefRe / slugRe replicate the HTTP create handler's validation
+// (handler.gitURLRe etc.) so the import on-ramp (POST /import and `vac-api
+// apply`) enforces the exact same shape the create API does. Without this the
+// import path would reach gitcli.Clone with a fully unvalidated URL — letting an
+// `ext::sh -c …` transport URL or a `metadata.slug: ../../etc` traversal through.
+// Kept replicated (not imported) so appspec stays free of the HTTP handler
+// dependency, the same trade-off as normalizeHostname above. Keep in sync with
+// handler/apps.go.
+var (
+	gitURLRe = regexp.MustCompile(`^(?:https?://\S+|git@[^\s:]+:\S+|ssh://git@\S+/\S+)$`)
+	gitRefRe = regexp.MustCompile(`^[A-Za-z0-9._/][A-Za-z0-9._/-]*$`)
+	slugRe   = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 )
 
 // APIVersion / Kind gate the spec for forward-compat. v1 evolves by additive
@@ -179,10 +197,29 @@ func (s Spec) Validate() error {
 	if strings.TrimSpace(s.Metadata.Name) == "" {
 		return fmt.Errorf("appspec: metadata.name is required")
 	}
+	// An explicit slug is operator-controlled and flows into a filesystem path
+	// (filepath.Join(WorkDir, slug, "repo")) at deploy time, so it must be a
+	// strict kebab-case handle — never a traversal like "../../root/.ssh". A
+	// derived slug (DeriveSlug, when slug is omitted) is safe by construction.
+	if slug := strings.TrimSpace(s.Metadata.Slug); slug != "" {
+		if len(slug) > maxSlugLen || !slugRe.MatchString(slug) {
+			return fmt.Errorf("appspec: metadata.slug %q must match %s (max %d chars)", slug, slugRe.String(), maxSlugLen)
+		}
+	}
 	switch s.Source.Type {
 	case SourceGit:
-		if strings.TrimSpace(s.Source.URL) == "" {
+		url := strings.TrimSpace(s.Source.URL)
+		if url == "" {
 			return fmt.Errorf("appspec: source.url is required for source.type=git")
+		}
+		// The URL is passed to `git clone` as a positional argument; validate it
+		// to the same allowlist the create API enforces so a hostile transport
+		// (e.g. `ext::sh -c id`) can't reach gitcli through the import path.
+		if !gitURLRe.MatchString(url) {
+			return fmt.Errorf("appspec: source.url %q is not a valid git URL", url)
+		}
+		if branch := strings.TrimSpace(s.Source.Branch); branch != "" && !gitRefRe.MatchString(branch) {
+			return fmt.Errorf("appspec: source.branch %q must match %s", branch, gitRefRe.String())
 		}
 	case SourceTemplate:
 		if strings.TrimSpace(s.Source.TemplateID) == "" {

@@ -227,9 +227,11 @@ func ListDeployments(s *store.Store) http.HandlerFunc {
 	}
 }
 
-// GetDeployment returns one deployment row by id.
+// GetDeployment returns one deployment row by id, scoped to the app in the URL
+// so a deployment id can't be read out from under a different app's path.
 func GetDeployment(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		appID := chi.URLParam(r, "id")
 		did := chi.URLParam(r, "did")
 		d, err := s.GetDeployment(r.Context(), did)
 		if err != nil {
@@ -238,6 +240,10 @@ func GetDeployment(s *store.Store) http.HandlerFunc {
 				return
 			}
 			WriteError(w, http.StatusInternalServerError, "could not load deployment")
+			return
+		}
+		if d.AppID != appID {
+			WriteError(w, http.StatusNotFound, "deployment not found")
 			return
 		}
 		WriteJSON(w, http.StatusOK, toDeploymentDTO(d))
