@@ -2,6 +2,7 @@ import { CheckCircle2, RotateCw } from 'lucide-react'
 import { Trans, useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/common/copy-button'
+import { RegistrarHostHint } from '@/features/settings/registrar-host-hint'
 import { Button } from '@/components/ui/button'
 import { useHostStats } from '@/lib/api/metrics'
 import { useBaseDomain } from '@/lib/api/instance'
@@ -66,6 +67,8 @@ export function DomainConfigPanel({ domain }: { domain: Domain }) {
               </span>
             </div>
           </div>
+
+          <RegistrarHostHint hostname={domain.hostname} />
 
           {!isApex && baseHost ? (
             <p className="text-2xs text-muted-foreground">

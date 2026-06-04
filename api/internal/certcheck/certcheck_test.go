@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vojir-mikulas/vac/api/internal/certprobe"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
@@ -71,12 +72,12 @@ type discard struct{}
 func (discard) Write(p []byte) (int, error) { return len(p), nil }
 
 func probeReturning(m map[string]time.Time) Probe {
-	return func(_ context.Context, host string) (time.Time, error) {
+	return func(_ context.Context, host string) (certprobe.Result, error) {
 		na, ok := m[host]
 		if !ok {
-			return time.Time{}, errors.New("no cert")
+			return certprobe.Result{}, errors.New("no cert")
 		}
-		return na, nil
+		return certprobe.Result{NotAfter: na, Trusted: true}, nil
 	}
 }
 

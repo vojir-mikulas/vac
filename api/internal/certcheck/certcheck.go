@@ -122,13 +122,17 @@ func (c *Checker) CheckOnce(ctx context.Context) error {
 	}
 	now := c.now()
 	for _, d := range domains {
-		notAfter, err := c.probe(ctx, d.Hostname)
+		// Expiry alerts care only about when the served cert expires, not whether
+		// it is publicly trusted (res.Trusted) — a renewed-but-untrusted cert still
+		// has a meaningful NotAfter.
+		res, err := c.probe(ctx, d.Hostname)
 		if err != nil {
 			// A host without a cert yet, or briefly unreachable, is normal — keep
 			// it at debug so the log isn't noisy.
 			c.logger.Debug("certcheck: probe failed", "host", d.Hostname, "err", err)
 			continue
 		}
+		notAfter := res.NotAfter
 		if err := c.store.SetCertNotAfter(ctx, d.ID, notAfter); err != nil {
 			c.logger.Warn("certcheck: record expiry", "host", d.Hostname, "err", err)
 		}

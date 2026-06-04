@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/vojir-mikulas/vac/api/internal/certprobe"
 )
 
 // fakeResolver returns canned A records and CNAMEs keyed by host.
@@ -30,14 +32,35 @@ func (f *fakeResolver) LookupCNAME(_ context.Context, host string) (string, erro
 
 const vpsIP = "203.0.113.10"
 
-func newEngine(r Resolver, probe func(context.Context, string) (time.Time, error)) *Engine {
+func newEngine(r Resolver, probe certprobe.Func) *Engine {
 	return New(Config{Resolver: r, VPSIP: vpsIP, CertProbe: probe})
+}
+
+// trustedProbe is a CertProbe that serves a browser-trusted cert expiring at
+// notAfter. servedProbe serves an untrusted cert (e.g. staging/self-signed).
+// noProbe reports no cert served (the host isn't issuing one yet).
+func trustedProbe(notAfter time.Time) certprobe.Func {
+	return func(context.Context, string) (certprobe.Result, error) {
+		return certprobe.Result{NotAfter: notAfter, Trusted: true}, nil
+	}
+}
+
+func servedProbe(notAfter time.Time) certprobe.Func {
+	return func(context.Context, string) (certprobe.Result, error) {
+		return certprobe.Result{NotAfter: notAfter, Trusted: false}, nil
+	}
+}
+
+func noProbe(msg string) certprobe.Func {
+	return func(context.Context, string) (certprobe.Result, error) {
+		return certprobe.Result{}, errors.New(msg)
+	}
 }
 
 func TestProbe_ApexCorrectA(t *testing.T) {
 	r := &fakeResolver{hosts: map[string][]string{"example.com": {vpsIP}}}
 	future := time.Now().Add(30 * 24 * time.Hour)
-	e := newEngine(r, func(context.Context, string) (time.Time, error) { return future, nil })
+	e := newEngine(r, trustedProbe(future))
 	st := e.probe(context.Background(), "example.com")
 	if st.State != StateActive {
 		t.Fatalf("state = %q, want active (%+v)", st.State, st)
@@ -52,7 +75,7 @@ func TestProbe_ApexWithCNAME(t *testing.T) {
 		hosts:  map[string][]string{"example.com": {vpsIP}},
 		cnames: map[string]string{"example.com": "something.cdn.net."},
 	}
-	e := newEngine(r, func(context.Context, string) (time.Time, error) { return time.Time{}, errors.New("x") })
+	e := newEngine(r, noProbe("x"))
 	st := e.probe(context.Background(), "example.com")
 	if st.State != StateMisconfigured {
 		t.Fatalf("state = %q, want misconfigured", st.State)
@@ -70,7 +93,7 @@ func TestProbe_SubdomainCNAMEToBase(t *testing.T) {
 		cnames: map[string]string{"app.example.com": "example.com."},
 	}
 	future := time.Now().Add(time.Hour)
-	e := newEngine(r, func(context.Context, string) (time.Time, error) { return future, nil })
+	e := newEngine(r, trustedProbe(future))
 	st := e.probe(context.Background(), "app.example.com")
 	if st.State != StateActive {
 		t.Fatalf("state = %q, want active", st.State)
@@ -79,7 +102,7 @@ func TestProbe_SubdomainCNAMEToBase(t *testing.T) {
 
 func TestProbe_SubdomainWrongIP(t *testing.T) {
 	r := &fakeResolver{hosts: map[string][]string{"app.example.com": {"198.51.100.5"}}}
-	e := newEngine(r, func(context.Context, string) (time.Time, error) { return time.Time{}, errors.New("x") })
+	e := newEngine(r, noProbe("x"))
 	st := e.probe(context.Background(), "app.example.com")
 	if st.State != StateMisconfigured {
 		t.Fatalf("state = %q, want misconfigured", st.State)
@@ -97,17 +120,36 @@ func TestProbe_NXDOMAIN(t *testing.T) {
 
 func TestProbe_DNSValidNoCert(t *testing.T) {
 	r := &fakeResolver{hosts: map[string][]string{"app.example.com": {vpsIP}}}
-	e := newEngine(r, func(context.Context, string) (time.Time, error) { return time.Time{}, errors.New("no cert yet") })
+	e := newEngine(r, noProbe("no cert yet"))
 	st := e.probe(context.Background(), "app.example.com")
 	if st.State != StateIssuing {
 		t.Fatalf("state = %q, want issuing", st.State)
 	}
 }
 
+func TestProbe_DNSValidUntrustedCert(t *testing.T) {
+	// A cert is served but doesn't chain to a trusted root (staging CA or Caddy's
+	// self-signed fallback). It must NOT read as active — that is the "status says
+	// done but the browser rejects it" trap — and the detail should say why.
+	r := &fakeResolver{hosts: map[string][]string{"app.example.com": {vpsIP}}}
+	future := time.Now().Add(time.Hour)
+	e := newEngine(r, servedProbe(future))
+	st := e.probe(context.Background(), "app.example.com")
+	if st.State != StateIssuing {
+		t.Fatalf("untrusted cert ⇒ state = %q, want issuing", st.State)
+	}
+	if st.Detail == "" {
+		t.Errorf("expected a detail explaining the untrusted cert")
+	}
+	if st.CertNotAfter != nil {
+		t.Errorf("untrusted cert must not record cert_not_after: %+v", st.CertNotAfter)
+	}
+}
+
 func TestProbe_DNSValidPastCert(t *testing.T) {
 	r := &fakeResolver{hosts: map[string][]string{"app.example.com": {vpsIP}}}
 	past := time.Now().Add(-time.Hour)
-	e := newEngine(r, func(context.Context, string) (time.Time, error) { return past, nil })
+	e := newEngine(r, trustedProbe(past))
 	st := e.probe(context.Background(), "app.example.com")
 	if st.State != StateIssuing {
 		t.Fatalf("expired cert ⇒ state = %q, want issuing", st.State)
@@ -117,7 +159,7 @@ func TestProbe_DNSValidPastCert(t *testing.T) {
 func TestErrorOverlayPrecedence(t *testing.T) {
 	r := &fakeResolver{hosts: map[string][]string{"app.example.com": {vpsIP}}}
 	future := time.Now().Add(time.Hour)
-	e := newEngine(r, func(context.Context, string) (time.Time, error) { return future, nil })
+	e := newEngine(r, trustedProbe(future))
 	// Enroll + probe → active.
 	e.entries["app.example.com"] = &entry{status: e.probe(context.Background(), "app.example.com")}
 	if st, _ := e.Get("app.example.com"); st.State != StateActive {
@@ -140,7 +182,7 @@ func TestReconcileEnrollsAndEvicts(t *testing.T) {
 	r := &fakeResolver{hosts: map[string][]string{"a.example.com": {vpsIP}}}
 	src := &fakeSource{hosts: []string{"a.example.com"}}
 	e := New(Config{Resolver: r, VPSIP: vpsIP, Source: src,
-		CertProbe: func(context.Context, string) (time.Time, error) { return time.Now().Add(time.Hour), nil }})
+		CertProbe: trustedProbe(time.Now().Add(time.Hour))})
 	e.reconcile(context.Background())
 	if st, ok := e.Get("a.example.com"); !ok || st.State != StateActive {
 		t.Fatalf("after reconcile, a.example.com = %+v ok=%v", st, ok)
@@ -157,9 +199,9 @@ func TestRefreshCacheWindow(t *testing.T) {
 	r := &fakeResolver{hosts: map[string][]string{"app.example.com": {vpsIP}}}
 	var probeCount int
 	e := New(Config{Resolver: r, VPSIP: vpsIP, CacheWindow: time.Minute,
-		CertProbe: func(context.Context, string) (time.Time, error) {
+		CertProbe: func(context.Context, string) (certprobe.Result, error) {
 			probeCount++
-			return time.Now().Add(time.Hour), nil
+			return certprobe.Result{NotAfter: time.Now().Add(time.Hour), Trusted: true}, nil
 		}})
 	// Enroll once.
 	e.entries["app.example.com"] = &entry{status: e.probe(context.Background(), "app.example.com")}

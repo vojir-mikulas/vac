@@ -149,7 +149,8 @@
     "dnsRecord": {
       "type": "Type",
       "name": "Name",
-      "value": "Value"
+      "value": "Value",
+      "registrarHint": "Using Namecheap, GoDaddy or Cloudflare? Their Name/Host field is relative to your domain — enter <0>{{relative}}</0>, not the full name (they append your domain automatically)."
     },
     "status": {
       "checking": "Checking",

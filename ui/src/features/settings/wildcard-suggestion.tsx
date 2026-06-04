@@ -4,6 +4,7 @@ import { Trans, useTranslation } from 'react-i18next'
 import { CheckCircle2, ChevronDown, Loader2 } from 'lucide-react'
 
 import { CopyButton } from '@/components/common/copy-button'
+import { RegistrarHostHint } from '@/features/settings/registrar-host-hint'
 import { Button } from '@/components/ui/button'
 import { useHostStats } from '@/lib/api/metrics'
 import { useDnsCheck } from '@/lib/api/instance'
@@ -88,6 +89,8 @@ export function WildcardSuggestion({ baseDomain }: { baseDomain: string }) {
               </span>
             </div>
           </div>
+
+          <RegistrarHostHint hostname={`*.${baseDomain}`} />
 
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" disabled={check.isFetching} onClick={recheck}>

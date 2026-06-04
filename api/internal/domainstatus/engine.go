@@ -22,7 +22,7 @@ type HostSource interface {
 type Config struct {
 	Source    HostSource
 	Resolver  Resolver       // DNS reads; defaults to the system resolver
-	CertProbe certprobe.Func // "is a leaf served right now"; nil ⇒ never reaches active
+	CertProbe certprobe.Func // "is a *trusted* leaf served right now"; nil ⇒ never reaches active
 	VPSIP     string         // expected A-record target; "" disables the IP-match check
 
 	DNSTimeout      time.Duration // per DNS lookup; default 4s
@@ -211,16 +211,22 @@ func (e *Engine) probe(ctx context.Context, host string) Status {
 		return st
 	}
 
-	// DNS valid → is a leaf cert being served right now?
+	// DNS valid → is a browser-trusted leaf cert being served right now? A cert
+	// that is served but not trusted (still issuing, a staging CA, or Caddy's
+	// self-signed fallback) must NOT read as active — the browser would reject it,
+	// which is exactly the "status says done but the site is broken" trap.
 	if e.cfg.CertProbe != nil {
 		pctx, cancel := context.WithTimeout(ctx, e.cfg.CertTimeout)
-		notAfter, perr := e.cfg.CertProbe(pctx, host)
+		res, perr := e.cfg.CertProbe(pctx, host)
 		cancel()
-		if perr == nil && notAfter.After(now) {
+		if perr == nil && res.Trusted && res.NotAfter.After(now) {
 			st.State = StateActive
-			na := notAfter
+			na := res.NotAfter
 			st.CertNotAfter = &na
 			return st
+		}
+		if perr == nil && !res.Trusted {
+			st.Detail = "a certificate is being served but is not yet publicly trusted — still issuing, or using a staging/self-signed CA"
 		}
 	}
 	st.State = StateIssuing
