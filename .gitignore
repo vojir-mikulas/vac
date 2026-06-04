@@ -43,4 +43,6 @@ yarn-error.log*
 coverage/
 .nyc_output/
 /design
-/design
+
+# AI agent tooling (skills are restored from skills-lock.json; not redistributed)
+.agents/
