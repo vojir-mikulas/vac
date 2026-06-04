@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 
 import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
@@ -23,6 +24,11 @@ export const authApi = {
   totpEnable: (code: string) =>
     api.post<{ recovery_codes: string[] }>('auth/totp/enable', { code }),
   totpDisable: (password: string) => api.del<{ status: string }>('auth/totp', { password }),
+
+  // Re-prove 2FA on the live session to unlock destructive actions for a short
+  // window. Used by the global step-up prompt, not the login flow.
+  stepUp: (body: { code: string } | { recovery_code: string }) =>
+    api.post<{ status: string }>('auth/step-up', body),
 
   sessions: () => api.get<Session[]>('auth/sessions'),
   revokeSession: (id: string) => api.del<{ revoked: number }>(`auth/sessions/${id}`),
@@ -62,8 +68,12 @@ export function useApiTokens() {
 
 export function useLogout() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   return useMutation({
     mutationFn: () => authApi.logout(),
-    onSuccess: () => qc.clear(),
+    onSuccess: async () => {
+      qc.clear()
+      await navigate({ to: '/login' })
+    },
   })
 }

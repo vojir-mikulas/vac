@@ -26,5 +26,18 @@
     "connecting": "Connecting",
     "reconnecting": "Reconnecting",
     "disconnected": "Disconnected"
+  },
+  "stepUp": {
+    "title": "Confirm with two-factor",
+    "description": "This action is sensitive. Enter a code from your authenticator to continue.",
+    "codeLabel": "Authentication code",
+    "codePlaceholder": "123456",
+    "recoveryLabel": "Recovery code",
+    "recoveryPlaceholder": "xxxxx-xxxxx",
+    "useRecovery": "Use a recovery code instead",
+    "useAuthenticator": "Use an authenticator code instead",
+    "submit": "Verify",
+    "cancel": "Cancel",
+    "error": "Verification failed. Check the code and try again."
   }
 }

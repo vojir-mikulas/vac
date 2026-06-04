@@ -1,6 +1,7 @@
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 
 import { AppShell } from '@/components/layout/app-shell'
+import { StepUpProvider } from '@/components/auth/step-up-provider'
 import { ApiError } from '@/lib/api/client'
 import { authApi } from '@/lib/api/auth'
 import { setupApi } from '@/lib/api/setup'
@@ -43,8 +44,10 @@ export const Route = createFileRoute('/_app')({
 
 function AppLayout() {
   return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
+    <StepUpProvider>
+      <AppShell>
+        <Outlet />
+      </AppShell>
+    </StepUpProvider>
   )
 }

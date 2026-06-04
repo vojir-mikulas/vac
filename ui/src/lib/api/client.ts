@@ -28,6 +28,20 @@ export class ApiError extends Error {
   }
 }
 
+// step_up_required is the stable error code the backend returns (403) when a
+// destructive action needs fresh 2FA. A registered handler (the StepUpProvider)
+// prompts for a code; on success the request is transparently retried once.
+const STEP_UP_CODE = 'step_up_required'
+
+export type StepUpHandler = () => Promise<void>
+let stepUpHandler: StepUpHandler | null = null
+
+// registerStepUpHandler wires the global step-up prompt. Passing null clears it
+// (e.g. on provider unmount). Only one handler is active at a time.
+export function registerStepUpHandler(fn: StepUpHandler | null): void {
+  stepUpHandler = fn
+}
+
 function readCookie(name: string): string | null {
   const prefix = name + '='
   const parts = document.cookie ? document.cookie.split('; ') : []
@@ -52,7 +66,7 @@ interface RequestOptions {
   // treated as an absolute server path (used for non-/api routes).
 }
 
-async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+async function request<T>(path: string, opts: RequestOptions = {}, retried = false): Promise<T> {
   const method = opts.method ?? 'GET'
   const url = path.startsWith('/') ? path : `${BASE}/${path}`
 
@@ -89,6 +103,17 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
       if (parsed?.error) message = parsed.error
     } catch {
       // non-JSON error body — keep status text
+    }
+    // Step-up: the action needs fresh 2FA. Prompt once, then replay the request.
+    // If the user cancels (handler rejects), surface the original error so the
+    // caller's onError sees step_up_required rather than a synthetic message.
+    if (res.status === 403 && code === STEP_UP_CODE && stepUpHandler && !retried) {
+      try {
+        await stepUpHandler()
+      } catch {
+        throw new ApiError(res.status, code, message)
+      }
+      return request<T>(path, opts, true)
     }
     throw new ApiError(res.status, code, message)
   }

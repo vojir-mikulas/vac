@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CopyButton } from '@/components/common/copy-button'
 import { appsApi } from '@/lib/api/apps'
@@ -62,9 +63,9 @@ export function DeployKeyCard({ appId, gitUrl }: { appId: string; gitUrl: string
         </div>
       ) : data ? (
         <>
-          <pre className="overflow-x-auto rounded-md border bg-surface-1 p-3 font-mono text-2xs">
-            {data.public_key}
-          </pre>
+          <ScrollArea className="rounded-md border bg-surface-1">
+            <pre className="p-3 font-mono text-2xs">{data.public_key}</pre>
+          </ScrollArea>
           <div className="flex items-center justify-between">
             <span className="font-mono text-2xs text-muted-foreground">{data.fingerprint}</span>
             <Button

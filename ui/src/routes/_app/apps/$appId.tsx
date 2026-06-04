@@ -8,6 +8,7 @@ import { LiveDeployBanner } from '@/features/app-detail/live-deploy-banner'
 import { StackControls } from '@/features/app-detail/stack-controls'
 import { StatusPill } from '@/components/common/status-pill'
 import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useApp } from '@/lib/api/apps'
 import { useDatabases } from '@/lib/api/databases'
@@ -122,19 +123,21 @@ function AppDetailLayout() {
 
       <LiveDeployBanner appId={appId} />
 
-      <nav aria-label="App sections" className="mb-6 flex gap-1 overflow-x-auto border-b">
-        {tabs.map((tab) => (
-          <Link
-            key={tab.to}
-            to={`/apps/$appId/${tab.to}`}
-            params={{ appId }}
-            className="-mb-px shrink-0 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground data-[status=active]:border-foreground data-[status=active]:text-foreground"
-            activeProps={{ 'data-status': 'active', 'aria-current': 'page' }}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </nav>
+      <ScrollArea className="mb-6">
+        <nav aria-label="App sections" className="flex gap-1 border-b">
+          {tabs.map((tab) => (
+            <Link
+              key={tab.to}
+              to={`/apps/$appId/${tab.to}`}
+              params={{ appId }}
+              className="-mb-px shrink-0 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground data-[status=active]:border-foreground data-[status=active]:text-foreground"
+              activeProps={{ 'data-status': 'active', 'aria-current': 'page' }}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </nav>
+      </ScrollArea>
 
       <AppStatsProvider appId={appId}>
         <Outlet />

@@ -4,6 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { serviceColorVar } from '@/lib/service-color'
 import type { LogLevel, LogLine } from '@/lib/ws/use-log-stream'
 
@@ -105,17 +106,18 @@ export function LogViewer({
           trade-off for the live tail; the "read everything" path is the log
           export in log-panel.tsx. tabIndex={0} keeps the custom scroll region
           keyboard-operable (arrow / PageDown) without a mouse. */}
-      <div
-        ref={parentRef}
-        onScroll={recomputePinned}
-        role="log"
-        aria-live="polite"
-        aria-label={resolvedLabel}
-        tabIndex={0}
-        className={cn(
-          'h-112 overflow-auto rounded-xl border bg-console p-3 font-mono text-xs leading-5 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
-          className,
-        )}
+      <ScrollArea
+        type="always"
+        viewportRef={parentRef}
+        viewportClassName="p-3 font-mono text-xs leading-5"
+        viewportProps={{
+          onScroll: recomputePinned,
+          role: 'log',
+          'aria-live': 'polite',
+          'aria-label': resolvedLabel,
+          tabIndex: 0,
+        }}
+        className={cn('h-112 rounded-xl border bg-console', className)}
       >
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
           {virtualizer.getVirtualItems().map((item) => {
@@ -144,7 +146,7 @@ export function LogViewer({
             )
           })}
         </div>
-      </div>
+      </ScrollArea>
 
       {!atBottom ? (
         <button

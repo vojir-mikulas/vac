@@ -12,6 +12,7 @@ import { SwapFade } from '@/components/common/swap-fade'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -372,7 +373,7 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {isEdit
@@ -381,154 +382,156 @@ function BackupDialog({ appId, config }: { appId: string; config?: BackupConfig 
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 py-2">
-          {isEdit ? (
-            <Labeled label={t('backups.dialog.service')}>
-              <Input value={serviceName} disabled className="font-mono text-xs" />
-            </Labeled>
-          ) : (
-            <Labeled label={t('backups.dialog.service')}>
-              <Select value={serviceName} onValueChange={setServiceName}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t('backups.dialog.selectService')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(services ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.name}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Labeled>
-          )}
+        <ScrollArea className="-mx-6 min-h-0 flex-1" viewportClassName="px-6">
+          <div className="flex flex-col gap-4 py-2">
+            {isEdit ? (
+              <Labeled label={t('backups.dialog.service')}>
+                <Input value={serviceName} disabled className="font-mono text-xs" />
+              </Labeled>
+            ) : (
+              <Labeled label={t('backups.dialog.service')}>
+                <Select value={serviceName} onValueChange={setServiceName}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('backups.dialog.selectService')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(services ?? []).map((s) => (
+                      <SelectItem key={s.id} value={s.name}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Labeled>
+            )}
 
-          {isEdit ? (
-            <label className="flex items-center justify-between gap-3">
-              <span className="text-xs font-medium">{t('backups.dialog.enabled')}</span>
-              <Switch checked={enabled} onCheckedChange={setEnabled} />
-            </label>
-          ) : null}
+            {isEdit ? (
+              <label className="flex items-center justify-between gap-3">
+                <span className="text-xs font-medium">{t('backups.dialog.enabled')}</span>
+                <Switch checked={enabled} onCheckedChange={setEnabled} />
+              </label>
+            ) : null}
 
-          <Labeled label={t('backups.dialog.command')} hint={t('backups.dialog.commandHint')}>
-            <Textarea
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-              rows={2}
-              className="font-mono text-xs"
-            />
-          </Labeled>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Labeled label={t('backups.dialog.frequency')}>
-              <Select value={frequency} onValueChange={(v) => setFrequency(v as BackupFrequency)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="daily">{t('backups.dialog.frequencyDaily')}</SelectItem>
-                  <SelectItem value="weekly">{t('backups.dialog.frequencyWeekly')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </Labeled>
-            <Labeled label={t('backups.dialog.hour')}>
-              <Input
-                type="number"
-                min={0}
-                max={23}
-                value={hour}
-                onChange={(e) => setHour(Number(e.target.value))}
+            <Labeled label={t('backups.dialog.command')} hint={t('backups.dialog.commandHint')}>
+              <Textarea
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                rows={2}
+                className="font-mono text-xs"
               />
             </Labeled>
-          </div>
 
-          {frequency === 'weekly' ? (
-            <Labeled label={t('backups.dialog.dayOfWeek')}>
-              <Select value={String(dayOfWeek)} onValueChange={(v) => setDayOfWeek(Number(v))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DAY_INDEXES.map((i) => (
-                    <SelectItem key={i} value={String(i)}>
-                      {t(`backups.days.${i}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Labeled>
-          ) : null}
-
-          <div className="grid grid-cols-2 gap-4">
-            <Labeled label={t('backups.dialog.destination')}>
-              <Select
-                value={destination}
-                onValueChange={(v) => setDestination(v as 'local' | 's3')}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="local">{t('backups.dialog.destinationLocal')}</SelectItem>
-                  <SelectItem value="s3">{t('backups.dialog.destinationS3')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </Labeled>
-            <Labeled label={t('backups.dialog.keepLastN')}>
-              <Input
-                type="number"
-                min={1}
-                value={keepCount}
-                onChange={(e) => setKeepCount(Number(e.target.value))}
-              />
-            </Labeled>
-          </div>
-
-          {destination === 's3' ? (
-            <div className="flex flex-col gap-3 rounded-lg border bg-surface-1 p-3">
-              <div className="grid grid-cols-2 gap-3">
-                <Labeled label={t('backups.dialog.endpoint')}>
-                  <Input
-                    placeholder="s3.amazonaws.com"
-                    value={s3.endpoint}
-                    onChange={(e) => setS3({ ...s3, endpoint: e.target.value })}
-                  />
-                </Labeled>
-                <Labeled label={t('backups.dialog.region')}>
-                  <Input
-                    value={s3.region}
-                    onChange={(e) => setS3({ ...s3, region: e.target.value })}
-                  />
-                </Labeled>
-              </div>
-              <Labeled label={t('backups.dialog.bucket')}>
+            <div className="grid grid-cols-2 gap-4">
+              <Labeled label={t('backups.dialog.frequency')}>
+                <Select value={frequency} onValueChange={(v) => setFrequency(v as BackupFrequency)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">{t('backups.dialog.frequencyDaily')}</SelectItem>
+                    <SelectItem value="weekly">{t('backups.dialog.frequencyWeekly')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Labeled>
+              <Labeled label={t('backups.dialog.hour')}>
                 <Input
-                  value={s3.bucket}
-                  onChange={(e) => setS3({ ...s3, bucket: e.target.value })}
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={hour}
+                  onChange={(e) => setHour(Number(e.target.value))}
                 />
               </Labeled>
-              <div className="grid grid-cols-2 gap-3">
-                <Labeled label={t('backups.dialog.accessKey')}>
-                  <Input
-                    value={s3.access_key}
-                    onChange={(e) => setS3({ ...s3, access_key: e.target.value })}
-                  />
-                </Labeled>
-                <Labeled
-                  label={t('backups.dialog.secretKey')}
-                  hint={isEdit ? t('backups.dialog.secretKeyHint') : undefined}
-                >
-                  <Input
-                    type="password"
-                    value={s3.secret_key}
-                    placeholder={isEdit ? t('backups.dialog.secretKeyUnchanged') : undefined}
-                    onChange={(e) => setS3({ ...s3, secret_key: e.target.value })}
-                  />
-                </Labeled>
-              </div>
             </div>
-          ) : null}
-        </div>
+
+            {frequency === 'weekly' ? (
+              <Labeled label={t('backups.dialog.dayOfWeek')}>
+                <Select value={String(dayOfWeek)} onValueChange={(v) => setDayOfWeek(Number(v))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DAY_INDEXES.map((i) => (
+                      <SelectItem key={i} value={String(i)}>
+                        {t(`backups.days.${i}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Labeled>
+            ) : null}
+
+            <div className="grid grid-cols-2 gap-4">
+              <Labeled label={t('backups.dialog.destination')}>
+                <Select
+                  value={destination}
+                  onValueChange={(v) => setDestination(v as 'local' | 's3')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="local">{t('backups.dialog.destinationLocal')}</SelectItem>
+                    <SelectItem value="s3">{t('backups.dialog.destinationS3')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Labeled>
+              <Labeled label={t('backups.dialog.keepLastN')}>
+                <Input
+                  type="number"
+                  min={1}
+                  value={keepCount}
+                  onChange={(e) => setKeepCount(Number(e.target.value))}
+                />
+              </Labeled>
+            </div>
+
+            {destination === 's3' ? (
+              <div className="flex flex-col gap-3 rounded-lg border bg-surface-1 p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Labeled label={t('backups.dialog.endpoint')}>
+                    <Input
+                      placeholder="s3.amazonaws.com"
+                      value={s3.endpoint}
+                      onChange={(e) => setS3({ ...s3, endpoint: e.target.value })}
+                    />
+                  </Labeled>
+                  <Labeled label={t('backups.dialog.region')}>
+                    <Input
+                      value={s3.region}
+                      onChange={(e) => setS3({ ...s3, region: e.target.value })}
+                    />
+                  </Labeled>
+                </div>
+                <Labeled label={t('backups.dialog.bucket')}>
+                  <Input
+                    value={s3.bucket}
+                    onChange={(e) => setS3({ ...s3, bucket: e.target.value })}
+                  />
+                </Labeled>
+                <div className="grid grid-cols-2 gap-3">
+                  <Labeled label={t('backups.dialog.accessKey')}>
+                    <Input
+                      value={s3.access_key}
+                      onChange={(e) => setS3({ ...s3, access_key: e.target.value })}
+                    />
+                  </Labeled>
+                  <Labeled
+                    label={t('backups.dialog.secretKey')}
+                    hint={isEdit ? t('backups.dialog.secretKeyHint') : undefined}
+                  >
+                    <Input
+                      type="password"
+                      value={s3.secret_key}
+                      placeholder={isEdit ? t('backups.dialog.secretKeyUnchanged') : undefined}
+                      onChange={(e) => setS3({ ...s3, secret_key: e.target.value })}
+                    />
+                  </Labeled>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </ScrollArea>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>

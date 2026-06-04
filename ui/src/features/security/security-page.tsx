@@ -10,6 +10,7 @@ import { ErrorState } from '@/components/common/error-state'
 import { ListSkeleton } from '@/components/common/list-skeleton'
 import { StatStripSkeleton } from '@/components/common/stat-strip-skeleton'
 import { Card } from '@/components/ui/card'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   useFail2ban,
   useFirewall,
@@ -235,7 +236,7 @@ function RecentRequestsTable({ requests }: { requests: RecentRequest[] }) {
         <span className="w-28 shrink-0 text-right">{t('traffic.recentRequests.sourceIp')}</span>
         <span className="w-16 shrink-0 text-right">{t('traffic.recentRequests.when')}</span>
       </div>
-      <div className="max-h-96 overflow-y-auto">
+      <ScrollArea className="max-h-96">
         {requests.map((r, i) => (
           <div
             key={r.at + r.ip + r.path + i}
@@ -263,7 +264,7 @@ function RecentRequestsTable({ requests }: { requests: RecentRequest[] }) {
             </span>
           </div>
         ))}
-      </div>
+      </ScrollArea>
     </Card>
   )
 }
@@ -479,9 +480,11 @@ function FirewallPanel() {
               <StatusPill status={data.active ? 'running' : 'stopped'} size="sm" />
             </div>
             {data.rules && data.rules.length > 0 ? (
-              <pre className="overflow-x-auto rounded-lg bg-surface-2 p-3 font-mono text-2xs leading-relaxed">
-                {data.rules.join('\n')}
-              </pre>
+              <ScrollArea className="rounded-lg bg-surface-2">
+                <pre className="p-3 font-mono text-2xs leading-relaxed">
+                  {data.rules.join('\n')}
+                </pre>
+              </ScrollArea>
             ) : (
               <p className="text-sm text-muted-foreground">{t('firewall.noRules')}</p>
             )}
