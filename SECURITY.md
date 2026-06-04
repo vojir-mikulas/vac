@@ -7,10 +7,9 @@ Compose stacks on a single host. Security reports are taken seriously.
 
 **Please do not open a public issue for security vulnerabilities.**
 
-Report privately via one of:
-
-- **GitHub Security Advisories** — use the [**Report a vulnerability**](../../security/advisories/new) button on this repository (preferred).
-- **Email** — `vojir.mikulas@gmail.com` with a subject starting `[VAC SECURITY]`.
+Please report privately through **GitHub Security Advisories** — use the
+[**Report a vulnerability**](../../security/advisories/new) button on this repository. This keeps
+the report confidential until a fix is ready.
 
 Please include:
 
