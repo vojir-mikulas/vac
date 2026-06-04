@@ -129,6 +129,21 @@ func (c *Compose) Restart(ctx context.Context, projectName, service string) erro
 	return nil
 }
 
+// Config renders the fully resolved, merged compose document via `docker compose
+// config` — applying include:/extends:/override files and variable interpolation
+// exactly as `up` would. The deploy preflight lints THIS output rather than the
+// raw file, so a malicious construct hidden behind an include can't slip past the
+// host-escape checks. Returns the resolved YAML on stdout; compose warnings go to
+// stderr and are not captured.
+func (c *Compose) Config(ctx context.Context, projectDir, composeFile, projectName string) ([]byte, error) {
+	cmd := c.command(ctx, projectDir, "compose", "-p", projectName, "-f", composeFile, "config")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, mapCmdError(err, out)
+	}
+	return out, nil
+}
+
 // Ps lists services in the project. Compose v2 outputs either a JSON array
 // or one JSON object per line depending on version; we accept both.
 func (c *Compose) Ps(ctx context.Context, projectName string) ([]PsService, error) {
@@ -262,6 +277,13 @@ func runStreaming(cmd *exec.Cmd, out io.Writer) error {
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		_, _ = out.Write(append(scanner.Bytes(), '\n'))
+	}
+	// A scanner error (most likely bufio.ErrTooLong on a >1 MiB build line) stops
+	// the loop early and silently swallows the rest of the stream. Surface it in
+	// the log so a truncated build isn't mistaken for a complete one; still drain
+	// the process via Wait so it's reaped and its exit status observed.
+	if serr := scanner.Err(); serr != nil {
+		_, _ = io.WriteString(out, "\n[vac] build log truncated: "+serr.Error()+"\n")
 	}
 	if err := cmd.Wait(); err != nil {
 		return mapCmdError(err, nil)

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -23,7 +24,19 @@ type deploymentLogDTO struct {
 // same ascending id order the writer produced.
 func GetDeploymentLogs(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		appID := chi.URLParam(r, "id")
 		did := chi.URLParam(r, "did")
+		// Scope the deployment to the app in the URL — a {did} that belongs to a
+		// different app must not have its build logs read out via this path.
+		d, err := s.GetDeployment(r.Context(), did)
+		if err != nil || d.AppID != appID {
+			if err != nil && !errors.Is(err, store.ErrNotFound) {
+				WriteError(w, http.StatusInternalServerError, "could not load deployment")
+				return
+			}
+			WriteError(w, http.StatusNotFound, "deployment not found")
+			return
+		}
 		afterID, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		rows, err := s.ListDeploymentLogs(r.Context(), did, afterID, limit)

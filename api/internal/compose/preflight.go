@@ -88,11 +88,22 @@ var (
 	edgePorts          = map[int]bool{80: true, 443: true}
 )
 
-// Preflight parses the resolved compose file with a richer view than the lean
+// Preflight reads the compose file at path and lints it. Prefer PreflightBytes
+// with the output of `docker compose config` when available, so the lint sees
+// the fully merged document (include/extends/overrides) rather than the raw file.
+func Preflight(path string) ([]Finding, error) {
+	raw, err := os.ReadFile(path) //nolint:gosec // path is VAC/operator-controlled
+	if err != nil {
+		return nil, fmt.Errorf("compose: read %s: %w", path, err)
+	}
+	return PreflightBytes(raw)
+}
+
+// PreflightBytes parses a compose document with a richer view than the lean
 // Service struct and returns all findings (errors + warnings), sorted by
 // service then code for deterministic output.
-func Preflight(path string) ([]Finding, error) {
-	views, err := parsePreflight(path)
+func PreflightBytes(data []byte) ([]Finding, error) {
+	views, err := parsePreflightBytes(data)
 	if err != nil {
 		return nil, err
 	}
@@ -171,13 +182,17 @@ func parsePreflight(path string) ([]preflightView, error) {
 	if err != nil {
 		return nil, fmt.Errorf("compose: read %s: %w", path, err)
 	}
+	return parsePreflightBytes(raw)
+}
+
+func parsePreflightBytes(raw []byte) ([]preflightView, error) {
 	var doc map[string]any
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return nil, fmt.Errorf("compose: parse %s: %w", path, err)
+		return nil, fmt.Errorf("compose: parse: %w", err)
 	}
 	servicesAny, ok := doc["services"].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("compose: %s has no services section", path)
+		return nil, fmt.Errorf("compose: document has no services section")
 	}
 
 	out := make([]preflightView, 0, len(servicesAny))

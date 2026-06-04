@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/vojir-mikulas/vac/api/internal/netguard"
 )
 
 // S3Config is the sealed dest_config shape for the `s3` destination. It targets
@@ -57,9 +59,16 @@ type S3Destination struct {
 }
 
 func newS3Destination(cfg S3Config, stagingDir string) *S3Destination {
+	// The endpoint is operator-controlled and never validated against internal
+	// addresses, and s3Error reflects the response body back to the caller — a
+	// working SSRF read primitive without a guard. The netguard dialer refuses to
+	// connect to private/loopback/link-local/metadata addresses and pins the dial
+	// to the validated IP (no DNS-rebind window).
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = netguard.DialContext(10*time.Second, 30*time.Second)
 	return &S3Destination{
 		cfg:        cfg,
-		http:       &http.Client{Timeout: 10 * time.Minute},
+		http:       &http.Client{Timeout: 10 * time.Minute, Transport: transport},
 		now:        time.Now,
 		stagingDir: stagingDir,
 	}

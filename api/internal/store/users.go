@@ -245,6 +245,84 @@ func (s *Store) DisableUserTOTP(ctx context.Context, userID string) error {
 	return err
 }
 
+// ConsumeTOTPStep atomically records `step` as the most recent accepted TOTP
+// time-step, but only if it is strictly newer than the last one accepted. It
+// returns true when the step was recorded (a fresh, non-replayed code) and false
+// when the step has already been used or superseded (a replay) — mirroring the
+// single-UPDATE atomicity of ConsumeRecoveryCode so two concurrent submissions of
+// the same code cannot both succeed.
+func (s *Store) ConsumeTOTPStep(ctx context.Context, userID string, step int64) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE users
+		SET last_totp_step = $2, updated_at = NOW()
+		WHERE id = $1
+		  AND (last_totp_step IS NULL OR last_totp_step < $2)
+	`, userID, step)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// AuthLockedUntil reports whether the account is currently locked out and, if so,
+// until when. A NULL or past auth_locked_until means not locked.
+func (s *Store) AuthLockedUntil(ctx context.Context, userID string) (time.Time, bool, error) {
+	var until *time.Time
+	err := s.pool.QueryRow(ctx, `SELECT auth_locked_until FROM users WHERE id = $1`, userID).Scan(&until)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, false, ErrNotFound
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	if until == nil || !until.After(time.Now()) {
+		return time.Time{}, false, nil
+	}
+	return *until, true, nil
+}
+
+// RegisterAuthFailure increments the consecutive-failure counter and, when it
+// reaches `threshold`, locks the account for `lockFor` and resets the counter (so
+// the next window after the lock expires starts fresh). Returns the lock
+// expiry and whether the account is now locked. The whole read-modify-write is a
+// single atomic UPDATE.
+func (s *Store) RegisterAuthFailure(ctx context.Context, userID string, threshold int, lockFor time.Duration) (time.Time, bool, error) {
+	lockUntil := time.Now().Add(lockFor)
+	var (
+		attempts int
+		until    *time.Time
+	)
+	err := s.pool.QueryRow(ctx, `
+		UPDATE users
+		SET failed_auth_attempts = CASE WHEN failed_auth_attempts + 1 >= $2 THEN 0 ELSE failed_auth_attempts + 1 END,
+		    auth_locked_until    = CASE WHEN failed_auth_attempts + 1 >= $2 THEN $3 ELSE auth_locked_until END,
+		    updated_at = NOW()
+		WHERE id = $1
+		RETURNING failed_auth_attempts, auth_locked_until
+	`, userID, threshold, lockUntil).Scan(&attempts, &until)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, false, ErrNotFound
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	if until != nil && until.After(time.Now()) {
+		return *until, true, nil
+	}
+	return time.Time{}, false, nil
+}
+
+// ClearAuthFailures resets the lockout bookkeeping after a fully successful
+// login (password + any required second factor).
+func (s *Store) ClearAuthFailures(ctx context.Context, userID string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE users
+		SET failed_auth_attempts = 0, auth_locked_until = NULL, updated_at = NOW()
+		WHERE id = $1
+	`, userID)
+	return err
+}
+
 // ConsumeRecoveryCode removes hexHash from the user's recovery code list and
 // returns true if it was present. The update is done atomically via a single
 // UPDATE so concurrent uses cannot both succeed.

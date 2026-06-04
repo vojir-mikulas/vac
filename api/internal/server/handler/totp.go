@@ -158,19 +158,32 @@ func TOTPLogin(s *store.Store, sm *auth.SessionManager, tm *auth.TOTPManager, cf
 			return
 		}
 
+		// Per-account lockout also gates the second factor, so a botnet can't get
+		// unlimited 2FA guesses (one fresh per-IP budget each) against the account.
+		if until, locked, lerr := s.AuthLockedUntil(r.Context(), user.ID); lerr == nil && locked {
+			auditAuthFailure(r, "account_locked", user.Username, user.ID)
+			writeAuthLocked(w, until)
+			return
+		}
+
 		if req.Code != "" {
 			if err := tm.Verify(r.Context(), user.ID, req.Code); err != nil {
+				registerAuthFailure(r.Context(), s, user.ID)
 				auditAuthFailure(r, "bad_totp", user.Username, user.ID)
 				WriteError(w, http.StatusUnauthorized, "invalid code")
 				return
 			}
 		} else {
 			if err := tm.ConsumeRecoveryCode(r.Context(), user.ID, req.RecoveryCode); err != nil {
+				registerAuthFailure(r.Context(), s, user.ID)
 				auditAuthFailure(r, "bad_recovery_code", user.Username, user.ID)
 				WriteError(w, http.StatusUnauthorized, "invalid recovery code")
 				return
 			}
 		}
+
+		// Full success (password earlier + second factor now) — clear the lockout.
+		_ = s.ClearAuthFailures(r.Context(), user.ID)
 
 		// Pre-auth session is one-shot — burn it whether or not the next step
 		// succeeds. _ on the error: best-effort cleanup; the worst case is a

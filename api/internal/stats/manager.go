@@ -58,7 +58,6 @@ type Manager struct {
 	parentCtx  context.Context
 	collectors map[string]context.CancelFunc // appID -> cancel
 	hostCancel context.CancelFunc
-	uptime     map[string]time.Time // containerID -> startedAt cache
 }
 
 // NewManager wires the manager. interval defaults to 2s.
@@ -77,7 +76,6 @@ func NewManager(docker StatSource, st StatStore, hub Publisher, host *HostCollec
 		interval:   interval,
 		logger:     logger,
 		collectors: make(map[string]context.CancelFunc),
-		uptime:     make(map[string]time.Time),
 	}
 }
 
@@ -218,18 +216,24 @@ func (m *Manager) stopAll() {
 func (m *Manager) runApp(ctx context.Context, appID string) {
 	ticker := time.NewTicker(m.interval)
 	defer ticker.Stop()
-	m.collectApp(ctx, appID) // immediate first sample
+	// uptime caches each container's (immutable) start time. It lives on the
+	// collector goroutine — not the Manager — so it is bounded by the app's live
+	// container set (pruned each tick in collectApp) and is GC'd when the app's
+	// last stats subscriber leaves and this goroutine returns. A Manager-wide map
+	// would instead grow one never-evicted entry per container id ever seen.
+	uptime := make(map[string]time.Time)
+	m.collectApp(ctx, appID, uptime) // immediate first sample
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			m.collectApp(ctx, appID)
+			m.collectApp(ctx, appID, uptime)
 		}
 	}
 }
 
-func (m *Manager) collectApp(ctx context.Context, appID string) {
+func (m *Manager) collectApp(ctx context.Context, appID string, uptime map[string]time.Time) {
 	services, err := m.store.ListServicesForApp(ctx, appID)
 	if err != nil {
 		return
@@ -245,6 +249,13 @@ func (m *Manager) collectApp(ctx context.Context, appID string) {
 		}
 		idToService[*svc.ContainerID] = svc.ServiceName
 		ids = append(ids, *svc.ContainerID)
+	}
+	// Drop cached start times for containers no longer live for this app (a
+	// redeploy mints a new container id), so the cache can't grow unbounded.
+	for id := range uptime {
+		if _, live := idToService[id]; !live {
+			delete(uptime, id)
+		}
 	}
 	if len(ids) == 0 {
 		return
@@ -268,7 +279,7 @@ func (m *Manager) collectApp(ctx context.Context, appID string) {
 			MemPercent:    parsePercent(s.MemPerc),
 			NetRxBytes:    rx,
 			NetTxBytes:    tx,
-			UptimeSeconds: m.uptimeSeconds(ctx, fullID, now),
+			UptimeSeconds: m.uptimeSeconds(ctx, fullID, now, uptime),
 		}
 		frame, ferr := ws.Marshal(ws.TypeStats, service, now, sample)
 		if ferr != nil {
@@ -279,20 +290,17 @@ func (m *Manager) collectApp(ctx context.Context, appID string) {
 }
 
 // uptimeSeconds returns the container's age, caching its start time (which never
-// changes for a given container id).
-func (m *Manager) uptimeSeconds(ctx context.Context, containerID string, now time.Time) int64 {
-	m.mu.Lock()
-	started, ok := m.uptime[containerID]
-	m.mu.Unlock()
+// changes for a given container id) in the caller's per-collector map. No lock:
+// the map is owned by the single runApp goroutine.
+func (m *Manager) uptimeSeconds(ctx context.Context, containerID string, now time.Time, uptime map[string]time.Time) int64 {
+	started, ok := uptime[containerID]
 	if !ok {
 		t, err := m.docker.ContainerStartedAt(ctx, containerID)
 		if err != nil {
 			return 0
 		}
 		started = t
-		m.mu.Lock()
-		m.uptime[containerID] = started
-		m.mu.Unlock()
+		uptime[containerID] = started
 	}
 	if started.IsZero() {
 		return 0

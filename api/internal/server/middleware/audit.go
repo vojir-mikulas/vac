@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -26,6 +27,14 @@ type AuditRecorder interface {
 // goroutine after the client already has its answer.
 const auditPersistTimeout = 5 * time.Second
 
+// Audit write-pool sizing. A small fixed pool drains a bounded queue so a slow
+// DB under a burst of mutating requests can't spawn an unbounded number of
+// detached goroutines (each previously lived up to auditPersistTimeout).
+const (
+	auditWorkers   = 4
+	auditQueueSize = 256
+)
+
 // Audit records one row per *mutating* request (POST/PUT/PATCH/DELETE) to the
 // audit_log: who (actor), what (method + matched route), and the outcome
 // (status code), plus ip / user-agent. Handlers enrich the entry in passing via
@@ -37,7 +46,27 @@ const auditPersistTimeout = 5 * time.Second
 // failed insert is logged, never surfaced — auditing must not break the request
 // it is recording. GETs and other safe methods are skipped: reads aren't audit
 // events and would bury the signal.
-func Audit(rec AuditRecorder) func(http.Handler) http.Handler {
+func Audit(ctx context.Context, rec AuditRecorder) func(http.Handler) http.Handler {
+	// Fixed worker pool draining a bounded queue. Writes happen on a detached
+	// context (the request ctx dies when ServeHTTP returns, but the response is
+	// already sent); the pool caps both the goroutine count and the in-flight
+	// backlog so a slow DB under load degrades to dropped audit rows, not an
+	// unbounded goroutine pile-up. The workers stop when ctx (the server
+	// lifetime) is cancelled, so they don't outlive the server.
+	jobs := make(chan store.AuditEntry, auditQueueSize)
+	var dropped atomic.Int64
+	for i := 0; i < auditWorkers; i++ {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case entry := <-jobs:
+					persist(rec, entry)
+				}
+			}
+		}()
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !isMutating(r.Method) {
@@ -61,9 +90,15 @@ func Audit(rec AuditRecorder) func(http.Handler) http.Handler {
 			}
 
 			entry := buildEntry(r, record, status)
-			// Persist on a detached context: the request context is cancelled
-			// the moment ServeHTTP returns, but the response is already sent.
-			go persist(rec, entry) //nolint:gosec // G118: detached context is intentional — the audit write must outlive the request ctx (cancelled when ServeHTTP returns)
+			select {
+			case jobs <- entry:
+			default:
+				// Queue full (DB can't keep up): drop rather than block the
+				// response path or spawn an unbounded goroutine. Count + log so the
+				// loss is visible.
+				n := dropped.Add(1)
+				slog.Warn("audit: write queue full, dropping entry", "action", entry.Action, "dropped_total", n)
+			}
 		})
 	}
 }

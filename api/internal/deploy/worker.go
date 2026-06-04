@@ -31,6 +31,12 @@ type ReaperFunc func(ctx context.Context) (int64, error)
 const (
 	defaultReapInterval = 1 * time.Minute
 	defaultReapTimeout  = 30 * time.Minute
+	// defaultDeployTimeout bounds a single deploy. gitcli demands a context with a
+	// timeout (a hung TCP connection blocks git forever); without one, a slow Git
+	// remote or build with concurrency=1 wedges every queued deploy indefinitely.
+	// Set to the reap timeout so an in-process hang self-cancels no later than the
+	// DB-side reaper would have settled it.
+	defaultDeployTimeout = defaultReapTimeout
 )
 
 // MaxConcurrency caps the worker pool regardless of the stored setting — past
@@ -43,14 +49,15 @@ const MaxConcurrency = 8
 // can never pick up two deploys for the same app, so no in-process per-app lock
 // is needed.
 type Worker struct {
-	run          RunnerFunc
-	sweep        SweeperFunc
-	reap         ReaperFunc
-	reapInterval time.Duration
-	concurrency  int
-	queue        chan string
-	wg           sync.WaitGroup
-	logger       *slog.Logger
+	run           RunnerFunc
+	sweep         SweeperFunc
+	reap          ReaperFunc
+	reapInterval  time.Duration
+	deployTimeout time.Duration
+	concurrency   int
+	queue         chan string
+	wg            sync.WaitGroup
+	logger        *slog.Logger
 
 	// pub is the live deploy-queue notifier (nil disables it). A change frame is
 	// published whenever a deployment is enqueued or a worker finishes one, so
@@ -74,12 +81,13 @@ func NewWorker(run RunnerFunc, sweep SweeperFunc, capacity, concurrency int, log
 		logger = slog.Default()
 	}
 	return &Worker{
-		run:         run,
-		sweep:       sweep,
-		concurrency: clampConcurrency(concurrency),
-		queue:       make(chan string, capacity),
-		logger:      logger,
-		inflight:    make(map[string]context.CancelFunc),
+		run:           run,
+		sweep:         sweep,
+		concurrency:   clampConcurrency(concurrency),
+		deployTimeout: defaultDeployTimeout,
+		queue:         make(chan string, capacity),
+		logger:        logger,
+		inflight:      make(map[string]context.CancelFunc),
 	}
 }
 
@@ -157,7 +165,16 @@ func (w *Worker) loop(ctx context.Context) {
 // targeted cancel interrupts only this deploy. It always deregisters the cancel
 // func and notifies the queue topic on exit.
 func (w *Worker) process(ctx context.Context, id string) {
-	deployCtx, cancel := context.WithCancel(ctx)
+	// Per-deploy timeout so one hung clone/build can't wedge the pool (with the
+	// default concurrency=1, it would otherwise block every queued deploy). The
+	// timeout cancels this deploy's context, aborting its git/docker subprocess
+	// and freeing the slot; the pipeline records the cancellation as a terminal
+	// status on its next write.
+	timeout := w.deployTimeout
+	if timeout <= 0 {
+		timeout = defaultDeployTimeout
+	}
+	deployCtx, cancel := context.WithTimeout(ctx, timeout)
 	w.mu.Lock()
 	w.inflight[id] = cancel
 	w.mu.Unlock()

@@ -36,8 +36,13 @@ type Config struct {
 	SessionTTLExtended time.Duration `yaml:"session_ttl_extended"`
 	LoginRateLimit     int           `yaml:"login_rate_limit"`
 	LoginRateWindow    time.Duration `yaml:"login_rate_window"`
-	WebhookRateLimit   int           `yaml:"webhook_rate_limit"`
-	WebhookRateWindow  time.Duration `yaml:"webhook_rate_window"`
+	// TrustProxyHeaders gates whether X-Forwarded-Proto is trusted when deciding
+	// the cookie Secure flag. Default true suits the bundled topology (vac-proxy
+	// terminates TLS and sets the header); set false for a raw-HTTP box with no
+	// trusted proxy in front, where the header is attacker-spoofable.
+	TrustProxyHeaders bool          `yaml:"trust_proxy_headers"`
+	WebhookRateLimit  int           `yaml:"webhook_rate_limit"`
+	WebhookRateWindow time.Duration `yaml:"webhook_rate_window"`
 
 	// Phase 2: deployment pipeline configuration.
 	WorkDir               string        `yaml:"work_dir"`
@@ -163,6 +168,7 @@ func Default() Config {
 			Host: "0.0.0.0",
 		},
 		Exposure:           ExposurePublic,
+		TrustProxyHeaders:  true,
 		SessionTTL:         7 * 24 * time.Hour,
 		SessionTTLExtended: 30 * 24 * time.Hour,
 		LoginRateLimit:     5,
@@ -420,6 +426,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("VAC_ENABLE_SHELL"); v != "" {
 		cfg.EnableShell = v == "true" || v == "1"
+	}
+	if v := os.Getenv("VAC_TRUST_PROXY_HEADERS"); v != "" {
+		cfg.TrustProxyHeaders = v == "true" || v == "1"
 	}
 
 	if v := os.Getenv("VAC_SECURITY_MONITOR"); v != "" {

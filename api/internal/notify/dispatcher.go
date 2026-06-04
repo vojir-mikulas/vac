@@ -13,13 +13,14 @@ import (
 	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
+	"github.com/vojir-mikulas/vac/api/internal/netguard"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
 // ErrPrivateAddress is returned by the dispatcher's dialer when a webhook URL
-// resolves to a loopback, private, or link-local address. Exported so callers
-// can match on it when surfacing the failure to the operator.
-var ErrPrivateAddress = errors.New("notify: webhook host resolves to a private/loopback/link-local address")
+// resolves to a loopback, private, or link-local address. Aliased to the shared
+// netguard error so existing callers (and post()'s retry-skip) keep matching.
+var ErrPrivateAddress = netguard.ErrPrivateAddress
 
 // SettingsStore reads the stored notification settings.
 type SettingsStore interface {
@@ -66,50 +67,24 @@ func New(s SettingsStore, box *crypto.Box, envDiscord, envSlack, baseURL string,
 }
 
 // transport returns an http.Transport whose DialContext rejects connections to
-// private/loopback/link-local addresses when blockPrivate is set. The check
-// runs after DNS resolution so a public hostname pointing at 127.0.0.1 (or
-// 169.254.169.254) is still blocked — closing the obvious SSRF window.
+// private/loopback/link-local addresses when blockPrivate is set, dialing the
+// validated literal IP so a low-TTL DNS rebind can't swap in an internal address
+// after the check. A public hostname pointing at 127.0.0.1 (or 169.254.169.254)
+// is blocked — closing the SSRF window. blockPrivate is cleared by tests that
+// must reach httptest servers on loopback.
 func (d *Dispatcher) transport() *http.Transport {
 	base := http.DefaultTransport.(*http.Transport).Clone()
-	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+	guarded := netguard.DialContext(5*time.Second, 30*time.Second)
+	plain := (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	// Evaluate the guard at dial time so tests can clear blockPrivate after
+	// construction to reach httptest servers on loopback.
 	base.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		if d.blockPrivate {
-			host, _, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
-			if err != nil {
-				return nil, err
-			}
-			for _, ip := range ips {
-				if isPrivateAddr(ip) {
-					return nil, fmt.Errorf("%w: %s", ErrPrivateAddress, ip.String())
-				}
-			}
+			return guarded(ctx, network, addr)
 		}
-		return dialer.DialContext(ctx, network, addr)
+		return plain(ctx, network, addr)
 	}
 	return base
-}
-
-// isPrivateAddr reports whether ip is loopback, private, link-local, multicast,
-// or one of the special-purpose ranges (e.g. IPv4-mapped IPv6).
-func isPrivateAddr(ip net.IP) bool {
-	if ip == nil {
-		return true
-	}
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() ||
-		ip.IsInterfaceLocalMulticast() {
-		return true
-	}
-	// 100.64.0.0/10 — RFC 6598 carrier-grade NAT (also used by cloud metadata
-	// front-ends like Tailscale). Treat as private.
-	if v4 := ip.To4(); v4 != nil && v4[0] == 100 && v4[1]&0xC0 == 64 {
-		return true
-	}
-	return false
 }
 
 // resolved is the effective config at dispatch time.

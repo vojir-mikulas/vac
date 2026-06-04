@@ -3,10 +3,28 @@ package dbprovision
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// safeIdentRe is the safe-identifier shape generateNames produces: a lowercase
+// letter followed by [a-z0-9_]. mariadb interpolates db/role names into a shell
+// `mariadb -e "..."` sink with no quoting (unlike Postgres' pgx.Identifier.
+// Sanitize), so we assert the shape at the boundary. Today the names are always
+// generated and safe; this keeps a future "custom DB name" feature from turning
+// into container command injection.
+var safeIdentRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+func mustBeIdent(names ...string) error {
+	for _, n := range names {
+		if !safeIdentRe.MatchString(n) {
+			return fmt.Errorf("dbprovision: refusing unsafe identifier %q", n)
+		}
+	}
+	return nil
+}
 
 // MariaDBEngine is the worked example of a shared, lazily-started engine: one
 // vac-mariadb daemon, multi-tenant by database, provisioned by `docker exec`ing
@@ -88,6 +106,9 @@ func (e *MariaDBEngine) EnsureRunning(ctx context.Context) error {
 func (e *MariaDBEngine) Provision(ctx context.Context, dbName, roleName, password string) error {
 	// Names are sanitized to [a-z0-9_] so they need no backtick quoting (which
 	// would otherwise trigger command substitution inside the container shell).
+	if err := mustBeIdent(dbName, roleName); err != nil {
+		return err
+	}
 	sql := fmt.Sprintf(
 		"CREATE DATABASE IF NOT EXISTS %s; CREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s'; GRANT ALL PRIVILEGES ON %s.* TO '%s'@'%%'; FLUSH PRIVILEGES;",
 		dbName, roleName, password, dbName, roleName,
@@ -100,6 +121,9 @@ func (e *MariaDBEngine) Provision(ctx context.Context, dbName, roleName, passwor
 }
 
 func (e *MariaDBEngine) Deprovision(ctx context.Context, dbName, roleName string) error {
+	if err := mustBeIdent(dbName, roleName); err != nil {
+		return err
+	}
 	sql := fmt.Sprintf("DROP DATABASE IF EXISTS %s; DROP USER IF EXISTS '%s'@'%%'; FLUSH PRIVILEGES;", dbName, roleName)
 	cmd := fmt.Sprintf(`mariadb -uroot -p%s -e "%s"`, e.adminPw, sql)
 	if err := execOK(ctx, e.docker, mariadbContainer, cmd); err != nil {

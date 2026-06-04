@@ -33,6 +33,16 @@ func (c *Compose) Events(ctx context.Context) (<-chan Event, error) {
 	out := make(chan Event, 32)
 	go func() {
 		defer close(out)
+		// Reap the child on EVERY exit path. Without this, the early `return` on
+		// ctx.Done() below (out-channel blocked at shutdown) would leave a zombie
+		// `docker events` process and leaked stdout FD per monitor restart.
+		// docker events exit is usually ctx cancellation (clean shutdown) or the
+		// daemon going away; log the latter at debug.
+		defer func() {
+			if err := cmd.Wait(); err != nil && ctx.Err() == nil {
+				slog.Debug("dockercli: events stream exited", "err", err)
+			}
+		}()
 		scanner := bufio.NewScanner(stdout)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for scanner.Scan() {
@@ -47,13 +57,6 @@ func (c *Compose) Events(ctx context.Context) (<-chan Event, error) {
 			case <-ctx.Done():
 				return
 			}
-		}
-		// docker events exit is usually ctx cancellation (clean shutdown)
-		// or the daemon going away (worth knowing about). Log at debug so
-		// it's visible when chasing event-stream issues without spamming
-		// the normal log path.
-		if err := cmd.Wait(); err != nil && ctx.Err() == nil {
-			slog.Debug("dockercli: events stream exited", "err", err)
 		}
 	}()
 	return out, nil

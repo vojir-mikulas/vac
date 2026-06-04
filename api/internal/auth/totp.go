@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -15,6 +16,13 @@ import (
 
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/store"
+)
+
+// totpPeriod is the TOTP step length in seconds (RFC 6238 default). totpSkew is
+// how many steps either side of "now" are accepted to absorb clock drift.
+const (
+	totpPeriod = 30
+	totpSkew   = 1
 )
 
 // ErrTOTPDisabled is returned when an operation requires TOTP to be set up
@@ -84,43 +92,82 @@ func (m *TOTPManager) Setup(ctx context.Context, userID, username string) (Setup
 	}, nil
 }
 
-// Verify checks code against the user's stored secret. A ±1 step skew is
-// tolerated to absorb clock drift between server and authenticator app.
+// Verify checks code against the user's stored secret as the LOGIN second
+// factor. A ±1 step skew is tolerated to absorb clock drift. To stop replay of a
+// captured code within its ~90s validity window, it identifies which time-step
+// matched and atomically records it via ConsumeTOTPStep — a step at or below the
+// last accepted one is rejected, so the same code authenticates at most once.
 func (m *TOTPManager) Verify(ctx context.Context, userID, code string) error {
+	step, err := m.matchStep(ctx, userID, code)
+	if err != nil {
+		return err
+	}
+	// Burn the step: a code at or below the last accepted step is a replay.
+	fresh, err := m.store.ConsumeTOTPStep(ctx, userID, step)
+	if err != nil {
+		return err
+	}
+	if !fresh {
+		return ErrTOTPInvalid
+	}
+	return nil
+}
+
+// verifyEnrolment checks a code during setup/enable WITHOUT consuming the step.
+// Enrolment only confirms the user holds the right secret (they are already
+// authenticated by session), so it must not burn the time-step — otherwise the
+// user couldn't complete a 2FA login with the same code moments later.
+func (m *TOTPManager) verifyEnrolment(ctx context.Context, userID, code string) error {
+	_, err := m.matchStep(ctx, userID, code)
+	return err
+}
+
+// matchStep returns the time-step the submitted code belongs to within the skew
+// window, or ErrTOTPInvalid if it matches none. It does not touch last_totp_step.
+func (m *TOTPManager) matchStep(ctx context.Context, userID, code string) (int64, error) {
 	if m.box == nil {
-		return fmt.Errorf("auth: totp verify requires VAC_MASTER_KEY")
+		return 0, fmt.Errorf("auth: totp verify requires VAC_MASTER_KEY")
 	}
 	sealed, err := m.store.GetUserTOTPSecret(ctx, userID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return ErrTOTPDisabled
+			return 0, ErrTOTPDisabled
 		}
-		return err
+		return 0, err
 	}
 	secretBytes, err := m.box.Open(sealed)
 	if err != nil {
-		return fmt.Errorf("auth: totp open: %w", err)
+		return 0, fmt.Errorf("auth: totp open: %w", err)
 	}
-	ok, err := totp.ValidateCustom(code, string(secretBytes), time.Now(), totp.ValidateOpts{
-		Period:    30,
-		Skew:      1,
+	secret := string(secretBytes)
+
+	genOpts := totp.ValidateOpts{
+		Period:    totpPeriod,
 		Digits:    otp.DigitsSix,
 		Algorithm: otp.AlgorithmSHA1,
-	})
-	if err != nil {
-		return ErrTOTPInvalid
 	}
-	if !ok {
-		return ErrTOTPInvalid
+	currentStep := time.Now().Unix() / totpPeriod
+	// Walk the skew window and find which step the submitted code belongs to. We
+	// generate the expected code per step and constant-time compare, rather than
+	// using ValidateCustom, because we need the matched step number to anti-replay.
+	for delta := int64(-totpSkew); delta <= totpSkew; delta++ {
+		step := currentStep + delta
+		expected, gerr := totp.GenerateCodeCustom(secret, time.Unix(step*totpPeriod, 0), genOpts)
+		if gerr != nil {
+			continue
+		}
+		if subtle.ConstantTimeCompare([]byte(expected), []byte(code)) == 1 {
+			return step, nil
+		}
 	}
-	return nil
+	return 0, ErrTOTPInvalid
 }
 
 // Enable verifies the code one last time, flips totp_enabled to TRUE, and
 // returns 10 fresh recovery codes (stored as SHA-256 hashes; the plaintext is
 // only ever shown to the user on this call).
 func (m *TOTPManager) Enable(ctx context.Context, userID, code string) ([]string, error) {
-	if err := m.Verify(ctx, userID, code); err != nil {
+	if err := m.verifyEnrolment(ctx, userID, code); err != nil {
 		return nil, err
 	}
 	plain, hashes, err := generateRecoveryCodes(recoveryCodeCount)
@@ -184,18 +231,33 @@ func generateRecoveryCodes(n int) ([]string, []string, error) {
 func newRecoveryCode() (string, error) {
 	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 	const length = 10
-	buf := make([]byte, length)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
 	out := make([]byte, 0, length+1)
-	for i, b := range buf {
+	for i := 0; i < length; i++ {
 		if i == length/2 {
 			out = append(out, '-')
 		}
-		out = append(out, alphabet[int(b)%len(alphabet)])
+		idx, err := randIndex(len(alphabet))
+		if err != nil {
+			return "", err
+		}
+		out = append(out, alphabet[idx])
 	}
 	return string(out), nil
+}
+
+// randIndex returns a uniform integer in [0, n) using rejection sampling, so the
+// result is free of the modulo bias of `randomByte % n`.
+func randIndex(n int) (int, error) {
+	limit := 256 - (256 % n) // largest multiple of n that fits in a byte
+	var b [1]byte
+	for {
+		if _, err := rand.Read(b[:]); err != nil {
+			return 0, err
+		}
+		if int(b[0]) < limit {
+			return int(b[0]) % n, nil
+		}
+	}
 }
 
 // normalizeRecoveryCode strips whitespace and lowercases so that user input

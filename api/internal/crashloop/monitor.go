@@ -134,19 +134,34 @@ func (m *Monitor) Run(ctx context.Context) {
 func (m *Monitor) Handle(ctx context.Context, ev dockercli.Event) { m.handle(ctx, ev) }
 
 func (m *Monitor) handle(ctx context.Context, ev dockercli.Event) {
-	if ev.Action != "die" {
-		return
-	}
 	project := ev.ComposeProject()
 	service := ev.ComposeService()
 	if !strings.HasPrefix(project, composeProjectPrefix) || service == "" {
+		return
+	}
+	key := project + "/" + service
+
+	// A container's removal ends its episode: drop its per-service tracking so the
+	// windows/tripped/oomNotified maps can't grow one never-evicted entry per
+	// container ever seen (a redeploy destroys the old container and mints a new
+	// id). `destroy` fires on `docker rm`/compose recreate — never between the
+	// die/start of a restart loop — so clearing here can't prematurely un-trip a
+	// service mid-loop; an explicit operator recover (Reset) is the other path.
+	if ev.Action == "destroy" {
+		m.mu.Lock()
+		delete(m.windows, key)
+		delete(m.tripped, key)
+		delete(m.oomNotified, key)
+		m.mu.Unlock()
+		return
+	}
+	if ev.Action != "die" {
 		return
 	}
 	// OOM detection runs first and independently of the crash-loop threshold: a
 	// single OOM kill is worth surfacing even before a service trips the loop.
 	m.maybeHandleOOM(ctx, project, service, ev)
 
-	key := project + "/" + service
 	m.mu.Lock()
 	if m.tripped[key] {
 		m.mu.Unlock()

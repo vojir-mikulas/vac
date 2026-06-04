@@ -1,21 +1,51 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/netip"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/auth"
 	"github.com/vojir-mikulas/vac/api/internal/config"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
+
+// Per-account brute-force lockout. The per-IP rate limiter caps requests from one
+// source, but a distributed attacker gets a fresh budget per IP against the
+// single admin account; this bounds total consecutive failures per account.
+const (
+	maxAuthFailures     = 10
+	authLockoutDuration = 15 * time.Minute
+)
+
+// registerAuthFailure bumps the account's consecutive-failure counter (locking it
+// past the threshold). Best-effort: a store error must never block the auth path,
+// so it is logged and swallowed.
+func registerAuthFailure(ctx context.Context, s *store.Store, userID string) {
+	if _, _, err := s.RegisterAuthFailure(ctx, userID, maxAuthFailures, authLockoutDuration); err != nil {
+		slog.Warn("auth: register failure", "user_id", userID, "err", err)
+	}
+}
+
+// writeAuthLocked responds with 429 + Retry-After when an account is locked.
+func writeAuthLocked(w http.ResponseWriter, until time.Time) {
+	secs := int(math.Ceil(time.Until(until).Seconds()))
+	if secs < 1 {
+		secs = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(secs))
+	WriteError(w, http.StatusTooManyRequests, "account temporarily locked due to too many failed attempts; try again later")
+}
 
 // dummyHash is a bcrypt hash used to keep "user does not exist" timing
 // indistinguishable from "wrong password" — without it, attackers can
@@ -77,7 +107,13 @@ func Login(s *store.Store, sm *auth.SessionManager, cfg config.Config) http.Hand
 			WriteErrorCode(w, http.StatusUnauthorized, CodeInvalidCredentials, "invalid credentials")
 			return
 		}
+		if until, locked, lerr := s.AuthLockedUntil(r.Context(), user.ID); lerr == nil && locked {
+			auditAuthFailure(r, "account_locked", req.Username, user.ID)
+			writeAuthLocked(w, until)
+			return
+		}
 		if err := auth.VerifyPassword(user.PasswordHash, req.Password); err != nil {
+			registerAuthFailure(r.Context(), s, user.ID)
 			auditAuthFailure(r, "bad_password", req.Username, user.ID)
 			WriteErrorCode(w, http.StatusUnauthorized, CodeInvalidCredentials, "invalid credentials")
 			return
@@ -86,6 +122,9 @@ func Login(s *store.Store, sm *auth.SessionManager, cfg config.Config) http.Hand
 		ip := clientIP(r)
 
 		if user.TOTPEnabled {
+			// Password is correct but the second factor is still pending — don't
+			// clear the failure counter yet (a failing 2FA must keep accruing
+			// toward the lockout). The pre-auth session carries the user forward.
 			preToken, _, err := sm.CreatePreAuth(r.Context(), user.ID, ip, r.UserAgent())
 			if err != nil {
 				WriteError(w, http.StatusInternalServerError, "could not create pre-auth session")
@@ -107,6 +146,9 @@ func Login(s *store.Store, sm *auth.SessionManager, cfg config.Config) http.Hand
 			return
 		}
 
+		// No second factor required: this is a complete success — clear the
+		// failure/lockout bookkeeping.
+		_ = s.ClearAuthFailures(r.Context(), user.ID)
 		issueFullSession(w, r, sm, user, req.Remember)
 	}
 }
