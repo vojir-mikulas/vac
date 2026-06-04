@@ -6,6 +6,7 @@ import { ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
+import { OtpCodeField } from '@/components/common/otp-code-field'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -67,7 +68,10 @@ function EnableFlow() {
       setRecovery(r.recovery_codes)
       qc.invalidateQueries({ queryKey: queryKeys.auth.me })
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => {
+      setCode('')
+      toast.error(e.message)
+    },
   })
 
   const open = begin.data != null || begin.isPending
@@ -116,17 +120,15 @@ function EnableFlow() {
               <code className="truncate font-mono text-xs">{setup.secret}</code>
               <CopyButton value={setup.secret} />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="totp-code">{t('totp.enableFlow.codeLabel')}</Label>
-              <Input
-                id="totp-code"
-                inputMode="numeric"
-                required
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="text-center font-mono tracking-widest"
-              />
-            </div>
+            <OtpCodeField
+              id="totp-code"
+              label={t('totp.enableFlow.codeLabel')}
+              value={code}
+              onChange={setCode}
+              onComplete={() => enable.mutate()}
+              disabled={enable.isPending}
+              autoFocus
+            />
           </div>
         ) : null}
 

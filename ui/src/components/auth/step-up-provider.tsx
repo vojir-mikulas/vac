@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { OtpCodeField } from '@/components/common/otp-code-field'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -74,6 +75,8 @@ export function StepUpProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('stepUp.error'))
       setSubmitting(false)
+      // Reset the OTP slots for a clean retry; a long recovery code is kept.
+      if (!useRecovery) setCode('')
     }
   }
 
@@ -93,26 +96,36 @@ export function StepUpProvider({ children }: { children: React.ReactNode }) {
               submit()
             }}
           >
-            <div className="grid gap-2">
-              <Label htmlFor="stepup-code">
-                {useRecovery ? t('stepUp.recoveryLabel') : t('stepUp.codeLabel')}
-              </Label>
-              <Input
+            {useRecovery ? (
+              <div className="grid gap-2">
+                <Label htmlFor="stepup-code">{t('stepUp.recoveryLabel')}</Label>
+                <Input
+                  id="stepup-code"
+                  autoFocus
+                  required
+                  inputMode="text"
+                  autoComplete="one-time-code"
+                  aria-invalid={!!error || undefined}
+                  aria-describedby={error ? errId : undefined}
+                  placeholder={t('stepUp.recoveryPlaceholder')}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="text-center font-mono tracking-widest"
+                />
+              </div>
+            ) : (
+              <OtpCodeField
                 id="stepup-code"
-                autoFocus
-                required
-                inputMode={useRecovery ? 'text' : 'numeric'}
-                autoComplete="one-time-code"
-                aria-invalid={!!error || undefined}
-                aria-describedby={error ? errId : undefined}
-                placeholder={
-                  useRecovery ? t('stepUp.recoveryPlaceholder') : t('stepUp.codePlaceholder')
-                }
+                label={t('stepUp.codeLabel')}
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="text-center font-mono tracking-widest"
+                onChange={setCode}
+                onComplete={submit}
+                disabled={submitting}
+                autoFocus
+                invalid={!!error}
+                describedBy={error ? errId : undefined}
               />
-            </div>
+            )}
             {error ? (
               <p id={errId} role="alert" className="text-sm text-err-foreground">
                 {error}

@@ -3,6 +3,7 @@ import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { AuthShell } from '@/components/auth/auth-shell'
+import { OtpCodeField } from '@/components/common/otp-code-field'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -53,6 +54,8 @@ function LoginPage() {
   const totp = useMutation({
     mutationFn: () => authApi.totpLogin({ code }),
     onSuccess: () => finish(),
+    // Clear the slots on a bad code so the next attempt starts fresh.
+    onError: () => setCode(''),
   })
 
   if (stage === 'totp') {
@@ -70,24 +73,19 @@ function LoginPage() {
                 totp.mutate()
               }}
             >
-              <div className="grid gap-2">
-                <Label htmlFor="code">Authentication code</Label>
-                <Input
-                  id="code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  autoFocus
-                  required
-                  aria-invalid={!!totp.error || undefined}
-                  aria-describedby={totp.error ? errId : undefined}
-                  placeholder="123456"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  className="text-center font-mono tracking-widest"
-                />
-              </div>
+              <OtpCodeField
+                id="code"
+                label="Authentication code"
+                value={code}
+                onChange={setCode}
+                onComplete={() => totp.mutate()}
+                disabled={totp.isPending}
+                autoFocus
+                invalid={!!totp.error}
+                describedBy={totp.error ? errId : undefined}
+              />
               {totp.error ? <ErrorText id={errId} error={totp.error} /> : null}
-              <Button type="submit" variant="brand" disabled={totp.isPending}>
+              <Button type="submit" variant="brand" disabled={totp.isPending || code.length < 6}>
                 Verify
               </Button>
               <Button
