@@ -20,8 +20,14 @@ services:
       POSTGRES_DB: vac
     volumes:
       - vac_db_data:/var/lib/postgresql/data
+    # Localhost-only, for operator debugging — apps reach vac-db over vac-edge,
+    # not the host. Published on an unusual host port (not 5432) so it never
+    # collides with a user app that publishes its own Postgres on the standard
+    # port; VAC forwards user `ports:` to Docker verbatim. The container still
+    # listens on 5432 internally, so VAC_DATABASE_URL / connstrings are unchanged.
+    # Override with VAC_DB_HOST_PORT in .env.
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${VAC_DB_HOST_PORT:-9432}:5432"
     command: >
       postgres
       -c shared_buffers=32MB
