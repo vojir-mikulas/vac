@@ -42,11 +42,15 @@ export function BuildSourcePicker({
   value,
   onChange,
   detectedKind,
+  detectedComposePath,
 }: {
   value: BuildSourceValue
   onChange: (v: BuildSourceValue) => void
   /** When set, the matching kind card shows a "detected" badge. */
   detectedKind?: BuildKind
+  /** Compose filename found by probing the repo; surfaced as a hint under the
+   *  compose path input so the operator knows the value came from their repo. */
+  detectedComposePath?: string
 }) {
   const { t } = useTranslation('apps')
   const setKind = (kind: BuildKind) => onChange({ ...value, build_kind: kind })
@@ -122,7 +126,14 @@ export function BuildSourcePicker({
           ) : null}
 
           {value.build_kind === 'compose' ? (
-            <Field label={t('buildSource.composePath')} hint={t('buildSource.relativeToRoot')}>
+            <Field
+              label={t('buildSource.composePath')}
+              hint={
+                detectedComposePath
+                  ? t('buildSource.composeDetected', { path: detectedComposePath })
+                  : t('buildSource.relativeToRoot')
+              }
+            >
               <Input
                 value={cfg.composePath ?? ''}
                 onChange={(e) => setConfig({ composePath: e.target.value })}

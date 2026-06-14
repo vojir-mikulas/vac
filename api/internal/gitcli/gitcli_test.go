@@ -199,6 +199,93 @@ func TestFetchCommit_PinsToPriorCommit(t *testing.T) {
 	}
 }
 
+// initRepoWithFiles builds a bare repo whose initial commit contains the given
+// files (path → contents), and returns the bare repo path for use as gitURL.
+func initRepoWithFiles(t *testing.T, branch string, files map[string]string) string {
+	t.Helper()
+	requireGit(t)
+
+	root := t.TempDir()
+	bare := filepath.Join(root, "remote.git")
+	work := filepath.Join(root, "work")
+
+	mustRun(t, root, "git", "init", "--bare", "-b", branch, bare)
+	mustRun(t, root, "git", "init", "-b", branch, work)
+	mustRun(t, work, "git", "config", "user.email", "test@example.com")
+	mustRun(t, work, "git", "config", "user.name", "test")
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(work, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		mustRun(t, work, "git", "add", name)
+	}
+	mustRun(t, work, "git", "commit", "-m", "initial")
+	mustRun(t, work, "git", "remote", "add", "origin", bare)
+	mustRun(t, work, "git", "push", "origin", branch)
+	return bare
+}
+
+func TestReadEnvExample_Found(t *testing.T) {
+	requireGit(t)
+	bare := initRepoWithFiles(t, "main", map[string]string{
+		"README.md":    "hi\n",
+		".env.example": "FOO=bar\nSECRET_TOKEN=changeme\n",
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	file, content, err := gitcli.ReadEnvExample(ctx, bare, "main", "")
+	if err != nil {
+		t.Fatalf("ReadEnvExample: %v", err)
+	}
+	if file != ".env.example" {
+		t.Errorf("file = %q, want .env.example", file)
+	}
+	if !strings.Contains(string(content), "FOO=bar") {
+		t.Errorf("content = %q", content)
+	}
+}
+
+func TestReadEnvExample_PrefersHigherPriorityName(t *testing.T) {
+	requireGit(t)
+	bare := initRepoWithFiles(t, "main", map[string]string{
+		".env.sample":  "FROM=sample\n",
+		".env.example": "FROM=example\n",
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	file, _, err := gitcli.ReadEnvExample(ctx, bare, "main", "")
+	if err != nil {
+		t.Fatalf("ReadEnvExample: %v", err)
+	}
+	if file != ".env.example" {
+		t.Errorf("file = %q, want .env.example (higher priority than .env.sample)", file)
+	}
+}
+
+func TestReadEnvExample_NotPresent(t *testing.T) {
+	requireGit(t)
+	bare := initRepoWithFiles(t, "main", map[string]string{"README.md": "hi\n"})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	file, content, err := gitcli.ReadEnvExample(ctx, bare, "main", "")
+	if err != nil {
+		t.Fatalf("ReadEnvExample: %v", err)
+	}
+	if file != "" || content != nil {
+		t.Errorf("expected no file, got file=%q content=%q", file, content)
+	}
+}
+
+func TestReadEnvExample_RepoMissing(t *testing.T) {
+	requireGit(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	_, _, err := gitcli.ReadEnvExample(ctx, "/no/such/repo.git", "main", "")
+	if !errors.Is(err, gitcli.ErrRepoNotFound) {
+		t.Errorf("err = %v, want ErrRepoNotFound", err)
+	}
+}
+
 func TestPull(t *testing.T) {
 	requireGit(t)
 	bare := initBareRepo(t, "main")

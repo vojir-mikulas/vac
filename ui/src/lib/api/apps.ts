@@ -2,7 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
-import type { App, CreateAppInput, SSHKey, TestConnectionResult, UpdateAppInput } from '@/types/api'
+import type {
+  App,
+  ComposeDetectResult,
+  CreateAppInput,
+  EnvExampleResult,
+  SSHKey,
+  TestConnectionResult,
+  UpdateAppInput,
+} from '@/types/api'
 
 export const appsApi = {
   list: () => api.get<App[]>('apps'),
@@ -14,6 +22,10 @@ export const appsApi = {
   stop: (id: string) => api.post<{ status: string }>(`apps/${id}/stop`),
   restart: (id: string) => api.post<{ status: string }>(`apps/${id}/restart`),
   testConnection: (id: string) => api.post<TestConnectionResult>(`apps/${id}/test-connection`),
+  envExample: (input: { git_url: string; git_branch: string }) =>
+    api.post<EnvExampleResult>('apps/env-example', input),
+  detectCompose: (input: { git_url: string; git_branch: string }) =>
+    api.post<ComposeDetectResult>('apps/detect-compose', input),
   sshKey: (id: string) => api.get<SSHKey>(`apps/${id}/ssh-key`),
   regenerateSshKey: (id: string) => api.post<SSHKey>(`apps/${id}/ssh-key/regenerate`),
 }

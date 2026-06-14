@@ -1,9 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { AnimatePresence, m } from 'motion/react'
-import { ArrowRight, Check, ChevronLeft, Loader2, Rocket } from 'lucide-react'
+import {
+  ArrowRight,
+  Check,
+  ChevronLeft,
+  FileDown,
+  Loader2,
+  Lock,
+  LockOpen,
+  Plus,
+  Rocket,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageContainer } from '@/components/layout/app-shell'
@@ -11,18 +22,35 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
 import { NotificationBar } from '@/components/common/notification-bar'
 import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
 import { BuildSourcePicker, type BuildSourceValue } from '@/features/apps/build-source'
 import { appsApi, useCreateApp } from '@/lib/api/apps'
+import { envApi, type EnvVarInput } from '@/lib/api/env'
 import { deploymentsApi } from '@/lib/api/deployments'
 import { ApiError } from '@/lib/api/client'
+import { isSensitiveKey, isValidEnvKey, parseEnvEntries } from '@/lib/env-parse'
 import { cn } from '@/lib/utils'
 import { RISE, transition } from '@/lib/motion'
 import type { App, CreateAppInput, TestConnectionResult } from '@/types/api'
 
-// The four wizard steps, by id; labels are translated at render (see Stepper).
-const STEPS = ['source', 'build', 'domain', 'deploy'] as const
+// The wizard steps, by id; labels are translated at render (see Stepper).
+const STEPS = ['source', 'build', 'domain', 'env', 'deploy'] as const
+
+// A row in the wizard's env editor. All values are fresh here (no persisted
+// secrets to carry forward), so the model is simpler than the app-detail Env tab:
+// `sensitive` maps straight to a write-only secret on save.
+interface WizardEnvRow {
+  uid: number
+  key: string
+  value: string
+  sensitive: boolean
+}
+
+let envUid = 0
+const newEnvUid = () => ++envUid
 
 // t() scoped to the `apps` namespace, for helpers that render outside a hook.
 type AppsTFunction = ReturnType<typeof useTranslation<'apps'>>['t']
@@ -61,6 +89,8 @@ function Wizard() {
   const [branch, setBranch] = useState('main')
   const [domain, setDomain] = useState('')
   const [build, setBuild] = useState<BuildSourceValue>({ build_kind: 'auto', build_config: {} })
+  const [envRows, setEnvRows] = useState<WizardEnvRow[]>([])
+  const [applyingEnv, setApplyingEnv] = useState(false)
   const [created, setCreated] = useState<App | null>(null)
 
   const goTo = (next: number) => setStepState([next, next > step ? 1 : -1])
@@ -68,6 +98,33 @@ function Wizard() {
   const effectiveName = name.trim() || repoName(gitUrl)
   const ssh = isSshUrl(gitUrl)
   const canContinue = step === 0 ? Boolean(gitUrl.trim() && effectiveName) : true
+
+  // Once the operator reaches the build step we probe the repo (keyless clone)
+  // for a compose file, so we can pre-fill the path and badge the compose card.
+  // Like the .env.example probe this only reaches public repos; a private repo's
+  // deploy key doesn't exist yet, so it fails quietly and the path stays manual.
+  const detectCompose = useQuery({
+    queryKey: ['detect-compose', gitUrl.trim(), branch.trim() || 'main'],
+    queryFn: () =>
+      appsApi.detectCompose({ git_url: gitUrl.trim(), git_branch: branch.trim() || 'main' }),
+    enabled: step >= 1 && Boolean(gitUrl.trim()),
+    staleTime: Infinity,
+    retry: false,
+  })
+  const detectedComposePath = detectCompose.data?.found ? detectCompose.data.path : undefined
+
+  // Pre-fill the compose path once per detected value, and only when the operator
+  // hasn't typed their own — clearing the field afterwards must not re-trigger it.
+  const prefilledCompose = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!detectedComposePath || prefilledCompose.current === detectedComposePath) return
+    prefilledCompose.current = detectedComposePath
+    setBuild((b) =>
+      b.build_config.composePath
+        ? b
+        : { ...b, build_config: { ...b.build_config, composePath: detectedComposePath } },
+    )
+  }, [detectedComposePath])
 
   const deployNow = useMutation({
     mutationFn: (appId: string) => deploymentsApi.trigger(appId),
@@ -77,6 +134,25 @@ function Wizard() {
     },
     onError: (e) => toast.error(e.message),
   })
+
+  // Collapse the editor rows into the env API's write shape: valid keys only,
+  // last-write-wins on duplicates, and `sensitive` → an unrevealable write-only
+  // secret (matching the Env tab's import semantics).
+  const envInputs = (): EnvVarInput[] => {
+    const out = new Map<string, EnvVarInput>()
+    for (const r of envRows) {
+      const key = r.key.trim()
+      if (!isValidEnvKey(key)) continue
+      out.set(key, {
+        key,
+        value: r.value,
+        sensitive: r.sensitive,
+        write_only: r.sensitive,
+        keep: false,
+      })
+    }
+    return [...out.values()]
+  }
 
   const createApp = (thenDeploy: boolean) => {
     const input: CreateAppInput = {
@@ -91,16 +167,31 @@ function Wizard() {
       input.compose_file = build.build_config.composePath
     }
     create.mutate(input, {
-      onSuccess: (app) => {
-        toast.success(t('new.toast.created'))
+      onSuccess: async (app) => {
         setCreated(app)
+        // Apply env vars before the first deploy so the stack comes up with them
+        // already set. A save failure aborts the deploy — better to surface it
+        // than to deploy with missing config.
+        const vars = envInputs()
+        if (vars.length) {
+          setApplyingEnv(true)
+          try {
+            await envApi.replace(app.id, vars)
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : t('new.env.saveFailed'))
+            setApplyingEnv(false)
+            return
+          }
+          setApplyingEnv(false)
+        }
+        toast.success(t('new.toast.created'))
         if (thenDeploy) deployNow.mutate(app.id)
       },
       onError: (e) => toast.error(e.message),
     })
   }
 
-  const busy = create.isPending || deployNow.isPending
+  const busy = create.isPending || applyingEnv || deployNow.isPending
 
   return (
     <div>
@@ -140,7 +231,12 @@ function Wizard() {
             {step === 1 ? (
               <div>
                 <StepHeading title={t('new.build.title')} subtitle={t('new.build.subtitle')} />
-                <BuildSourcePicker value={build} onChange={setBuild} />
+                <BuildSourcePicker
+                  value={build}
+                  onChange={setBuild}
+                  detectedKind={detectedComposePath ? 'compose' : undefined}
+                  detectedComposePath={detectedComposePath}
+                />
               </div>
             ) : null}
 
@@ -149,6 +245,10 @@ function Wizard() {
             ) : null}
 
             {step === 3 ? (
+              <EnvStep gitUrl={gitUrl} branch={branch} rows={envRows} setRows={setEnvRows} />
+            ) : null}
+
+            {step === 4 ? (
               <ReviewDeployStep
                 app={created}
                 name={effectiveName}
@@ -156,6 +256,7 @@ function Wizard() {
                 branch={branch}
                 build={build}
                 domain={domain}
+                envCount={envInputs().length}
                 ssh={ssh}
               />
             ) : null}
@@ -234,6 +335,7 @@ function Stepper({ step, done }: { step: number; done: boolean }) {
     t('new.steps.source'),
     t('new.steps.build'),
     t('new.steps.domain'),
+    t('new.steps.env'),
     t('new.steps.deploy'),
   ]
   return (
@@ -410,6 +512,286 @@ function DomainStep({
   )
 }
 
+// EnvStep lets the operator set environment variables before the first deploy.
+// The headline affordance is "Load from .env.example": it asks the backend to
+// clone the repo (keyless) and hand back the example file, which we parse here.
+// That only reaches public repos — for a private repo the deploy key doesn't
+// exist yet, so the probe fails and the operator falls back to paste / manual.
+function EnvStep({
+  gitUrl,
+  branch,
+  rows,
+  setRows,
+}: {
+  gitUrl: string
+  branch: string
+  rows: WizardEnvRow[]
+  setRows: React.Dispatch<React.SetStateAction<WizardEnvRow[]>>
+}) {
+  const { t } = useTranslation('apps')
+  const [pasteOpen, setPasteOpen] = useState(false)
+
+  // Merge parsed .env entries into the rows (last-wins on an existing key) and
+  // return how many valid entries were applied, for the result message. When
+  // `autoMark` is set, credential-looking keys are flagged as secret.
+  const mergeText = (text: string, autoMark = true): number => {
+    const entries = parseEnvEntries(text)
+      .filter((e) => isValidEnvKey(e.key))
+      .map((e) => ({ key: e.key, value: e.value, sensitive: autoMark && isSensitiveKey(e.key) }))
+    setRows((rs) => {
+      const out = [...rs]
+      for (const e of entries) {
+        const existing = out.find((r) => r.key === e.key)
+        if (existing) {
+          existing.value = e.value
+          existing.sensitive = e.sensitive
+        } else {
+          out.push({ uid: newEnvUid(), key: e.key, value: e.value, sensitive: e.sensitive })
+        }
+      }
+      return out
+    })
+    return entries.length
+  }
+
+  const load = useMutation({
+    mutationFn: () =>
+      appsApi.envExample({ git_url: gitUrl.trim(), git_branch: branch.trim() || 'main' }),
+    onSuccess: (res) => {
+      if (res.found && res.content) {
+        const n = mergeText(res.content)
+        toast.success(t('new.env.loaded', { count: n, file: res.file }))
+      }
+    },
+  })
+
+  const patch = (uid: number, next: Partial<WizardEnvRow>) =>
+    setRows((rs) => rs.map((r) => (r.uid === uid ? { ...r, ...next } : r)))
+  const remove = (uid: number) => setRows((rs) => rs.filter((r) => r.uid !== uid))
+  const addRow = () =>
+    setRows((rs) => [...rs, { uid: newEnvUid(), key: '', value: '', sensitive: false }])
+
+  return (
+    <div>
+      <StepHeading title={t('new.env.title')} subtitle={t('new.env.subtitle')} />
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={load.isPending || !gitUrl.trim()}
+          onClick={() => load.mutate()}
+        >
+          {load.isPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <FileDown className="size-3.5" />
+          )}
+          {t('new.env.loadExample')}
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setPasteOpen((v) => !v)}>
+          <Plus className="size-3.5" />
+          {t('new.env.paste')}
+        </Button>
+        <Button variant="outline" size="sm" onClick={addRow}>
+          <Plus className="size-3.5" />
+          {t('new.env.addVariable')}
+        </Button>
+      </div>
+
+      <AnimatePresence>
+        {load.data && !load.data.found ? (
+          <m.div
+            key="load-result"
+            initial={{ opacity: 0, y: RISE }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={transition.base}
+            className="mb-4"
+          >
+            {load.data.error_code === 'auth_failed' ? (
+              <NotificationBar tone="info" title={t('new.env.unreadable.title')}>
+                {t('new.env.unreadable.body')}
+              </NotificationBar>
+            ) : load.data.error_code ? (
+              <NotificationBar tone="error" title={t('new.env.loadFailed')}>
+                {load.data.error_message ?? null}
+              </NotificationBar>
+            ) : (
+              <NotificationBar tone="info" title={t('new.env.notFound')} />
+            )}
+          </m.div>
+        ) : load.error ? (
+          <m.div
+            key="load-error"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mb-4"
+          >
+            <NotificationBar tone="error" title={t('new.env.loadFailed')}>
+              {load.error instanceof ApiError ? load.error.message : null}
+            </NotificationBar>
+          </m.div>
+        ) : null}
+      </AnimatePresence>
+
+      {pasteOpen ? (
+        <PasteEnvPanel
+          onImport={(text, autoMark) => {
+            const n = mergeText(text, autoMark)
+            if (n > 0) toast.success(t('new.env.pasted', { count: n }))
+            setPasteOpen(false)
+          }}
+          onCancel={() => setPasteOpen(false)}
+        />
+      ) : null}
+
+      <Card className="gap-0 p-0">
+        {rows.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+            {t('new.env.empty')}
+          </p>
+        ) : (
+          rows.map((row, i) => (
+            <WizardEnvRowEditor
+              key={row.uid}
+              row={row}
+              index={i + 1}
+              divider={i > 0}
+              onKey={(key) => patch(row.uid, { key })}
+              onValue={(value) => patch(row.uid, { value })}
+              onToggle={() => patch(row.uid, { sensitive: !row.sensitive })}
+              onRemove={() => remove(row.uid)}
+            />
+          ))
+        )}
+      </Card>
+
+      <p className="mt-3 text-2xs text-muted-foreground">{t('new.env.hint')}</p>
+    </div>
+  )
+}
+
+function WizardEnvRowEditor({
+  row,
+  index,
+  divider,
+  onKey,
+  onValue,
+  onToggle,
+  onRemove,
+}: {
+  row: WizardEnvRow
+  index: number
+  divider: boolean
+  onKey: (key: string) => void
+  onValue: (value: string) => void
+  onToggle: () => void
+  onRemove: () => void
+}) {
+  const { t } = useTranslation('apps')
+  const invalid = row.key.trim() !== '' && !isValidEnvKey(row.key.trim())
+  return (
+    <div
+      className={cn(
+        'grid grid-cols-[minmax(0,200px)_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5',
+        divider && 'border-t',
+      )}
+    >
+      <Input
+        value={row.key}
+        onChange={(e) => onKey(e.target.value)}
+        placeholder={t('new.env.keyPlaceholder')}
+        aria-label={t('new.env.keyAria', { index })}
+        aria-invalid={invalid}
+        spellCheck={false}
+        className={cn('h-8 font-mono text-xs', invalid && 'border-err-border')}
+      />
+      <Input
+        value={row.value}
+        type={row.sensitive ? 'password' : 'text'}
+        onChange={(e) => onValue(e.target.value)}
+        placeholder={t('new.env.valuePlaceholder')}
+        aria-label={t('new.env.valueAria', { index })}
+        spellCheck={false}
+        className="h-8 font-mono text-xs"
+      />
+      <div className="flex items-center gap-1 text-muted-foreground">
+        <button
+          type="button"
+          title={row.sensitive ? t('new.env.makePlain') : t('new.env.makeSecret')}
+          aria-label={row.sensitive ? t('new.env.makePlain') : t('new.env.makeSecret')}
+          aria-pressed={row.sensitive}
+          onClick={onToggle}
+          className="grid size-7 place-items-center rounded-md transition-colors hover:bg-muted hover:text-foreground"
+        >
+          {row.sensitive ? (
+            <Lock className="size-3.5 text-warn" />
+          ) : (
+            <LockOpen className="size-3.5" />
+          )}
+        </button>
+        <button
+          type="button"
+          title={t('new.env.delete')}
+          aria-label={t('new.env.delete')}
+          onClick={onRemove}
+          className="grid size-7 place-items-center rounded-md transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PasteEnvPanel({
+  onImport,
+  onCancel,
+}: {
+  onImport: (text: string, autoMark: boolean) => void
+  onCancel: () => void
+}) {
+  const { t } = useTranslation('apps')
+  const [text, setText] = useState('')
+  const [autoMark, setAutoMark] = useState(true)
+  const parsed = parseEnvEntries(text).filter((e) => isValidEnvKey(e.key))
+  return (
+    <Card className="mb-4 gap-3 p-5">
+      <p className="text-sm text-muted-foreground">{t('new.env.pastePrompt')}</p>
+      <Textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={t('new.env.pastePlaceholder')}
+        className="min-h-32 font-mono text-xs"
+        spellCheck={false}
+      />
+      <label className="flex items-center gap-2 text-sm">
+        <Switch checked={autoMark} onCheckedChange={setAutoMark} />
+        <span>{t('new.env.autoMark')}</span>
+      </label>
+      <div className="flex items-center justify-between">
+        <span className="text-2xs text-muted-foreground">
+          {t('new.env.pasteParsed', { count: parsed.length })}
+        </span>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            {t('actions.cancel')}
+          </Button>
+          <Button
+            variant="brand"
+            size="sm"
+            disabled={parsed.length === 0}
+            onClick={() => onImport(text, autoMark)}
+          >
+            {t('new.env.pasteImport', { count: parsed.length })}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 // ReviewDeployStep is the merged final step: before creation it summarises the
 // config (plus an SSH deploy-key heads-up); after creation it morphs in place to
 // surface the deploy key and a connection test, so the operator never leaves the
@@ -421,6 +803,7 @@ function ReviewDeployStep({
   branch,
   build,
   domain,
+  envCount,
   ssh,
 }: {
   app: App | null
@@ -429,6 +812,7 @@ function ReviewDeployStep({
   branch: string
   build: BuildSourceValue
   domain: string
+  envCount: number
   ssh: boolean
 }) {
   const { t } = useTranslation('apps')
@@ -442,6 +826,9 @@ function ReviewDeployStep({
         <ReviewLine k={t('new.review.branch')} v={branch} mono />
         <ReviewLine k={t('new.review.build')} v={buildSummary(build, t)} />
         {domain ? <ReviewLine k={t('new.review.domain')} v={domain} mono /> : null}
+        {envCount > 0 ? (
+          <ReviewLine k={t('new.review.env')} v={t('new.review.envCount', { count: envCount })} />
+        ) : null}
       </div>
 
       <AnimatePresence mode="wait" initial={false}>

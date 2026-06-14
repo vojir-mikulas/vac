@@ -216,6 +216,28 @@ export interface TestConnectionResult {
   error_message?: string
 }
 
+// Probe result for a repo's .env.example (new-app wizard pre-fill). `content` is
+// the raw file text — the UI parses it client-side. `error_code` mirrors the
+// test-connection codes (e.g. `auth_failed` for an unreachable private repo).
+export interface EnvExampleResult {
+  found: boolean
+  file?: string
+  content?: string
+  error_code?: string
+  error_message?: string
+}
+
+// Probe result for a repo's compose file (new-app wizard build-step pre-fill).
+// `path` is the filename found at the repo root (e.g. `docker-compose.yml`).
+// `error_code` mirrors the test-connection codes (e.g. `auth_failed` for an
+// unreachable private repo), in which case the UI falls back to manual entry.
+export interface ComposeDetectResult {
+  found: boolean
+  path?: string
+  error_code?: string
+  error_message?: string
+}
+
 // ── Auth ────────────────────────────────────────────────────────────────
 export interface User {
   id: string

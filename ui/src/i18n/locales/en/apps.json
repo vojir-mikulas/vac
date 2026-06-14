@@ -85,6 +85,7 @@
       "source": "Source",
       "build": "Build",
       "domain": "Domain",
+      "env": "Variables",
       "deploy": "Deploy"
     },
     "backToApps": "Back to apps",
@@ -111,6 +112,40 @@
       "label": "Custom domain",
       "note": "Point a <0>CNAME</0> (or A record) at this VPS, then add the domain from the app's <1>Domains</1> tab after the first deploy — certificates are issued on the first request."
     },
+    "env": {
+      "title": "Environment variables",
+      "subtitle": "Optional. Set what your app needs before its first deploy — load the repo's .env.example, paste a .env, or add them by hand.",
+      "loadExample": "Load from .env.example",
+      "paste": "Paste .env",
+      "addVariable": "Add variable",
+      "loaded_one": "Loaded {{count}} variable from {{file}}",
+      "loaded_other": "Loaded {{count}} variables from {{file}}",
+      "pasted_one": "Added {{count}} variable",
+      "pasted_other": "Added {{count}} variables",
+      "notFound": "No .env.example found in this repository — add variables manually below.",
+      "unreadable": {
+        "title": "Couldn't read the repository",
+        "body": "This looks like a private repo. Its deploy key doesn't exist yet, so the .env.example can't be read here. Add variables manually now, or load them from the app's Variables tab once the deploy key is registered."
+      },
+      "loadFailed": "Couldn't read .env.example",
+      "saveFailed": "App created, but saving variables failed",
+      "empty": "No variables yet — load, paste, or add them.",
+      "hint": "Secrets (the lock icon) are stored encrypted and never shown again. You can edit these later in the app's Variables tab.",
+      "keyPlaceholder": "KEY",
+      "valuePlaceholder": "value",
+      "keyAria": "Variable name, row {{index}}",
+      "valueAria": "Value, row {{index}}",
+      "makeSecret": "Mark as secret (write-only)",
+      "makePlain": "Mark as plain text",
+      "delete": "Remove variable",
+      "pastePrompt": "Paste the contents of a .env file. Blank lines and # comments are ignored.",
+      "pastePlaceholder": "DATABASE_URL=postgres://…\nAPI_KEY=…",
+      "autoMark": "Auto-mark credential-looking keys as secret",
+      "pasteParsed_one": "{{count}} variable parsed",
+      "pasteParsed_other": "{{count}} variables parsed",
+      "pasteImport_one": "Add {{count}} variable",
+      "pasteImport_other": "Add {{count}} variables"
+    },
     "review": {
       "title": "Review & deploy",
       "subtitle": "Create the app, verify access, then run the first deploy — all here.",
@@ -118,7 +153,10 @@
       "source": "Source",
       "branch": "Branch",
       "build": "Build",
-      "domain": "Domain"
+      "domain": "Domain",
+      "env": "Variables",
+      "envCount_one": "{{count}} variable",
+      "envCount_other": "{{count}} variables"
     },
     "summary": {
       "auto": "Auto-detect",
@@ -150,11 +188,26 @@
   },
   "buildSource": {
     "kinds": {
-      "auto": { "label": "Auto-detect", "hint": "compose → Dockerfile → React" },
-      "compose": { "label": "Compose", "hint": "docker compose stack" },
-      "dockerfile": { "label": "Dockerfile", "hint": "single Dockerfile build" },
-      "framework": { "label": "Framework", "hint": "React (more soon)" },
-      "static": { "label": "Static", "hint": "serve a built directory" }
+      "auto": {
+        "label": "Auto-detect",
+        "hint": "compose → Dockerfile → React"
+      },
+      "compose": {
+        "label": "Compose",
+        "hint": "docker compose stack"
+      },
+      "dockerfile": {
+        "label": "Dockerfile",
+        "hint": "single Dockerfile build"
+      },
+      "framework": {
+        "label": "Framework",
+        "hint": "React (more soon)"
+      },
+      "static": {
+        "label": "Static",
+        "hint": "serve a built directory"
+      }
     },
     "detected": "detected",
     "soon": "soon",
@@ -162,6 +215,7 @@
     "composePath": "Compose file path",
     "dockerfilePath": "Dockerfile path",
     "relativeToRoot": "Relative to the repo root.",
+    "composeDetected": "Detected {{path}} in the repo.",
     "framework": "Framework",
     "buildCommand": "Build command",
     "buildCommandHint": "Runs in the build stage. Leave empty for the default.",

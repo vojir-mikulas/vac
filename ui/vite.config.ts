@@ -29,12 +29,23 @@ function esToolkitCompatEsm(): Plugin {
       if (!match) return null
       const name = match[1]
       // Resolve the real CJS wrapper, then read it to learn the dist subpath
-      // (`object/`, `array/`, …) so we can point at the sibling `.mjs`.
+      // (`object/`, `array/`, …) so we can point at the sibling `.mjs`. If any
+      // of this stops matching (e.g. a future es-toolkit restructures its
+      // wrappers), FAIL THE BUILD rather than silently falling back to the
+      // broken CJS interop — a silent regression is exactly how this bug shipped.
       const resolved = await this.resolve(source, importer, { skipSelf: true })
-      if (!resolved) return null
+      if (!resolved) {
+        this.error(`[es-toolkit-compat-esm] could not resolve ${source}`)
+      }
       const wrapper = readFileSync(resolved.id, 'utf8')
       const rel = /require\((['"])(\.\.\/dist\/compat\/.+?)\.js\1\)/.exec(wrapper)
-      if (!rel) return null
+      if (!rel) {
+        this.error(
+          `[es-toolkit-compat-esm] ${source} no longer looks like a CJS re-export wrapper ` +
+            `(${resolved.id}). The es-toolkit layout changed — update this plugin or the ` +
+            `recharts charts will crash in the production build.`,
+        )
+      }
       const mjs = path.resolve(path.dirname(resolved.id), `${rel[2]}.mjs`)
       return `${VIRTUAL_PREFIX}${name}:${mjs}`
     },

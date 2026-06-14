@@ -262,6 +262,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				// export one as a spec. /import is a distinct static path; it does
 				// not collide with POST "/" or the "/{id}" routes below.
 				r.Post("/import", handler.ImportApp(s, box, syncer))
+				// Probe a repo for a .env.example so the new-app wizard can pre-fill
+				// env vars. Static path; clones without a key (public repos only).
+				r.Post("/env-example", handler.EnvExample(nil))
+				// Probe a repo for a compose file so the wizard can pre-fill the
+				// compose path. Static path; clones without a key (public repos only).
+				r.Post("/detect-compose", handler.DetectCompose(nil))
 				r.Get("/{id}", handler.GetApp(s, addonCatalog))
 				r.Get("/{id}/export", handler.ExportApp(s, box))
 				r.Patch("/{id}", handler.UpdateApp(s, addonCatalog))

@@ -172,7 +172,6 @@ function Metric({ label, value }: { label: string; value: string }) {
 function ConfigureDialog({ appId, service }: { appId: string; service: Service }) {
   const { t } = useTranslation('app-detail')
   const [open, setOpen] = useState(false)
-  const [exposedPort, setExposedPort] = useState(service.exposed_port?.toString() ?? '')
   const [internalPort, setInternalPort] = useState(service.internal_port?.toString() ?? '')
   const [healthPath, setHealthPath] = useState(service.health_path ?? '')
   const update = useUpdateService(appId)
@@ -182,7 +181,6 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
       {
         name: service.name,
         input: {
-          exposed_port: exposedPort ? Number(exposedPort) : undefined,
           internal_port: internalPort ? Number(internalPort) : undefined,
           health_path: healthPath || undefined,
         },
@@ -211,13 +209,10 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="exposed">{t('serviceCard.exposedPort')}</Label>
-            <Input
-              id="exposed"
-              inputMode="numeric"
-              value={exposedPort}
-              onChange={(e) => setExposedPort(e.target.value)}
-            />
+            <Label>{t('serviceCard.exposedPort')}</Label>
+            <p className="font-mono text-sm tabular-nums">
+              {service.exposed_port ?? t('serviceCard.exposedPortNone')}
+            </p>
             <p className="text-xs text-muted-foreground">{t('serviceCard.exposedPortHint')}</p>
           </div>
           <div className="grid gap-2">

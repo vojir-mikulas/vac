@@ -13,8 +13,35 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
+
+// envExampleCandidates are the conventional "template" env filenames we probe
+// for at a repo's root, in priority order. The first one present wins.
+var envExampleCandidates = []string{
+	".env.example",
+	".env.sample",
+	".env.template",
+	".env.dist",
+	"example.env",
+}
+
+// maxEnvExampleBytes caps how much of a candidate file we read back — these
+// files are tiny by nature, so a larger one is almost certainly not an env
+// template, and we never want to stream an arbitrary repo file to the client.
+const maxEnvExampleBytes = 256 * 1024
+
+// composeCandidates are the conventional compose filenames we probe for at a
+// repo's root, in the same priority order package compose uses for deploy-time
+// auto-detection. Kept in sync by hand: gitcli stays free of a dependency on
+// the higher-level compose package (same trade-off as envExampleCandidates).
+var composeCandidates = []string{
+	"compose.yaml",
+	"compose.yml",
+	"docker-compose.yml",
+	"docker-compose.yaml",
+}
 
 // Typed errors so the test-connection handler can render targeted messages.
 var (
@@ -110,6 +137,66 @@ func HeadCommit(ctx context.Context, dest string) (sha, message string, err erro
 		message = strings.TrimSpace(lines[1])
 	}
 	return sha, message, nil
+}
+
+// ReadEnvExample shallow-clones gitURL into a throwaway temp dir and returns the
+// first env-example file found at the repo root (its name + contents). A repo
+// with no such file yields ("", nil, nil) — a normal "nothing to import", not an
+// error. Clone failures (auth, missing repo/branch, network) come back as the
+// typed errors so callers can render targeted guidance. Pass sshKeyPath="" for
+// public repos; the new-app wizard uses this before a deploy key exists, so
+// private SSH repos surface ErrAuth and the UI falls back to manual entry.
+func ReadEnvExample(ctx context.Context, gitURL, branch, sshKeyPath string) (string, []byte, error) {
+	tmp, err := os.MkdirTemp("", "vac-envex-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("gitcli: temp dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
+
+	// Clone requires a non-existent dest, so clone into a child of the temp dir.
+	repo := filepath.Join(tmp, "repo")
+	if err := Clone(ctx, gitURL, repo, branch, sshKeyPath); err != nil {
+		return "", nil, err
+	}
+	for _, name := range envExampleCandidates {
+		b, err := os.ReadFile(filepath.Join(repo, name))
+		if err != nil {
+			continue
+		}
+		if len(b) > maxEnvExampleBytes {
+			b = b[:maxEnvExampleBytes]
+		}
+		return name, b, nil
+	}
+	return "", nil, nil
+}
+
+// DetectCompose shallow-clones gitURL into a throwaway temp dir and returns the
+// first conventional compose filename present at the repo root (e.g.
+// "docker-compose.yml"), or "" when the repo has none — a normal "nothing to
+// pre-fill", not an error. Clone failures (auth, missing repo/branch, network)
+// come back as the typed errors so callers can render targeted guidance. Like
+// ReadEnvExample this runs in the new-app wizard before a deploy key exists, so
+// pass sshKeyPath="" for public repos; private SSH repos surface ErrAuth and the
+// UI falls back to the manual path input.
+func DetectCompose(ctx context.Context, gitURL, branch, sshKeyPath string) (string, error) {
+	tmp, err := os.MkdirTemp("", "vac-compose-*")
+	if err != nil {
+		return "", fmt.Errorf("gitcli: temp dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
+
+	// Clone requires a non-existent dest, so clone into a child of the temp dir.
+	repo := filepath.Join(tmp, "repo")
+	if err := Clone(ctx, gitURL, repo, branch, sshKeyPath); err != nil {
+		return "", err
+	}
+	for _, name := range composeCandidates {
+		if info, statErr := os.Stat(filepath.Join(repo, name)); statErr == nil && !info.IsDir() {
+			return name, nil
+		}
+	}
+	return "", nil
 }
 
 // run is the single os/exec entry point so the env handling is consistent.
