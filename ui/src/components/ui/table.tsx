@@ -5,7 +5,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
   return (
-    <ScrollArea data-slot="table-container" className="w-full" viewportClassName="relative">
+    <ScrollArea
+      data-slot="table-container"
+      className="w-full rounded-[inherit]"
+      viewportClassName="relative"
+    >
       <table
         data-slot="table"
         className={cn('w-full caption-bottom text-sm', className)}
