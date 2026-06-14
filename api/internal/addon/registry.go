@@ -35,6 +35,13 @@ type Template struct {
 	DependsOnDB string            `json:"depends_on_db"`
 	ComposeFile string            `json:"compose_file"`
 	DefaultEnv  map[string]string `json:"default_env"`
+	// HealthPaths declares the Caddy active-health-check path per service
+	// (service name → path) for templates whose root "/" isn't a 2xx. Grafana,
+	// for instance, 302-redirects "/" → "/login", which fails Caddy's 2xx-only
+	// active check and leaves the upstream down (503); "/api/health" is its
+	// unauthenticated 200 endpoint. The deploy pipeline applies these after the
+	// first deploy creates the service rows.
+	HealthPaths map[string]string `json:"health_paths"`
 }
 
 // Registry holds the parsed catalog. It also implements
@@ -90,6 +97,18 @@ func (r *Registry) List() []Template {
 func (r *Registry) Get(id string) (Template, bool) {
 	t, ok := r.templates[id]
 	return t, ok
+}
+
+// ServiceHealthPaths returns the template's declared per-service Caddy
+// health-check paths (service name → path), or nil if it declares none. The
+// deploy pipeline applies these after the first deploy so add-ons whose root
+// path isn't a 2xx (e.g. Grafana → 302) still pass Caddy's active health check.
+func (r *Registry) ServiceHealthPaths(templateID string) map[string]string {
+	t, ok := r.templates[templateID]
+	if !ok {
+		return nil
+	}
+	return t.HealthPaths
 }
 
 // Materialize copies a template's files (everything but the manifest) into

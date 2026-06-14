@@ -33,6 +33,22 @@ func TestRegistry_ListAndGet(t *testing.T) {
 	}
 }
 
+func TestRegistry_ServiceHealthPaths(t *testing.T) {
+	r, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	// Grafana 302-redirects "/" → /login (not 2xx), so it must declare an
+	// explicit Caddy health path or the upstream never goes healthy (503).
+	paths := r.ServiceHealthPaths("grafana")
+	if got := paths["grafana"]; got != "/api/health" {
+		t.Errorf("grafana health path = %q, want /api/health", got)
+	}
+	if r.ServiceHealthPaths("nope") != nil {
+		t.Error("ServiceHealthPaths returned non-nil for an unknown template")
+	}
+}
+
 func TestRegistry_Materialize(t *testing.T) {
 	r, err := NewRegistry()
 	if err != nil {

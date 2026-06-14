@@ -52,10 +52,15 @@ type Router interface {
 // TemplateMaterializer copies an add-on template's embedded files into the
 // deploy work dir, replacing the git clone for template-sourced apps (Track D /
 // D3). nil → template apps fail with a clear error. Implemented by
-// addon.Registry. This is the only deploy-pipeline touch in Track D: an additive
-// branch in the clone step, never a rewrite of build/up/health/route.
+// addon.Registry. The Track D deploy-pipeline touches stay additive: a clone-step
+// branch (Materialize) and a post-up seam that applies a template's declared
+// Caddy health-check paths (ServiceHealthPaths) — never a rewrite of
+// build/up/health/route.
 type TemplateMaterializer interface {
 	Materialize(templateID, destDir string) error
+	// ServiceHealthPaths returns the template's per-service Caddy health-check
+	// paths (service name → path), or nil if it declares none.
+	ServiceHealthPaths(templateID string) map[string]string
 }
 
 // Reconciler attaches runtime-log followers to an app's freshly-(re)created
@@ -378,6 +383,15 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		return err
 	}
 
+	// Apply any health-check paths the add-on template declares, now that the
+	// service rows exist. Without this, Caddy active-health-checks "/" — which
+	// for Grafana is a 302 → /login (not 2xx), so the upstream never goes
+	// healthy and every request 503s. Only fills services with no operator-set
+	// path, so a manual override via PatchAppService still sticks across redeploys.
+	if app.Source == store.AppSourceTemplate && app.TemplateID != nil && p.Templates != nil {
+		p.applyTemplateHealthPaths(ctx, app.ID, *app.TemplateID)
+	}
+
 	// Attach runtime-log followers to the freshly-(re)created containers now
 	// that their ids are persisted, so logs stream from the new generation.
 	if p.Reconciler != nil {
@@ -532,6 +546,32 @@ func (p *Pipeline) upsertServices(ctx context.Context, appID string, services []
 		}
 	}
 	return nil
+}
+
+// applyTemplateHealthPaths sets the Caddy active-health-check path for an add-on
+// template's services from its manifest, but only where the operator hasn't
+// already set one (HealthPath nil) — so a manual override survives redeploys.
+// Best-effort: a failure here is logged, not fatal (the deploy still proceeds).
+func (p *Pipeline) applyTemplateHealthPaths(ctx context.Context, appID, templateID string) {
+	paths := p.Templates.ServiceHealthPaths(templateID)
+	if len(paths) == 0 {
+		return
+	}
+	rows, err := p.Store.ListServicesForApp(ctx, appID)
+	if err != nil {
+		p.Logger.Warn("pipeline: list services for template health paths", "err", err)
+		return
+	}
+	for _, r := range rows {
+		path, ok := paths[r.ServiceName]
+		if !ok || path == "" || r.HealthPath != nil {
+			continue
+		}
+		hp := path
+		if _, err := p.Store.SetServiceConfig(ctx, appID, r.ServiceName, nil, nil, &hp); err != nil {
+			p.Logger.Warn("pipeline: set template health path", "service", r.ServiceName, "err", err)
+		}
+	}
 }
 
 // healthCheck probes each service with a published port. Services with no
