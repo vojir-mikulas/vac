@@ -105,6 +105,76 @@ func TestServiceExposedPorts(t *testing.T) {
 	}
 }
 
+func TestServicesWithVolumes(t *testing.T) {
+	cases := []struct {
+		name    string
+		compose string
+		want    map[string]bool
+	}{
+		{
+			name: "named volume marks the service stateful",
+			compose: `services:
+  db:
+    image: postgres:16
+    volumes:
+      - pgdata:/var/lib/postgresql/data`,
+			want: map[string]bool{"db": true},
+		},
+		{
+			name: "bind mount counts as persistent",
+			compose: `services:
+  app:
+    image: app
+    volumes:
+      - ./uploads:/srv/uploads`,
+			want: map[string]bool{"app": true},
+		},
+		{
+			name: "long syntax volume",
+			compose: `services:
+  db:
+    image: mariadb
+    volumes:
+      - type: volume
+        source: dbdata
+        target: /var/lib/mysql`,
+			want: map[string]bool{"db": true},
+		},
+		{
+			name: "docker socket alone is not persistent",
+			compose: `services:
+  proxy:
+    image: app
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock`,
+			want: map[string]bool{},
+		},
+		{
+			name: "service with no volumes is omitted",
+			compose: `services:
+  web:
+    image: nginx`,
+			want: map[string]bool{},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ServicesWithVolumes(writeCompose(t, tc.compose))
+			if err != nil {
+				t.Fatalf("ServicesWithVolumes: %v", err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+			for svc, persistent := range tc.want {
+				if got[svc] != persistent {
+					t.Errorf("service %q: got %v, want %v", svc, got[svc], persistent)
+				}
+			}
+		})
+	}
+}
+
 func TestPreflightRules(t *testing.T) {
 	cases := []struct {
 		name    string

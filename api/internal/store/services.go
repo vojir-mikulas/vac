@@ -23,20 +23,24 @@ type Service struct {
 	RestartCount   int
 	LastExitCode   *int
 	OOMKilledCount int
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// HasVolumes is true when the service declares a persistent volume (any
+	// volume mount other than the Docker socket). Recomputed from the compose
+	// file on every deploy; drives the dashboard's backup nudge.
+	HasVolumes bool
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 const serviceColumns = `id, app_id, service_name, container_id, exposed_port,
 	internal_port, health_path, status, restart_count, last_exit_code,
-	oom_killed_count, created_at, updated_at`
+	oom_killed_count, has_volumes, created_at, updated_at`
 
 func scanService(row pgx.Row) (Service, error) {
 	var svc Service
 	err := row.Scan(
 		&svc.ID, &svc.AppID, &svc.ServiceName, &svc.ContainerID, &svc.ExposedPort,
 		&svc.InternalPort, &svc.HealthPath, &svc.Status, &svc.RestartCount,
-		&svc.LastExitCode, &svc.OOMKilledCount, &svc.CreatedAt, &svc.UpdatedAt,
+		&svc.LastExitCode, &svc.OOMKilledCount, &svc.HasVolumes, &svc.CreatedAt, &svc.UpdatedAt,
 	)
 	return svc, err
 }
@@ -53,18 +57,19 @@ func scanService(row pgx.Row) (Service, error) {
 // acceptable today — the override exists mainly for repos that only `expose` a
 // port (detection returns 0, override preserved). Making overrides survive a
 // redeploy would need an explicit "operator-set" flag column.
-func (s *Store) UpsertService(ctx context.Context, appID, name string, containerID *string, exposedPort, internalPort *int, status string) (Service, error) {
+func (s *Store) UpsertService(ctx context.Context, appID, name string, containerID *string, exposedPort, internalPort *int, status string, hasVolumes bool) (Service, error) {
 	return scanService(s.pool.QueryRow(ctx, `
-		INSERT INTO services (app_id, service_name, container_id, exposed_port, internal_port, status)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO services (app_id, service_name, container_id, exposed_port, internal_port, status, has_volumes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (app_id, service_name) DO UPDATE
 			SET container_id  = EXCLUDED.container_id,
 			    exposed_port  = EXCLUDED.exposed_port,
 			    internal_port = COALESCE(EXCLUDED.internal_port, services.internal_port),
 			    status        = EXCLUDED.status,
+			    has_volumes   = EXCLUDED.has_volumes,
 			    updated_at    = NOW()
 		RETURNING `+serviceColumns,
-		appID, name, containerID, exposedPort, internalPort, status))
+		appID, name, containerID, exposedPort, internalPort, status, hasVolumes))
 }
 
 func (s *Store) GetService(ctx context.Context, appID, name string) (Service, error) {

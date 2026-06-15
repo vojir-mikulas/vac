@@ -507,6 +507,11 @@ func (p *Pipeline) upsertServices(ctx context.Context, appID string, services []
 	if eerr != nil {
 		p.Logger.Warn("pipeline: parse compose for exposed ports", "err", eerr)
 	}
+	// Which services declare a persistent volume — drives the backup nudge.
+	withVolumes, verr := compose.ServicesWithVolumes(composeFile)
+	if verr != nil {
+		p.Logger.Warn("pipeline: parse compose for volumes", "err", verr)
+	}
 	seen := make(map[string]bool, len(services))
 	for _, s := range services {
 		seen[s.Service] = true
@@ -531,7 +536,7 @@ func (p *Pipeline) upsertServices(ctx context.Context, appID string, services []
 			internalPtr = &internal
 		}
 		status := MapPsStateToServiceStatus(s.State)
-		if _, err := p.Store.UpsertService(ctx, appID, s.Service, cidPtr, portPtr, internalPtr, status); err != nil {
+		if _, err := p.Store.UpsertService(ctx, appID, s.Service, cidPtr, portPtr, internalPtr, status, withVolumes[s.Service]); err != nil {
 			return fmt.Errorf("upsert service %s: %w", s.Service, err)
 		}
 	}

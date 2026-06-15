@@ -19,7 +19,7 @@ func TestDomainsCRUD(t *testing.T) {
 	// A domain FKs to a concrete service (app_id, service_name).
 	cid := "c1"
 	port := 3000
-	if _, err := s.UpsertService(ctx, a.ID, "web", &cid, nil, &port, "running"); err != nil {
+	if _, err := s.UpsertService(ctx, a.ID, "web", &cid, nil, &port, "running", false); err != nil {
 		t.Fatalf("UpsertService: %v", err)
 	}
 
@@ -79,7 +79,7 @@ func TestDomainsCascadeOnServiceDelete(t *testing.T) {
 	ctx := context.Background()
 	a := testApp(t, s, "domains-cascade")
 	port := 8080
-	if _, err := s.UpsertService(ctx, a.ID, "web", nil, nil, &port, "running"); err != nil {
+	if _, err := s.UpsertService(ctx, a.ID, "web", nil, nil, &port, "running", false); err != nil {
 		t.Fatalf("UpsertService: %v", err)
 	}
 	if _, err := s.CreateDomain(ctx, a.ID, "web", "cascade.example.com", store.DomainTypeCustom); err != nil {

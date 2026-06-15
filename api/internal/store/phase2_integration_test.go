@@ -133,12 +133,15 @@ func TestServicesCRUD(t *testing.T) {
 	containerID := "abc123"
 	port := 8080
 	internalPort := 3000
-	svc, err := s.UpsertService(ctx, a.ID, "web", &containerID, &port, &internalPort, "deploying")
+	svc, err := s.UpsertService(ctx, a.ID, "web", &containerID, &port, &internalPort, "deploying", true)
 	if err != nil {
 		t.Fatalf("UpsertService insert: %v", err)
 	}
 	if svc.ServiceName != "web" || *svc.ContainerID != containerID || *svc.ExposedPort != port {
 		t.Errorf("unexpected: %+v", svc)
+	}
+	if !svc.HasVolumes {
+		t.Errorf("has_volumes not round-tripped: %+v", svc.HasVolumes)
 	}
 	if svc.InternalPort == nil || *svc.InternalPort != internalPort {
 		t.Errorf("internal_port not set: %+v", svc.InternalPort)
@@ -179,7 +182,7 @@ func TestServicesCRUD(t *testing.T) {
 	}
 
 	// Add a second service for the List path.
-	if _, err := s.UpsertService(ctx, a.ID, "worker", nil, nil, nil, "running"); err != nil {
+	if _, err := s.UpsertService(ctx, a.ID, "worker", nil, nil, nil, "running", false); err != nil {
 		t.Fatalf("UpsertService worker: %v", err)
 	}
 	list, err := s.ListServicesForApp(ctx, a.ID)

@@ -114,10 +114,10 @@ func TestListServiceProjects(t *testing.T) {
 	a := testApp(t, s, "svc-projects")
 	cid := "c1"
 	port := 8080
-	if _, err := s.UpsertService(ctx, a.ID, "web", &cid, &port, &port, "running"); err != nil {
+	if _, err := s.UpsertService(ctx, a.ID, "web", &cid, &port, &port, "running", false); err != nil {
 		t.Fatalf("upsert web: %v", err)
 	}
-	if _, err := s.UpsertService(ctx, a.ID, "worker", nil, nil, nil, "running"); err != nil {
+	if _, err := s.UpsertService(ctx, a.ID, "worker", nil, nil, nil, "running", false); err != nil {
 		t.Fatalf("upsert worker: %v", err)
 	}
 

@@ -230,7 +230,8 @@ func applyServices(ctx context.Context, st *store.Store, appID string, services 
 		_, err := st.GetService(ctx, appID, svc.Name)
 		switch {
 		case errors.Is(err, store.ErrNotFound):
-			if _, err := st.UpsertService(ctx, appID, svc.Name, nil, nil, svc.InternalPort, serviceStatusCreated); err != nil {
+			// has_volumes false here; recomputed from compose on the next deploy.
+			if _, err := st.UpsertService(ctx, appID, svc.Name, nil, nil, svc.InternalPort, serviceStatusCreated, false); err != nil {
 				return fmt.Errorf("portability: create service %q: %w", svc.Name, err)
 			}
 			if svc.HealthPath != nil {

@@ -24,6 +24,7 @@ type serviceDTO struct {
 	Status       string    `json:"status"`
 	RestartCount int       `json:"restart_count"`
 	LastExitCode *int      `json:"last_exit_code,omitempty"`
+	HasVolumes   bool      `json:"has_volumes"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -40,6 +41,7 @@ func toServiceDTO(s store.Service) serviceDTO {
 		Status:       s.Status,
 		RestartCount: s.RestartCount,
 		LastExitCode: s.LastExitCode,
+		HasVolumes:   s.HasVolumes,
 		CreatedAt:    s.CreatedAt,
 		UpdatedAt:    s.UpdatedAt,
 	}

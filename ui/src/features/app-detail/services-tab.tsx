@@ -58,7 +58,7 @@ export function ServicesTab({ appId }: { appId: string }) {
                 key={svc.id}
                 appId={appId}
                 service={svc}
-                noBackupWarning={managed && !backedUp.has(svc.name)}
+                noBackupWarning={managed && svc.has_volumes && !backedUp.has(svc.name)}
               />
             ))}
           </div>

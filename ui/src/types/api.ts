@@ -92,6 +92,8 @@ export interface Service {
   last_exit_code: number | null
   /** Times this service's container was OOM-killed (plan 06). */
   oom_killed_count: number
+  /** True when the service declares a persistent volume — gates the backup nudge. */
+  has_volumes: boolean
   created_at: string
   updated_at: string
 }

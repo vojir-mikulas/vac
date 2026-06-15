@@ -155,6 +155,40 @@ func ServiceExposedPorts(path string) (map[string]int, error) {
 	return out, nil
 }
 
+// ServicesWithVolumes reports, per service, whether it declares a persistent
+// volume — any volume mount other than the Docker socket (a control-plane bind,
+// not data). The deploy pipeline persists this so the dashboard can nudge
+// backups only on stateful services; a stateless web/API container is rebuilt
+// from git and has nothing to back up. Services with no persistent volume are
+// omitted (so the map doubles as a presence set).
+func ServicesWithVolumes(path string) (map[string]bool, error) {
+	views, err := parsePreflight(path)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(views))
+	for _, v := range views {
+		for _, vol := range v.volumes {
+			if volumeIsDockerSocket(vol) {
+				continue
+			}
+			out[v.name] = true
+			break
+		}
+	}
+	return out, nil
+}
+
+// volumeIsDockerSocket reports whether a raw compose volume entry
+// (source[:target[:opts]]) mounts the Docker socket.
+func volumeIsDockerSocket(vol string) bool {
+	src := vol
+	if i := strings.IndexByte(src, ':'); i >= 0 {
+		src = src[:i]
+	}
+	return strings.HasSuffix(strings.TrimSpace(src), "docker.sock")
+}
+
 // ---- richer parse pass (kept private; Service stays lean) ----
 
 type portMapping struct {
@@ -308,11 +342,11 @@ func (v preflightView) findings() []Finding {
 
 	// Docker socket mount.
 	for _, vol := range v.volumes {
-		src := vol
-		if i := strings.IndexByte(src, ':'); i >= 0 {
-			src = src[:i]
-		}
-		if strings.HasSuffix(strings.TrimSpace(src), "docker.sock") {
+		if volumeIsDockerSocket(vol) {
+			src := vol
+			if i := strings.IndexByte(src, ':'); i >= 0 {
+				src = src[:i]
+			}
 			add(SeverityError, CodeDockerSocketMount, fmt.Sprintf(
 				"service %q mounts the Docker socket (%s) — this grants host-root to app code on the control box; remove the docker.sock mount.", v.name, strings.TrimSpace(src)))
 			break

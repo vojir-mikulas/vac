@@ -18,7 +18,12 @@ function svc(
   name: string,
   status: ServiceStatus,
   internalPort: number | null,
-  opts: { restartCount?: number; lastExit?: number | null; healthPath?: string | null } = {},
+  opts: {
+    restartCount?: number
+    lastExit?: number | null
+    healthPath?: string | null
+    hasVolumes?: boolean
+  } = {},
 ): Service {
   return {
     id: uid('svc'),
@@ -32,6 +37,7 @@ function svc(
     restart_count: opts.restartCount ?? 0,
     last_exit_code: opts.lastExit ?? null,
     oom_killed_count: 0,
+    has_volumes: opts.hasVolumes ?? false,
     created_at: daysAgoISO(12),
     updated_at: minutesAgoISO(3),
   }
@@ -142,7 +148,7 @@ export function buildInitialState(): MockState {
     services: [
       svc(a1, 'web', 'running', 3000),
       svc(a1, 'worker', 'running', null),
-      svc(a1, 'redis', 'running', 6379, { healthPath: null }),
+      svc(a1, 'redis', 'running', 6379, { healthPath: null, hasVolumes: true }),
     ],
     env: [
       { key: 'NODE_ENV', value: 'production', sensitive: false },
