@@ -1,4 +1,5 @@
-import { AlertTriangle, CheckCircle2, ShieldAlert, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronRight, ShieldAlert, XCircle } from 'lucide-react'
+import { useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
@@ -51,9 +52,27 @@ const SEVERITY_STATUS: Record<SecuritySeverity, string> = {
   error: 'error',
 }
 
+// Findings sort: errors first, then warnings — worst-first so attention-needing
+// rows lead the list.
+const SEVERITY_RANK: Record<SecuritySeverity, number> = { error: 0, warn: 1, ok: 2 }
+
+function findingKey(f: PostureFinding) {
+  return f.code + (f.app ?? '') + (f.service ?? '')
+}
+
 function PosturePanel() {
   const { t } = useTranslation('security')
   const { data, isLoading, isError, refetch } = useSecurityPosture()
+
+  // Issues (warn/error) show up front; passing checks are tucked into a
+  // collapsed disclosure so they don't drown out what needs attention.
+  const issues = data
+    ? data
+        .filter((f) => f.severity !== 'ok')
+        .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
+    : []
+  const passing = data ? data.filter((f) => f.severity === 'ok') : []
+
   return (
     <>
       <SectionHeader>{t('posture.heading')}</SectionHeader>
@@ -66,18 +85,54 @@ function PosturePanel() {
       ) : (
         <>
           <PostureSummary findings={data} />
-          <Card className="gap-0 p-0">
-            {data.map((f, i) => (
-              <PostureRow
-                key={f.code + (f.app ?? '') + (f.service ?? '')}
-                finding={f}
-                first={i === 0}
-              />
-            ))}
-          </Card>
+          {issues.length > 0 ? (
+            <Card className="gap-0 p-0">
+              {issues.map((f, i) => (
+                <PostureRow key={findingKey(f)} finding={f} first={i === 0} />
+              ))}
+            </Card>
+          ) : null}
+          {passing.length > 0 ? (
+            <PassingChecks findings={passing} className={issues.length > 0 ? 'mt-3' : ''} />
+          ) : null}
         </>
       )}
     </>
+  )
+}
+
+// PassingChecks collapses the green/ok rows behind a single clickable header so
+// they stack out of the way — an operator can drill in, but they don't dominate
+// the panel. Collapsed by default.
+function PassingChecks({
+  findings,
+  className,
+}: {
+  findings: PostureFinding[]
+  className?: string
+}) {
+  const { t } = useTranslation('security')
+  const [open, setOpen] = useState(false)
+  return (
+    <Card className={`gap-0 p-0 ${className ?? ''}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-surface-2"
+      >
+        <CheckCircle2 className="size-4 shrink-0 text-ok" />
+        <span className="flex-1 text-sm font-medium">
+          {t('posture.passing.label', { count: findings.length })}
+        </span>
+        <ChevronRight
+          className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`}
+        />
+      </button>
+      {open
+        ? findings.map((f) => <PostureRow key={findingKey(f)} finding={f} first={false} />)
+        : null}
+    </Card>
   )
 }
 

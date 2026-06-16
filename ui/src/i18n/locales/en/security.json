@@ -19,6 +19,10 @@
       "checksPassing_other": "{{count}} checks passing",
       "errors_one": "{{count}} error",
       "errors_other": "{{count}} errors"
+    },
+    "passing": {
+      "label_one": "{{count}} passing check",
+      "label_other": "{{count}} passing checks"
     }
   },
   "traffic": {
