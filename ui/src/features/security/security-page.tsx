@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, ChevronRight, ShieldAlert, XCircle } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
@@ -114,7 +115,7 @@ function PassingChecks({
   const { t } = useTranslation('security')
   const [open, setOpen] = useState(false)
   return (
-    <Card className={`gap-0 p-0 ${className ?? ''}`}>
+    <Card className={`gap-0 overflow-hidden p-0 ${className ?? ''}`}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -129,9 +130,22 @@ function PassingChecks({
           className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`}
         />
       </button>
-      {open
-        ? findings.map((f) => <PostureRow key={findingKey(f)} finding={f} first={false} />)
-        : null}
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="content"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            {findings.map((f) => (
+              <PostureRow key={findingKey(f)} finding={f} first={false} />
+            ))}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </Card>
   )
 }
