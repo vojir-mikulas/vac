@@ -89,7 +89,7 @@ func TestWriteResourceOverride(t *testing.T) {
 	path := filepath.Join(d, "compose.yaml")
 	mustWrite(t, path, "services:\n  web:\n    image: nginx\n  worker:\n    image: busybox\n")
 
-	ovr, err := compose.WriteResourceOverride(path, 256)
+	ovr, err := compose.WriteResourceOverride(path, 256, 1.5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestWriteResourceOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"web:", "worker:", "mem_limit: 256m"} {
+	for _, want := range []string{"web:", "worker:", "mem_limit: 256m", "cpus: 1.5"} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("override missing %q:\n%s", want, body)
 		}
@@ -116,15 +116,38 @@ func TestWriteResourceOverride(t *testing.T) {
 	}
 }
 
+func TestWriteResourceOverride_CPUOnly(t *testing.T) {
+	t.Parallel()
+	d := t.TempDir()
+	path := filepath.Join(d, "compose.yaml")
+	mustWrite(t, path, "services:\n  web:\n    image: nginx\n")
+	// CPU set, no mem: the override exists and carries cpus but not mem_limit.
+	ovr, err := compose.WriteResourceOverride(path, 0, 0.5)
+	if err != nil || ovr == "" {
+		t.Fatalf("got (%q, %v), want a path and nil error", ovr, err)
+	}
+	body, err := os.ReadFile(ovr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "cpus: 0.5") {
+		t.Errorf("override missing cpus:\n%s", body)
+	}
+	if strings.Contains(string(body), "mem_limit") {
+		t.Errorf("override should not carry mem_limit when unset:\n%s", body)
+	}
+}
+
 func TestWriteResourceOverride_NoLimitWritesNothing(t *testing.T) {
 	t.Parallel()
 	d := t.TempDir()
 	path := filepath.Join(d, "compose.yaml")
 	mustWrite(t, path, "services:\n  web:\n    image: nginx\n")
-	for _, limit := range []int{0, -5} {
-		ovr, err := compose.WriteResourceOverride(path, limit)
+	// Both limits non-positive → nothing written.
+	for _, mem := range []int{0, -5} {
+		ovr, err := compose.WriteResourceOverride(path, mem, 0)
 		if err != nil || ovr != "" {
-			t.Errorf("limit %d: got (%q, %v), want (\"\", nil)", limit, ovr, err)
+			t.Errorf("mem %d: got (%q, %v), want (\"\", nil)", mem, ovr, err)
 		}
 	}
 }

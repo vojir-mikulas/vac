@@ -45,9 +45,25 @@ type Config struct {
 	WebhookRateWindow time.Duration `yaml:"webhook_rate_window"`
 
 	// Phase 2: deployment pipeline configuration.
-	WorkDir               string        `yaml:"work_dir"`
-	DockerSocket          string        `yaml:"docker_socket"`
-	ImageKeepCount        int           `yaml:"image_keep_count"`
+	WorkDir        string `yaml:"work_dir"`
+	DockerSocket   string `yaml:"docker_socket"`
+	ImageKeepCount int    `yaml:"image_keep_count"`
+	// AppCPULimit caps the CPUs each user app container may use, applied as a
+	// `cpus:` compose override at deploy time (Track B resource guardrails). It's
+	// a global default — every service of every app gets the same ceiling — so one
+	// runaway container can't pin all cores and starve the 256 MiB control plane.
+	// 0 (default) disables it, preserving unlimited CPU. Fractional values are
+	// allowed (e.g. 1.5). A per-app, UI-settable limit (like mem_limit) is future
+	// work; this is the box-wide safety knob. Pairs with App.MemLimitMB.
+	AppCPULimit float64 `yaml:"app_cpu_limit"`
+	// BuildCache governs whether VAC actively manages the BuildKit layer cache.
+	// On (default), the nightly pruner bounds the daemon build cache to
+	// BuildCacheMaxGB so layer reuse across deploys is reliable and disk stays
+	// capped. Off restores today's behavior — the cache is left entirely to
+	// Docker's own GC. This is a disk concern only; the prune runs as a nightly
+	// subprocess, so the idle-RAM budget is untouched either way.
+	BuildCache            bool          `yaml:"build_cache"`
+	BuildCacheMaxGB       int           `yaml:"build_cache_max_gb"`
 	HealthCheckTimeout    time.Duration `yaml:"health_check_timeout"`
 	HealthCheckRetries    int           `yaml:"health_check_retries"`
 	CrashLoopThreshold    int           `yaml:"crash_loop_threshold"`
@@ -183,6 +199,8 @@ func Default() Config {
 		WorkDir:               "/var/lib/vac/repos",
 		DockerSocket:          "/var/run/docker.sock",
 		ImageKeepCount:        3,
+		BuildCache:            true,
+		BuildCacheMaxGB:       5,
 		HealthCheckTimeout:    30 * time.Second,
 		HealthCheckRetries:    5,
 		CrashLoopThreshold:    5,
@@ -322,6 +340,19 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("VAC_IMAGE_KEEP_COUNT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.ImageKeepCount = n
+		}
+	}
+	if v := os.Getenv("VAC_BUILD_CACHE"); v != "" {
+		cfg.BuildCache = v == "true" || v == "1"
+	}
+	if v := os.Getenv("VAC_BUILD_CACHE_MAX_GB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.BuildCacheMaxGB = n
+		}
+	}
+	if v := os.Getenv("VAC_APP_CPU_LIMIT"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+			cfg.AppCPULimit = f
 		}
 	}
 	if v := os.Getenv("VAC_HEALTH_CHECK_TIMEOUT"); v != "" {

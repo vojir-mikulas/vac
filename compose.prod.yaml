@@ -1,5 +1,5 @@
 # Production compose for VAC — pulls prebuilt images from the registry instead
-# of building from source. Used by the `curl get.vac.vojir.io | sh` installer.
+# of building from source. Used by the `curl get.vac.vojir.io | sudo sh` installer.
 #
 # Image refs are overridable:
 #   VAC_REGISTRY  (default ghcr.io/vojir-mikulas)
@@ -93,6 +93,11 @@ services:
       # box. GOMEMLIMIT is a soft target; the limit below is the hard wall.
       GOMEMLIMIT: "${VAC_GOMEMLIMIT:-188743680}" # 180 MiB
       GOGC: "${VAC_GOGC:-100}"
+      # Box-wide CPU ceiling per user app container, applied as a `cpus:` compose
+      # override at deploy. Empty/0 (default) = unlimited; set e.g. "1.5" so one
+      # runaway app can't pin every core and starve the control plane. Global
+      # knob — a per-app, UI-settable limit (like memory) is future work.
+      VAC_APP_CPU_LIMIT: "${VAC_APP_CPU_LIMIT:-}"
     ports:
       - "${VAC_HOST_PORT:-9393}:9393"
     volumes:
@@ -108,6 +113,19 @@ services:
     # headroom above the 180 MiB soft target so a transient spike doesn't OOM,
     # while still catching a real regression. Tune via VAC_API_MEM_LIMIT.
     mem_limit: ${VAC_API_MEM_LIMIT:-256m}
+    # Liveness probe — deliberately not `curl -f`: any HTTP response (incl. the
+    # 503 /health returns when a dependency is down) means the API process is
+    # responsive, which is what we test here. A hang or crash yields no response
+    # and trips unhealthy, making `docker ps` / external monitors honest. NOTE:
+    # `restart: unless-stopped` only restarts on process EXIT, not on unhealthy —
+    # surfacing a hang as unhealthy is the win; auto-restart-on-hang needs an
+    # autoheal sidecar (not added here). start_period covers boot migrations.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:9393/health || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
 
   vac-proxy:
     image: ${VAC_REGISTRY:-ghcr.io/vojir-mikulas}/vac-proxy:${VAC_VERSION:-latest}
@@ -121,6 +139,16 @@ services:
       - caddy_data:/data
       - caddy_config:/config
       - vac_caddy_logs:/var/log/caddy
+    # Liveness probe against the admin API (busybox wget — caddy:2-alpine has no
+    # curl). If Caddy crashes or wedges, all ingress is down while vac-api still
+    # looks up; this makes that visible instead of silent. Admin binds
+    # 0.0.0.0:2019 (see proxy/Caddyfile), so loopback reaches it.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2019/config/ || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     networks:
       - default
       - vac-edge

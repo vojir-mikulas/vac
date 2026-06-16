@@ -26,7 +26,7 @@ Built to stay out of your way: **< 200 MB RAM idle** (excluding the database).
 On a fresh Linux VPS with Docker installed:
 
 ```sh
-curl -sSL get.vac.vojir.io | sh
+curl -sSL get.vac.vojir.io | sudo sh
 ```
 
 The installer walks you through a short setup (domain, managed services, sudo-free access) and

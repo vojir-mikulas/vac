@@ -124,9 +124,11 @@ func TestPruneOnce_PrunesDeploymentsWithConfiguredKeep(t *testing.T) {
 // fakeImagePruner records RemoveImage calls and serves a fixed image list per
 // (project, service).
 type fakeImagePruner struct {
-	byKey   map[string][]dockercli.Image
-	removed []string
-	inUse   map[string]bool // ids that fail to remove ("image in use")
+	byKey         map[string][]dockercli.Image
+	removed       []string
+	inUse         map[string]bool // ids that fail to remove ("image in use")
+	cacheCalls    []int64         // maxBytes passed to BuildCachePrune
+	cachePruneErr error
 }
 
 func (f *fakeImagePruner) ListImages(_ context.Context, project, service string) ([]dockercli.Image, error) {
@@ -139,6 +141,11 @@ func (f *fakeImagePruner) RemoveImage(_ context.Context, id string) error {
 	}
 	f.removed = append(f.removed, id)
 	return nil
+}
+
+func (f *fakeImagePruner) BuildCachePrune(_ context.Context, maxBytes int64) error {
+	f.cacheCalls = append(f.cacheCalls, maxBytes)
+	return f.cachePruneErr
 }
 
 func TestPruneImages_KeepsNewestNAndIgnoresInUse(t *testing.T) {
@@ -166,5 +173,41 @@ func TestPruneImages_KeepsNewestNAndIgnoresInUse(t *testing.T) {
 	// and img-1 (removed). So only img-1 lands in removed.
 	if len(fip.removed) != 1 || fip.removed[0] != "img-1" {
 		t.Errorf("removed = %v, want [img-1] (img-2 is in-use and skipped)", fip.removed)
+	}
+}
+
+func TestPruneBuildCache_CalledWhenCapSet(t *testing.T) {
+	s := &fakeStore{}
+	fip := &fakeImagePruner{}
+	const cap = int64(5) << 30
+	p := retention.New(s, fip, retention.Config{BuildCacheMaxBytes: cap}, nil)
+	if err := p.PruneOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(fip.cacheCalls) != 1 || fip.cacheCalls[0] != cap {
+		t.Errorf("cacheCalls = %v, want [%d]", fip.cacheCalls, cap)
+	}
+}
+
+func TestPruneBuildCache_SkippedWhenCapUnset(t *testing.T) {
+	s := &fakeStore{}
+	fip := &fakeImagePruner{}
+	p := retention.New(s, fip, retention.Config{}, nil) // BuildCacheMaxBytes == 0
+	if err := p.PruneOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(fip.cacheCalls) != 0 {
+		t.Errorf("cacheCalls = %v, want none (cap unset disables the pass)", fip.cacheCalls)
+	}
+}
+
+func TestPruneBuildCache_ErrorSwallowed(t *testing.T) {
+	s := &fakeStore{}
+	fip := &fakeImagePruner{cachePruneErr: errors.New("buildx unavailable")}
+	p := retention.New(s, fip, retention.Config{BuildCacheMaxBytes: 1 << 30}, nil)
+	// A build-cache prune failure must not fail PruneOnce — it runs after the DB
+	// passes and is best-effort.
+	if err := p.PruneOnce(context.Background()); err != nil {
+		t.Fatalf("PruneOnce should swallow build-cache errors, got %v", err)
 	}
 }

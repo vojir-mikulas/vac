@@ -46,3 +46,5 @@ coverage/
 
 # AI agent tooling (skills are restored from skills-lock.json; not redistributed)
 .agents/
+
+/docs/ideas/

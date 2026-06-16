@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -117,6 +118,7 @@ func (l AccessLine) UserAgent() string {
 // ctx is cancelled.
 func (c *Collector) Run(ctx context.Context) {
 	c.refreshHosts(ctx)
+	c.selfCheck()
 	go Tail(ctx, c.logPath, time.Second, c.handleLine)
 
 	ticker := time.NewTicker(c.flushIval)
@@ -135,6 +137,31 @@ func (c *Collector) Run(ctx context.Context) {
 			c.flush(ctx)
 		}
 	}
+}
+
+// selfCheck logs one line at startup confirming the tailer can actually read
+// the access log and how many hosts the map resolved. Without it the pipeline
+// fails silently: the tailer swallows a permission/missing-file error (the file
+// is written 0600 by root-Caddy, read by the non-root vac-api user), so a
+// broken setup is indistinguishable from genuinely idle traffic.
+func (c *Collector) selfCheck() {
+	c.mu.Lock()
+	hostCount := len(c.hosts)
+	c.mu.Unlock()
+
+	f, err := os.Open(c.logPath) //nolint:gosec // path is operator-controlled config
+	if err != nil {
+		c.logger.Error("reqmetrics: access log unreadable — request metrics will be empty",
+			"path", c.logPath, "err", err, "hosts", hostCount)
+		return
+	}
+	defer func() { _ = f.Close() }()
+	var size int64
+	if st, err := f.Stat(); err == nil {
+		size = st.Size()
+	}
+	c.logger.Info("reqmetrics: tailing access log",
+		"path", c.logPath, "size", size, "hosts", hostCount)
 }
 
 // SetObserver registers a hook called with every parsed access line. Set once

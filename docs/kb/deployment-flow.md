@@ -1,4 +1,4 @@
-<!-- generated from commit def192a on 2026-06-04 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy}/ changed, treat as possibly stale -->
+<!-- generated from commit 8a77a60 on 2026-06-16 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy}/ changed, treat as possibly stale -->
 
 # Deployment flow — git → build → run → route
 
@@ -7,6 +7,15 @@ The end-to-end path a deploy takes. Symbol names are given at package/function l
 deployment shows at each step is in **bold**.
 
 ## 0. Trigger → queue
+
+> **Wizard pre-flight (before any deploy).** The new-app wizard can pre-fill itself by probing
+> the repo: `POST /api/apps/detect-compose` (`handler.DetectCompose` → `gitcli.DetectCompose`)
+> finds a conventional compose file, and `POST /api/apps/env-example`
+> (`handler.EnvExample` → `gitcli.ReadEnvExample`) reads a `.env.example`. Both clone *without*
+> a deploy key (the app and its key don't exist yet), so public HTTPS repos resolve while
+> private SSH repos return `auth_failed` and the UI falls back to manual entry. Both always
+> answer `200` with the outcome in the body.
+
 
 - `POST /api/apps/{id}/deployments` → handler `TriggerDeployment` in
   `server/handler/deployments.go`. It validates the app, inserts a deployment row
@@ -71,23 +80,28 @@ deployment shows at each step is in **bold**.
 
 ## 3. Build (**building**)
 
-- `dockercli/compose.go` `Compose.Build` runs
-  `docker compose -p vac-{slug} -f {composeFile} build` with BuildKit enabled. Project name is
-  always `vac-{slug}` so VAC stacks never collide with manually-managed compose projects on the
-  host.
+- `dockercli` `Compose.Build` runs `docker compose -p vac-{slug} -f {composeFile} build` with
+  BuildKit enabled. Project name is always `vac-{slug}` so VAC stacks never collide with
+  manually-managed compose projects on the host.
+- **Build cache** is left to BuildKit for reuse across deploys; the nightly `retention` pruner
+  caps it at `BuildCacheMaxGB` via `dockercli.Compose.BuildCachePrune` (toggle with
+  `VAC_BUILD_CACHE`), keeping disk bounded without touching the idle-RAM budget.
 - Build output is streamed line-by-line through the deploy log writer (`deploy/loggers.go`
   `LogWriter`): persisted to `deployment_logs` and published live to the WS topic
   `build:{deploymentID}`.
 
 ## 4. Up (**deploying**)
 
-- Env vars are decrypted and rendered to an env file (when a `crypto.Box` is available), and a
-  per-app RAM cap is layered on via `compose.WriteResourceOverride` (an extra `-f` file, never
-  rewriting the user's compose). Then `Compose.Up` runs
+- Env vars are decrypted and rendered to an env file (when a `crypto.Box` is available), and
+  per-app resource caps are layered on via `compose.WriteResourceOverride` — `mem_limit` from
+  the per-app `App.MemLimitMB` and/or `cpus` from the box-wide `Pipeline.AppCPULimit`
+  (`VAC_APP_CPU_LIMIT`, 0 = off) — written as an extra `-f` file, never rewriting the user's
+  compose. Then `Compose.Up` runs
   `docker compose -p vac-{slug} --env-file … up -d --remove-orphans`.
 - `Compose.Ps` lists the resulting containers; the pipeline upserts a `services` row per
-  service (`store.UpsertService`) recording container id, internal/published ports, and a
-  status mapped from the Docker state.
+  service (`store.UpsertService`) recording container id, internal/published ports, a status
+  mapped from the Docker state, and `has_volumes` (from `compose.ServicesWithVolumes` — drives
+  the dashboard's backup nudge for stateful services).
 
 ## 5. Attach + route (**health-checking**)
 
@@ -96,6 +110,12 @@ deployment shows at each step is in **bold**.
   alias `{slug}--{service}` (`NetworkConnect`) and pushes a Caddy route via the `caddy` admin
   client (`PutRoute`): host-match on the domain, reverse-proxy upstream
   `{slug}--{service}:{internal_port}`, with Caddy **active health checks** configured.
+- **Template health paths.** For template-sourced apps (add-ons), once the `services` rows
+  exist the pipeline applies any per-service Caddy health-check path the manifest declares
+  (`Templates.ServiceHealthPaths` → `applyTemplateHealthPaths`), but only where the operator
+  hasn't set one. Without it Caddy active-health-checks `/`, which for e.g. Grafana is a 302 →
+  `/login` (never 2xx), so the upstream never goes healthy. Best-effort; a manual override via
+  `PatchAppService` survives redeploys.
 - Auto-domains (`{slug}.{VAC_BASE_DOMAIN}`, or `{service}.{slug}.{base}` for multi-service apps)
   are **derived at reconcile** from the app's HTTP services + base domain — not stored rows (plan
   09 F1). They emit `vac-auto-{appID}-{service}` routes alongside custom-domain `vac-route-{id}`

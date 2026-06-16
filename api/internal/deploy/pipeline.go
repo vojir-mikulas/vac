@@ -113,7 +113,11 @@ type Pipeline struct {
 	WorkDir            string
 	HealthCheckTimeout time.Duration
 	HealthCheckRetries int
-	Logger             *slog.Logger
+	// AppCPULimit is the box-wide CPU ceiling (in CPUs) applied to every user app
+	// container via a `cpus:` compose override. 0 disables it. Sourced from
+	// config.AppCPULimit and patched in by main; pairs with App.MemLimitMB.
+	AppCPULimit float64
+	Logger      *slog.Logger
 }
 
 // NewPipeline wires the production dependencies. Callers can patch the
@@ -355,14 +359,19 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		return err
 	}
 	_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusDeploying)
-	// Per-app RAM limit (plan 06 / Track B): write a resource override and merge
-	// it over the user's compose so one container can't OOM the box. Additive —
-	// an extra `-f` file, never a rewrite of the user's compose. (Track B touch
-	// of the deploy path; coordinate at merge with the Deploy Core track.)
+	// Per-app resource limits (plan 06 / Track B): write a resource override and
+	// merge it over the user's compose so one container can't OOM or pin the box.
+	// RAM is per-app (App.MemLimitMB); CPU is the box-wide AppCPULimit knob.
+	// Additive — an extra `-f` file, never a rewrite of the user's compose.
+	// (Track B touch of the deploy path; coordinate at merge with Deploy Core.)
 	var overrides []string
-	if app.MemLimitMB != nil && *app.MemLimitMB > 0 {
-		if ovr, oerr := compose.WriteResourceOverride(composeFile, *app.MemLimitMB); oerr != nil {
-			_ = p.logSystem(ctx, deploymentID, "warning: could not apply RAM limit: "+oerr.Error())
+	memLimitMB := 0
+	if app.MemLimitMB != nil {
+		memLimitMB = *app.MemLimitMB
+	}
+	if memLimitMB > 0 || p.AppCPULimit > 0 {
+		if ovr, oerr := compose.WriteResourceOverride(composeFile, memLimitMB, p.AppCPULimit); oerr != nil {
+			_ = p.logSystem(ctx, deploymentID, "warning: could not apply resource limits: "+oerr.Error())
 		} else if ovr != "" {
 			overrides = append(overrides, ovr)
 		}

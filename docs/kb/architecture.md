@@ -1,4 +1,4 @@
-<!-- generated from commit def192a on 2026-06-04 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
+<!-- generated from commit 8a77a60 on 2026-06-16 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
 
 # Architecture — current state
 
@@ -46,8 +46,8 @@ Each package owns one concern.
 | `crypto` | `crypto.Box` AES-256-GCM seal/open for secrets at rest |
 | `deploy` | the deploy pipeline (`Pipeline`) + worker pool/queue (`Worker`) + reaper; status enums (`status.go`); build-log writer (`LogWriter`) |
 | `adapter` | normalizes a build source (compose / Dockerfile / framework / static) to one compose file via `adapter.For` + `Prepare` |
-| `compose` | shallow compose parse, `Detect` build type, `Wrap` a Dockerfile, `Preflight` lint, `WriteResourceOverride` (per-app RAM cap) |
-| `dockercli` | thin wrappers over `docker`/`docker compose` (`Compose.Build/Up/Down/Ps/Exec`, `Events`) |
+| `compose` | shallow compose parse, `Detect` build type, `Wrap` a Dockerfile, `Preflight` lint, `WriteResourceOverride` (per-app RAM cap + box-wide CPU cap), `ServicesWithVolumes` (which services are stateful → backup nudge) |
+| `dockercli` | thin wrappers over `docker`/`docker compose` (`Compose.Build/Up/Down/Ps/Exec`, `Events`, `BuildCachePrune`) |
 | `dockerevents` | single `docker events` stream fanned out to subscribers (`Bus`) with reconnect |
 | `gitcli` | git `LsRemote`/`Clone` (shallow)/`Pull`/`HeadCommit`/`FetchCommit` via the deploy SSH key |
 | `sshkey` | generate/store/decrypt ED25519 deploy keys (`Manager`, `Generate` → `KeyPair`) |
@@ -59,10 +59,10 @@ Each package owns one concern.
 | `reqmetrics` | `Collector` scrapes/aggregates the Caddy access log into per-service request rate |
 | `notify` | `Dispatcher` for Discord/Slack/webhook (deploy ok/fail, crash-loop, restarted, cert expiry); outbound calls go through the `netguard` dialer |
 | `netguard` | SSRF-hardened `net/http` `DialContext` for outbound requests to user-controlled URLs (notification webhooks, S3 backup endpoints): rejects loopback/private/link-local/CGNAT, dials the validated literal IP to close DNS-rebinding (`IsPrivate`, `ErrPrivateAddress`) |
-| `retention` | nightly `Pruner`: runtime logs, request metrics, audit log, per-service image prune, deployment history |
+| `retention` | nightly `Pruner`: runtime logs, request metrics, audit log, per-service image prune, deployment history, BuildKit build-cache cap (`VAC_BUILD_CACHE` / `..._MAX_GB`) |
 | `webhook` | turns inbound Git webhooks into deploy decisions (per-app secret auth, `ParseRef` vs `deploy_triggers`) |
 | `dbprovision` | provisions/deprovisions managed databases (`Engine` + per-engine recipes), yields connection strings |
-| `addon` | `Installer` materializes catalog templates into an app (env defaults, `@random` secrets, DB provisioning, enqueue deploy) |
+| `addon` | `Registry`/`Installer` materializes catalog templates into an app (env defaults, `@random` secrets, DB provisioning, enqueue deploy); `ServiceHealthPaths` exposes per-service Caddy health-check paths the deploy pipeline applies post-up |
 | `backup` | `Engine` runs a backup end-to-end: exec in container → stream to destination → record run → prune → notify |
 | `revert` | `Reverter` applies the inverse of revertable audit entries (env replace, base-domain, app-config) from before-snapshots |
 | `audit` | per-request mutable `Record` carried in context, enriched by handlers, persisted by middleware |
@@ -104,8 +104,9 @@ Schema lives in goose migrations under `api/internal/db/migrations/` (embedded a
 - **Auth:** `users` (incl. `totp_secret`, `last_totp_step` for TOTP replay protection,
   `failed_auth_attempts` + `auth_locked_until` for per-account lockout), `sessions` (incl.
   `stepup_verified_at` for fresh-2FA step-up), `api_tokens`.
-- **Apps & services:** `apps` (includes `webhook_secret_enc`), `services`, `ssh_keys`,
-  `env_vars`, `domains` (custom/auto hosts, cert expiry, redirects, lifecycle).
+- **Apps & services:** `apps` (includes `webhook_secret_enc`), `services` (incl.
+  `has_volumes`, set from the compose file each deploy to flag stateful services),
+  `ssh_keys`, `env_vars`, `domains` (custom/auto hosts, cert expiry, redirects, lifecycle).
 - **Deploy:** `deployments`, `deployment_logs`, `deploy_triggers` (push-to-deploy rules).
 - **Observability:** `runtime_logs` (ring buffer), `request_metrics` (10s buckets).
 - **Config:** `instance_settings` (singleton: base domain, `max_concurrent_deploys`),

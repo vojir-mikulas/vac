@@ -46,6 +46,14 @@ func TestBaseConfig(t *testing.T) {
 	if !strings.Contains(string(b), `"routes":[]`) {
 		t.Errorf("routes did not marshal as empty array: %s", b)
 	}
+
+	// The access-log file must be world-readable: Caddy writes it as root, the
+	// non-root vac-api process tails it. Caddy's default 0600 silently breaks
+	// request metrics (the tailer's os.Open fails and is swallowed).
+	logWriter := cfg.Logging.Logs["vacaccess"].Writer
+	if mode := logWriter["mode"]; mode != "0644" {
+		t.Errorf("access log writer mode = %v, want 0644 (else non-root tailer can't read it)", mode)
+	}
 }
 
 func TestRouteMarshalsID(t *testing.T) {

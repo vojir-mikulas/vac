@@ -192,6 +192,7 @@ func main() {
 	pipeline.Router = proxyMgr
 	pipeline.Hub = hub
 	pipeline.Notifier = notifier
+	pipeline.AppCPULimit = cfg.AppCPULimit
 	// Deploy-pool size is an instance setting (plan 20), applied at boot. Default
 	// 1 (strictly serial); the worker clamps to 1..deploy.MaxConcurrency.
 	deployConcurrency := 1
@@ -306,6 +307,7 @@ func main() {
 		RingBuffer:          cfg.LogRingBuffer,
 		ImageKeepCount:      cfg.ImageKeepCount,
 		DeploymentKeepCount: cfg.DeploymentKeepCount,
+		BuildCacheMaxBytes:  buildCacheMaxBytes(cfg),
 		HourOfDay:           3,
 	}, slog.Default())
 	go pruner.Run(ctx)
@@ -519,6 +521,17 @@ func certProbeAddr(cfg config.Config) string {
 		host = u.Hostname()
 	}
 	return net.JoinHostPort(host, "443")
+}
+
+// buildCacheMaxBytes resolves the nightly build-cache ceiling. The
+// VAC_BUILD_CACHE toggle collapses into a single value the pruner understands:
+// 0 (disabled, cache left to Docker's GC) when off, else BuildCacheMaxGB in
+// bytes.
+func buildCacheMaxBytes(cfg config.Config) int64 {
+	if !cfg.BuildCache || cfg.BuildCacheMaxGB <= 0 {
+		return 0
+	}
+	return int64(cfg.BuildCacheMaxGB) << 30
 }
 
 // probeDockerCLI runs `docker version` once at boot. Failure is logged but

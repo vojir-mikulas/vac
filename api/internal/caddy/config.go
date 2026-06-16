@@ -175,7 +175,11 @@ func BaseConfig(opts BaseOptions) *Config {
 			Logs: map[string]LogCfg{
 				"default": {Exclude: []string{"http.log.access." + loggerName}},
 				loggerName: {
-					Writer:  map[string]any{"output": "file", "filename": opts.AccessLogPath},
+					// mode 0644 so the non-root vac-api process (USER vac:vac) can
+					// read the log Caddy writes as root — Caddy's default 0600 is
+					// unreadable by the tailer, which silently drops every line and
+					// shows "no traffic" on the dashboard.
+					Writer:  map[string]any{"output": "file", "filename": opts.AccessLogPath, "mode": "0644"},
 					Encoder: map[string]any{"format": "json"},
 					Include: []string{"http.log.access." + loggerName},
 				},

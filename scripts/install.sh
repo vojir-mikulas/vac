@@ -1,7 +1,7 @@
 #!/bin/sh
 # VAC installer — https://get.vac.vojir.io
 #
-#   curl -sSL get.vac.vojir.io | sh
+#   curl -sSL get.vac.vojir.io | sudo sh
 #
 # Run it in a terminal and it walks you through a short setup (domain, managed
 # services, sudo-free access) and shows a summary before touching the host. Pipe

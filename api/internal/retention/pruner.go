@@ -31,6 +31,7 @@ type PruneStore interface {
 type ImagePruner interface {
 	ListImages(ctx context.Context, projectName, serviceName string) ([]dockercli.Image, error)
 	RemoveImage(ctx context.Context, id string) error
+	BuildCachePrune(ctx context.Context, maxBytes int64) error
 }
 
 // Config carries the retention windows. RuntimeDays governs runtime_logs;
@@ -51,6 +52,12 @@ type Config struct {
 	// DeploymentKeepCount is how many most-recent deployments to keep per app.
 	// <=0 disables deployment retention. Default 20.
 	DeploymentKeepCount int
+	// BuildCacheMaxBytes caps the BuildKit layer cache after the nightly pass;
+	// the cache is trimmed to this ceiling so layer reuse across deploys stays
+	// reliable without unbounded disk growth. <=0 disables the pass (the
+	// VAC_BUILD_CACHE=false escape hatch resolves here), leaving the cache to
+	// Docker's own GC.
+	BuildCacheMaxBytes int64
 	// Hour of day (0-23) the prune runs in time.Local. Default 3 (03:00).
 	HourOfDay int
 }
@@ -167,7 +174,27 @@ func (p *Pruner) PruneOnce(ctx context.Context) error {
 	// Image prune: keep only the newest ImageKeepCount images per service. Done
 	// last and best-effort — a docker hiccup here must not fail the DB passes.
 	p.pruneImages(ctx)
+
+	// Build-cache prune: bound the BuildKit layer cache. Best-effort and kept in
+	// the same nightly pass so cache GC and image GC stay together; failures are
+	// logged, never propagated.
+	p.pruneBuildCache(ctx)
 	return nil
+}
+
+// pruneBuildCache trims the BuildKit layer cache to cfg.BuildCacheMaxBytes.
+// Skipped when no docker client is wired or the cap is non-positive (the
+// VAC_BUILD_CACHE=false escape hatch). Best-effort: a failure is logged and
+// swallowed so it never fails the DB passes that ran before it.
+func (p *Pruner) pruneBuildCache(ctx context.Context) {
+	if p.images == nil || p.cfg.BuildCacheMaxBytes <= 0 {
+		return
+	}
+	if err := p.images.BuildCachePrune(ctx, p.cfg.BuildCacheMaxBytes); err != nil {
+		p.logger.Warn("retention: build-cache prune failed", "max_bytes", p.cfg.BuildCacheMaxBytes, "err", err)
+		return
+	}
+	p.logger.Info("retention: pruned build cache", "max_bytes", p.cfg.BuildCacheMaxBytes)
 }
 
 // pruneImages removes all but the newest ImageKeepCount images per

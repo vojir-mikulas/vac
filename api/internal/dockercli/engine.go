@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -119,6 +120,36 @@ func (c *Compose) RemoveImage(ctx context.Context, id string) error {
 		return mapCmdError(err, out)
 	}
 	return nil
+}
+
+// BuildCachePrune bounds the BuildKit layer cache to maxBytes, deleting the
+// least-recently-used cache records beyond that ceiling. It targets the default
+// builder (the one `docker compose build` uses) — no custom builder instance is
+// required. Best-effort, like RemoveImage: callers (the nightly pruner) swallow
+// failures.
+//
+// `--keep-storage` is the long-standing flag but is deprecated in newer buildx
+// (≥0.17, which renamed it `--reserved-space`) and absent from the older
+// `docker builder prune` shim. We try `buildx prune` first and, if that fails in
+// a way that looks like a flag/parse error, fall back to `builder prune` so the
+// pass works across CLI versions.
+func (c *Compose) BuildCachePrune(ctx context.Context, maxBytes int64) error {
+	if maxBytes < 0 {
+		maxBytes = 0
+	}
+	keep := strconv.FormatInt(maxBytes, 10)
+	cmd := c.command(ctx, "", "buildx", "prune", "--force", "--keep-storage", keep)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	// buildx unavailable or the flag was rejected — retry via the classic
+	// `docker builder prune`, which still accepts --keep-storage on older CLIs.
+	fb := c.command(ctx, "", "builder", "prune", "--force", "--keep-storage", keep)
+	if _, ferr := fb.CombinedOutput(); ferr == nil {
+		return nil
+	}
+	return mapCmdError(err, out)
 }
 
 func parseImagesOutput(b []byte) ([]Image, error) {
