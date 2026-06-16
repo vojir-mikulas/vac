@@ -170,22 +170,26 @@ function PostureSummary({ findings }: { findings: PostureFinding[] }) {
       : overall === 'warn'
         ? t('posture.summary.warnings', { count: warns })
         : t('posture.summary.allPassing')
+  // The sub-line breaks the count down only when it adds something the headline
+  // doesn't already say — i.e. the mixed error+warning case. A warning-only
+  // posture's headline already is the warning count, so we leave the sub empty
+  // rather than echo "1 warning" twice.
   const sub =
     overall === 'ok'
       ? t('posture.summary.checksPassing', { count: findings.length })
-      : [
-          errors ? t('posture.summary.errors', { count: errors }) : null,
-          warns ? t('posture.summary.warnings', { count: warns }) : null,
-        ]
-          .filter(Boolean)
-          .join(' · ')
+      : errors && warns
+        ? [
+            t('posture.summary.errors', { count: errors }),
+            t('posture.summary.warnings', { count: warns }),
+          ].join(' · ')
+        : ''
 
   return (
     <Card className={`mb-3 flex flex-row items-center gap-4 border p-4 ${tone}`}>
       <div className="shrink-0">{severityIcon(overall)}</div>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold">{headline}</div>
-        <div className="text-2xs text-muted-foreground">{sub}</div>
+        {sub ? <div className="text-2xs text-muted-foreground">{sub}</div> : null}
       </div>
       <StatusPill status={SEVERITY_STATUS[overall]} size="sm" className="shrink-0" />
     </Card>
