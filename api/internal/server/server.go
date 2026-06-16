@@ -414,6 +414,10 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/security/posture", handler.SecurityPostureHandler(secPosture))
 			}
 			r.Get("/security/traffic", handler.SecurityTrafficHandler(secTraffic))
+			// Unauthenticated attempts (failed logins, probes) diverted out of the
+			// activity feed. No host agent needed — it's the control plane's own
+			// request stream — so it's always wired.
+			r.Get("/security/attempts", handler.SecurityAttemptsHandler(s))
 			if secHost != nil {
 				r.Get("/security/fail2ban", handler.SecurityFail2banHandler(secHost))
 				r.Get("/security/firewall", handler.SecurityFirewallHandler(secHost))

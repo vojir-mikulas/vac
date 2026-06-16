@@ -2,13 +2,31 @@ import { useQuery } from '@tanstack/react-query'
 
 import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
-import type { Fail2banState, FirewallState, PostureFinding, TrafficSnapshot } from '@/types/api'
+import type {
+  Fail2banState,
+  FirewallState,
+  PostureFinding,
+  SecurityAttempt,
+  TrafficSnapshot,
+} from '@/types/api'
 
 export const securityApi = {
   posture: () => api.get<PostureFinding[]>('security/posture'),
   traffic: () => api.get<TrafficSnapshot>('security/traffic'),
+  attempts: (limit = 200) => api.get<SecurityAttempt[]>(`security/attempts?limit=${limit}`),
   fail2ban: () => api.get<Fail2banState>('security/fail2ban'),
   firewall: () => api.get<FirewallState>('security/firewall'),
+}
+
+// useUnauthorizedAttempts reads the diverted unauthenticated attempts (failed
+// logins, probes to bogus endpoints). Surfaced on the Activity page — unlike the
+// fail2ban/firewall panels it needs no host agent, so it's always available.
+export function useUnauthorizedAttempts(limit = 200) {
+  return useQuery({
+    queryKey: queryKeys.security.attempts,
+    queryFn: () => securityApi.attempts(limit),
+    refetchInterval: 30_000,
+  })
 }
 
 export function useSecurityPosture() {

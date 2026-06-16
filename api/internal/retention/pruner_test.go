@@ -18,6 +18,8 @@ type fakeStore struct {
 	rmLast     time.Time
 	auditCalls atomic.Int64
 	auditLast  time.Time
+	secCalls   atomic.Int64
+	secLast    time.Time
 	trimCalls  atomic.Int64
 	trimKeep   int
 
@@ -42,6 +44,12 @@ func (f *fakeStore) DeleteAuditLogOlderThan(_ context.Context, cutoff time.Time)
 	f.auditCalls.Add(1)
 	f.auditLast = cutoff
 	return 5, nil
+}
+
+func (f *fakeStore) DeleteSecurityEventsOlderThan(_ context.Context, cutoff time.Time) (int64, error) {
+	f.secCalls.Add(1)
+	f.secLast = cutoff
+	return 2, nil
 }
 
 func (f *fakeStore) ListRuntimeLogServices(_ context.Context) ([]struct{ AppID, ServiceName string }, error) {

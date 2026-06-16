@@ -56,6 +56,7 @@ export const queryKeys = {
   security: {
     posture: ['security', 'posture'] as const,
     traffic: ['security', 'traffic'] as const,
+    attempts: ['security', 'attempts'] as const,
     fail2ban: ['security', 'fail2ban'] as const,
     firewall: ['security', 'firewall'] as const,
   },

@@ -18,6 +18,7 @@ type PruneStore interface {
 	DeleteRuntimeLogsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteRequestMetricsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteAuditLogOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
+	DeleteSecurityEventsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 	ListRuntimeLogServices(ctx context.Context) ([]struct{ AppID, ServiceName string }, error)
 	TrimRuntimeLogsToRingBuffer(ctx context.Context, appID, serviceName string, keepN int) (int64, error)
 	// Image prune (P2.3) + deployment retention (P2.4).
@@ -146,6 +147,14 @@ func (p *Pruner) PruneOnce(ctx context.Context) error {
 		return err
 	}
 	p.logger.Info("retention: pruned audit log", "deleted", an, "cutoff", auditCutoff.Format(time.RFC3339))
+
+	// Security events (diverted unauthenticated attempts) share the activity
+	// window — they're the same feed's overflow, kept just as long.
+	sn, err := p.store.DeleteSecurityEventsOlderThan(ctx, auditCutoff)
+	if err != nil {
+		return err
+	}
+	p.logger.Info("retention: pruned security events", "deleted", sn, "cutoff", auditCutoff.Format(time.RFC3339))
 
 	// Ring-buffer cap per (app, service) — catches services whose live
 	// follower isn't running to trim them continuously.

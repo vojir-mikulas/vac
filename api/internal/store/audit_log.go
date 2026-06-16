@@ -84,6 +84,10 @@ func (s *Store) ListAuditLog(ctx context.Context, limit int) ([]AuditLog, error)
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+auditColumns+`
 		FROM audit_log
+		-- Unauthenticated failures (probes, failed logins) are not operator
+		-- activity; they live in security_events. New ones are diverted at write
+		-- time, but this also hides any that predate that split.
+		WHERE NOT (actor_type = '`+ActorAnonymous+`' AND status_code >= 400)
 		ORDER BY created_at DESC
 		LIMIT $1
 	`, limit)

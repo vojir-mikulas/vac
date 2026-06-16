@@ -3,8 +3,11 @@ package handler
 import (
 	"context"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/security"
+	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
 // SecurityPosture provides the read-only posture checklist. *security.Posture
@@ -52,6 +55,65 @@ func SecurityTrafficHandler(t SecurityTraffic) http.HandlerFunc {
 		}
 		WriteJSON(w, http.StatusOK, t.Snapshot(20))
 	}
+}
+
+// SecurityAttemptLister reads the diverted unauthenticated attempts (failed
+// logins, probes). *store.Store satisfies it. Unlike posture/fail2ban this needs
+// no host agent — the data is the control plane's own request stream — so the
+// route is always wired.
+type SecurityAttemptLister interface {
+	ListSecurityEvents(ctx context.Context, limit int) ([]store.SecurityEvent, error)
+}
+
+// securityAttemptDTO is the read shape for one unauthenticated attempt. Nil
+// ip/user_agent collapse to "" so the UI renders a stable table.
+type securityAttemptDTO struct {
+	ID        string    `json:"id"`
+	Method    string    `json:"method"`
+	Path      string    `json:"path"`
+	Status    int       `json:"status"`
+	IP        string    `json:"ip"`
+	UserAgent string    `json:"user_agent"`
+	At        time.Time `json:"at"`
+}
+
+// SecurityAttemptsHandler serves GET /api/security/attempts — the recent
+// unauthenticated attempts against the control plane, newest first. Optional
+// ?limit=N (clamped by the store).
+func SecurityAttemptsHandler(l SecurityAttemptLister) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit := 200
+		if q := r.URL.Query().Get("limit"); q != "" {
+			if n, err := strconv.Atoi(q); err == nil {
+				limit = n
+			}
+		}
+		rows, err := l.ListSecurityEvents(r.Context(), limit)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not list attempts")
+			return
+		}
+		out := make([]securityAttemptDTO, 0, len(rows))
+		for _, e := range rows {
+			out = append(out, securityAttemptDTO{
+				ID:        e.ID,
+				Method:    e.Method,
+				Path:      e.Path,
+				Status:    e.StatusCode,
+				IP:        derefStr(e.IP),
+				UserAgent: derefStr(e.UserAgent),
+				At:        e.CreatedAt,
+			})
+		}
+		WriteJSON(w, http.StatusOK, out)
+	}
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // SecurityFail2banHandler serves GET /api/security/fail2ban.

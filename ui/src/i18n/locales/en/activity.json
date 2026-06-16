@@ -29,6 +29,20 @@
   "revertToast": {
     "success": "Reverted"
   },
+  "attempts": {
+    "heading": "Unauthorized attempts",
+    "summary_one": "{{count}} blocked attempt from {{sources}}",
+    "summary_other": "{{count}} blocked attempts from {{sources}}",
+    "sources_one": "{{count}} source",
+    "sources_other": "{{count}} sources",
+    "lastSeen": "last seen {{time}}",
+    "morePaths_one": "+{{count}} more path",
+    "morePaths_other": "+{{count}} more paths",
+    "empty": {
+      "title": "No unauthorized attempts",
+      "description": "Failed logins and probes to non-existent endpoints will show up here."
+    }
+  },
   "diff": {
     "title": "Change preview",
     "descriptionFallback": "What this change did.",

@@ -539,6 +539,19 @@ export interface RecentRequest {
   user_agent: string
 }
 
+// SecurityAttempt is one unauthenticated attempt against the control plane —
+// a failed login or a probe to a bogus path. Diverted out of the activity feed
+// into its own record; surfaced on the Activity page.
+export interface SecurityAttempt {
+  id: string
+  method: string
+  path: string
+  status: number
+  ip: string
+  user_agent: string
+  at: string
+}
+
 export interface TrafficSnapshot {
   window_seconds: number
   tracked_ips: number

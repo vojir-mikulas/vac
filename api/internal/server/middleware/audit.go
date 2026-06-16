@@ -18,10 +18,19 @@ import (
 )
 
 // AuditRecorder is the slice of *store.Store the audit middleware writes
-// against. An interface so server wiring and tests can substitute a fake.
+// against. An interface so server wiring and tests can substitute a fake. It
+// records two streams: operator/system actions go to the audit_log; the
+// unauthenticated attempts it diverts (failed logins, probes) go to
+// security_events instead, so the activity feed stays an action log.
 type AuditRecorder interface {
 	InsertAuditLog(ctx context.Context, e store.AuditEntry) error
+	InsertSecurityEvent(ctx context.Context, e store.SecurityEvent) error
 }
+
+// securityPathMax bounds the stored probe path. Scanners hit long, junk URLs;
+// the path is for legibility ("they tried /api/.env"), not forensics, so a
+// generous cap keeps a runaway URL from bloating a row.
+const securityPathMax = 256
 
 // auditPersistTimeout bounds the post-response write so a slow DB can't pin a
 // goroutine after the client already has its answer.
@@ -53,7 +62,7 @@ func Audit(ctx context.Context, rec AuditRecorder) func(http.Handler) http.Handl
 	// backlog so a slow DB under load degrades to dropped audit rows, not an
 	// unbounded goroutine pile-up. The workers stop when ctx (the server
 	// lifetime) is cancelled, so they don't outlive the server.
-	jobs := make(chan store.AuditEntry, auditQueueSize)
+	jobs := make(chan func(), auditQueueSize)
 	var dropped atomic.Int64
 	for i := 0; i < auditWorkers; i++ {
 		go func() {
@@ -61,11 +70,22 @@ func Audit(ctx context.Context, rec AuditRecorder) func(http.Handler) http.Handl
 				select {
 				case <-ctx.Done():
 					return
-				case entry := <-jobs:
-					persist(rec, entry)
+				case job := <-jobs:
+					job()
 				}
 			}
 		}()
+	}
+	// enqueue offers a persist job to the pool, dropping (with a counted warning)
+	// when the queue is full rather than blocking the response path. label is for
+	// the drop log only.
+	enqueue := func(label string, job func()) {
+		select {
+		case jobs <- job:
+		default:
+			n := dropped.Add(1)
+			slog.Warn("audit: write queue full, dropping entry", "what", label, "dropped_total", n)
+		}
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -89,16 +109,19 @@ func Audit(ctx context.Context, rec AuditRecorder) func(http.Handler) http.Handl
 				status = http.StatusOK // handler wrote a body without WriteHeader
 			}
 
-			entry := buildEntry(r, record, status)
-			select {
-			case jobs <- entry:
-			default:
-				// Queue full (DB can't keep up): drop rather than block the
-				// response path or spawn an unbounded goroutine. Count + log so the
-				// loss is visible.
-				n := dropped.Add(1)
-				slog.Warn("audit: write queue full, dropping entry", "action", entry.Action, "dropped_total", n)
+			// An unauthenticated mutation that failed is not operator activity —
+			// it's a failed login or a scanner POSTing to a bogus path. Divert it
+			// to security_events so it surfaces as a probe rather than burying the
+			// real feed. (Anonymous 2xx, e.g. a successful login, stays in the
+			// audit log: it's a legitimate, attributable-to-no-user action.)
+			if actorType, _ := resolveActor(r.Context()); actorType == store.ActorAnonymous && status >= 400 {
+				ev := buildSecurityEvent(r, status)
+				enqueue("security:"+ev.Method+" "+ev.Path, func() { persistSecurity(rec, ev) })
+				return
 			}
+
+			entry := buildEntry(r, record, status)
+			enqueue(entry.Action, func() { persistAudit(rec, entry) })
 		})
 	}
 }
@@ -142,12 +165,49 @@ func buildEntry(r *http.Request, record *audit.Record, status int) store.AuditEn
 	return entry
 }
 
-func persist(rec AuditRecorder, entry store.AuditEntry) {
+func persistAudit(rec AuditRecorder, entry store.AuditEntry) {
 	ctx, cancel := context.WithTimeout(context.Background(), auditPersistTimeout)
 	defer cancel()
 	if err := rec.InsertAuditLog(ctx, entry); err != nil {
 		slog.Warn("audit: insert failed", "action", entry.Action, "err", err)
 	}
+}
+
+// buildSecurityEvent captures the bare shape of an unauthenticated attempt: the
+// method, the raw path that was hit (truncated), the outcome, and the source.
+// The raw path — not chi's matched pattern — is what's useful here: it shows
+// exactly what was probed ("/api/.env"), where the audit feed wants the grouped
+// route template.
+func buildSecurityEvent(r *http.Request, status int) store.SecurityEvent {
+	ev := store.SecurityEvent{
+		Method:     r.Method,
+		Path:       truncate(r.URL.Path, securityPathMax),
+		StatusCode: status,
+	}
+	if ip := clientIP(r); ip != "" {
+		ev.IP = &ip
+	}
+	if ua := r.UserAgent(); ua != "" {
+		ua = truncate(ua, securityPathMax)
+		ev.UserAgent = &ua
+	}
+	return ev
+}
+
+func persistSecurity(rec AuditRecorder, ev store.SecurityEvent) {
+	ctx, cancel := context.WithTimeout(context.Background(), auditPersistTimeout)
+	defer cancel()
+	if err := rec.InsertSecurityEvent(ctx, ev); err != nil {
+		slog.Warn("audit: security event insert failed", "path", ev.Path, "err", err)
+	}
+}
+
+// truncate caps s to n bytes (rune-safe enough for storage — we never re-split).
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 // resolveActor reports the actor type and (where known) user id. Token auth

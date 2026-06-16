@@ -16,6 +16,7 @@ import { listItem } from '@/lib/motion'
 import { useActivity, useRevertActivity, type AuditEntry } from '@/lib/api/audit'
 import { relativeTime } from '@/lib/format'
 import { ActivityDiffDialog } from './activity-diff-dialog'
+import { UnauthorizedAttempts } from './unauthorized-attempts'
 
 export function ActivityFeed() {
   const { t } = useTranslation('activity')
@@ -60,6 +61,8 @@ export function ActivityFeed() {
           </Card>
         )}
       </SwapFade>
+
+      <UnauthorizedAttempts />
 
       {preview && <ActivityDiffDialog entry={preview} onClose={() => setPreview(null)} />}
     </PageContainer>
