@@ -172,7 +172,6 @@ function Wizard() {
     }
     create.mutate(input, {
       onSuccess: async (app) => {
-        setCreated(app)
         // Apply env vars before the first deploy so the stack comes up with them
         // already set. A save failure aborts the deploy — better to surface it
         // than to deploy with missing config.
@@ -184,12 +183,18 @@ function Wizard() {
           } catch (e) {
             toast.error(e instanceof Error ? e.message : t('new.env.saveFailed'))
             setApplyingEnv(false)
+            // Surface the created state so the operator can retry the deploy.
+            setCreated(app)
             return
           }
           setApplyingEnv(false)
         }
         toast.success(t('new.toast.created'))
+        // When deploying immediately we redirect to the deploys page, so skip the
+        // "created" review panel entirely — otherwise its connection-test card
+        // flashes in for a frame before the navigation tears it back down.
         if (thenDeploy) deployNow.mutate(app.id)
+        else setCreated(app)
       },
       onError: (e) => toast.error(e.message),
     })

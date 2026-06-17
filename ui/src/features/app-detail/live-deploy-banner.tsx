@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
+import { AnimatePresence, m } from 'motion/react'
 
+import { transition } from '@/lib/motion'
 import { Card } from '@/components/ui/card'
 import { StatusPill } from '@/components/common/status-pill'
 import { ConnectionBadge } from '@/components/common/connection-badge'
@@ -21,8 +23,26 @@ export function LiveDeployBanner({ appId }: { appId: string }) {
   const { data: deployments } = useDeployments(appId)
   // The list is newest-first, so the first active row is the current deploy.
   const active = deployments?.find((d) => isDeployActive(d.status))
-  if (!active) return null
-  return <ActiveDeploy key={active.id} appId={appId} deployment={active} />
+  // Expand/collapse the banner's height so the tabs and content below glide into
+  // place instead of jumping when a deploy starts or finishes. `initial={false}`
+  // keeps it from animating on a fresh page load (e.g. switching tabs while a
+  // deploy is already live) — it only animates the start/end transitions.
+  return (
+    <AnimatePresence initial={false}>
+      {active ? (
+        <m.div
+          key={active.id}
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={transition.layout}
+          className="overflow-hidden"
+        >
+          <ActiveDeploy appId={appId} deployment={active} />
+        </m.div>
+      ) : null}
+    </AnimatePresence>
+  )
 }
 
 function ActiveDeploy({ appId, deployment }: { appId: string; deployment: Deployment }) {
