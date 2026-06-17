@@ -94,7 +94,7 @@ export function HostDiskChart({ host, className }: { host: DiskUsage; className?
       {/* Decorative for assistive tech — the legend rows are the text equivalent. */}
       <ChartContainer config={chartConfig} className="aspect-square w-full" aria-hidden="true">
         <PieChart>
-          <ChartTooltip content={<SliceTooltip />} />
+          <ChartTooltip content={<SliceTooltip />} wrapperStyle={{ zIndex: 50 }} />
           <Pie
             data={slices}
             dataKey="size"
@@ -115,7 +115,7 @@ export function HostDiskChart({ host, className }: { host: DiskUsage; className?
         </PieChart>
       </ChartContainer>
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-mono text-lg font-semibold tabular-nums">{formatBytes(total)}</span>
+        <span className="font-mono text-sm font-semibold tabular-nums">{formatBytes(total)}</span>
         <span className="text-[11px] text-muted-foreground">{t('host.used')}</span>
       </div>
     </div>

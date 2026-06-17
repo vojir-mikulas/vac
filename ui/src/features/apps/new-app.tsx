@@ -27,7 +27,7 @@ import { Switch } from '@/components/ui/switch'
 import { NotificationBar } from '@/components/common/notification-bar'
 import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
 import { BuildSourcePicker, type BuildSourceValue } from '@/features/apps/build-source'
-import { appsApi, useCreateApp } from '@/lib/api/apps'
+import { appsApi, useApps, useCreateApp } from '@/lib/api/apps'
 import { envApi, type EnvVarInput } from '@/lib/api/env'
 import { deploymentsApi } from '@/lib/api/deployments'
 import { ApiError } from '@/lib/api/client'
@@ -101,7 +101,18 @@ function Wizard() {
 
   const effectiveName = name.trim() || repoName(gitUrl)
   const ssh = isSshUrl(gitUrl)
-  const canContinue = step === 0 ? Boolean(gitUrl.trim() && effectiveName) : true
+
+  // Validate the derived slug against existing apps up front, so a collision is
+  // caught on the first step instead of as a 409 after the whole form is filled.
+  const { data: apps } = useApps()
+  const slug = deriveSlug(effectiveName)
+  const slugTaken = Boolean(slug) && (apps?.some((a) => a.slug === slug) ?? false)
+  // A name made entirely of punctuation/whitespace derives to an empty (or
+  // over-long) slug the backend would reject.
+  const slugInvalid = effectiveName !== '' && (slug === '' || slug.length > MAX_SLUG_LEN)
+
+  const canContinue =
+    step === 0 ? Boolean(gitUrl.trim() && effectiveName) && !slugTaken && !slugInvalid : true
 
   // Once the operator reaches the build step we probe the repo (keyless clone)
   // for a compose file, so we can pre-fill the path and badge the compose card.
@@ -234,6 +245,9 @@ function Wizard() {
                 setGitUrl={setGitUrl}
                 branch={branch}
                 setBranch={setBranch}
+                slug={slug}
+                slugTaken={slugTaken}
+                slugInvalid={slugInvalid}
               />
             ) : null}
 
@@ -448,6 +462,9 @@ function SourceStep({
   setGitUrl,
   branch,
   setBranch,
+  slug,
+  slugTaken,
+  slugInvalid,
 }: {
   name: string
   setName: (v: string) => void
@@ -455,8 +472,12 @@ function SourceStep({
   setGitUrl: (v: string) => void
   branch: string
   setBranch: (v: string) => void
+  slug: string
+  slugTaken: boolean
+  slugInvalid: boolean
 }) {
   const { t } = useTranslation('apps')
+  const nameError = slugTaken || slugInvalid
   return (
     <div>
       <StepHeading title={t('new.source.title')} subtitle={t('new.source.subtitle')} />
@@ -481,7 +502,30 @@ function SourceStep({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={repoName(gitUrl) || t('new.source.appNameFallback')}
+              aria-invalid={nameError}
+              className={cn(nameError && 'border-err-border')}
             />
+            {slugTaken ? (
+              <p className="text-2xs text-err-foreground">
+                <Trans
+                  t={t}
+                  i18nKey="new.source.slugTaken"
+                  values={{ slug }}
+                  components={[<span className="font-mono" />]}
+                />
+              </p>
+            ) : slugInvalid ? (
+              <p className="text-2xs text-err-foreground">{t('new.source.slugInvalid')}</p>
+            ) : slug ? (
+              <p className="text-2xs text-muted-foreground">
+                <Trans
+                  t={t}
+                  i18nKey="new.source.slugPreview"
+                  values={{ slug }}
+                  components={[<span className="font-mono text-foreground" />]}
+                />
+              </p>
+            ) : null}
           </div>
           <div className="grid gap-2">
             <Label htmlFor="branch">{t('new.source.branch')}</Label>
@@ -984,4 +1028,24 @@ function buildSummary(build: BuildSourceValue, t: AppsTFunction): string {
 function repoName(gitUrl: string): string {
   const last = gitUrl.trim().split('/').pop() ?? ''
   return last.replace(/\.git$/, '')
+}
+
+// Mirror of the backend's deriveSlug (api/internal/server/handler/apps.go): the
+// slug is the app's stable handle, so the wizard must derive the same value the
+// server would to validate availability before submitting. Non-alnum runs
+// collapse to a single hyphen; leading/trailing hyphens are stripped.
+const MAX_SLUG_LEN = 63
+function deriveSlug(name: string): string {
+  let out = ''
+  let lastHyphen = true // suppress leading hyphen
+  for (const ch of name.toLowerCase()) {
+    if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) {
+      out += ch
+      lastHyphen = false
+    } else if (!lastHyphen) {
+      out += '-'
+      lastHyphen = true
+    }
+  }
+  return out.replace(/-+$/, '')
 }

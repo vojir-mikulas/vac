@@ -102,7 +102,10 @@
       "repoHint": "HTTPS for public repos, or SSH (git@…) for private repos with a deploy key.",
       "appName": "App name",
       "appNameFallback": "my-app",
-      "branch": "Branch"
+      "branch": "Branch",
+      "slugPreview": "Deploys as <0>{{slug}}</0>",
+      "slugTaken": "An app named <0>{{slug}}</0> already exists. Pick a different name.",
+      "slugInvalid": "Use letters, numbers, and hyphens — at least one letter or number."
     },
     "build": {
       "title": "Build configuration",
