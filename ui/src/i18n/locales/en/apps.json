@@ -31,6 +31,8 @@
       "trafficSub": "{{errPct}} errors · {{egress}} out",
       "noTraffic": "No requests yet",
       "trafficTrendAria": "Box-wide request volume over the last 24 hours",
+      "trafficTrendValue_one": "{{value}} req",
+      "trafficTrendValue_other": "{{value}} reqs",
       "deploys": "Deploys",
       "deploysSub": "{{building}} building · {{queued}} queued",
       "lastDeploy": "Last deploy {{time}}"

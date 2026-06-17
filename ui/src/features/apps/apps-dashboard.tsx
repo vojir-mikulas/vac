@@ -189,6 +189,7 @@ export function AppsDashboard() {
                 data={cpuHistory}
                 color="var(--color-brand)"
                 ariaLabel={t('dashboard.stats.cpuTrendAria')}
+                formatValue={(v) => formatPercent(v, 0)}
               />
             }
           />
@@ -215,6 +216,9 @@ export function AppsDashboard() {
                 data={trafficSummary.points}
                 color="var(--color-chart-3)"
                 ariaLabel={t('dashboard.stats.trafficTrendAria')}
+                formatValue={(v) =>
+                  t('dashboard.stats.trafficTrendValue', { count: v, value: formatNumber(v) })
+                }
               />
             }
           />
