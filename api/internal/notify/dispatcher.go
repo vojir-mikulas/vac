@@ -422,6 +422,20 @@ func (d *Dispatcher) DiskUsageHigh(appName, appID, scope, detail string) {
 	})
 }
 
+// PreviewCapReached fires when a push that would create a new preview is refused
+// because the instance is at VAC_MAX_PREVIEWS (preview-deployments.md decision
+// #5). It is an app-attributable event — the parent whose branch was refused —
+// so the operator knows to tear down an idle preview or raise the cap rather
+// than discovering the box silently dropped a preview.
+func (d *Dispatcher) PreviewCapReached(appName, appID, branch string, max int) {
+	d.dispatch(Event{
+		Type: EventPreviewCapReached, OK: false,
+		Title:   "Preview limit reached: " + appName,
+		AppName: appName, AppID: appID,
+		Message: fmt.Sprintf("A push to branch %q was not deployed as a preview because the instance is at its limit of %d previews. Tear down an idle preview or raise VAC_MAX_PREVIEWS.", branch, max),
+	})
+}
+
 // VACRestarted fires the control-plane-restarted event.
 func (d *Dispatcher) VACRestarted() {
 	d.dispatch(Event{

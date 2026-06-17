@@ -124,12 +124,17 @@ function TriggerRules({ appId, defaultBranch }: { appId: string; defaultBranch: 
             <SelectContent>
               <SelectItem value="push">{t('autoDeploy.eventPush')}</SelectItem>
               <SelectItem value="tag">{t('autoDeploy.eventTag')}</SelectItem>
+              <SelectItem value="preview">{t('autoDeploy.eventPreview')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="grid flex-1 gap-1.5">
           <Label className="text-2xs text-muted-foreground">
-            {event === 'tag' ? t('autoDeploy.filterLabelTag') : t('autoDeploy.filterLabelBranch')}
+            {event === 'tag'
+              ? t('autoDeploy.filterLabelTag')
+              : event === 'preview'
+                ? t('autoDeploy.filterLabelPreview')
+                : t('autoDeploy.filterLabelBranch')}
           </Label>
           <Input
             value={filter}

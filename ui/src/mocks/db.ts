@@ -235,6 +235,7 @@ export function createApp(input: CreateAppInput): AppRecord {
     updated_at: nowISO(),
     source: input.build_kind === 'image' ? 'image' : 'git',
     template_id: null,
+    is_preview: false,
     services: [],
     deployments: [],
     env: [],

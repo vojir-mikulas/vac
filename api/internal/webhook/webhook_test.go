@@ -183,3 +183,27 @@ func TestVerify(t *testing.T) {
 		}
 	})
 }
+
+func TestIsBranchDelete(t *testing.T) {
+	const zero40 = "0000000000000000000000000000000000000000"
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"github deleted flag", `{"ref":"refs/heads/feat","deleted":true,"after":"` + zero40 + `"}`, true},
+		{"gitlab zero after", `{"ref":"refs/heads/feat","after":"` + zero40 + `"}`, true},
+		{"sha256 zero after", `{"after":"` + zero40 + zero40 + "000000000000000000000000" + `"}`, true},
+		{"normal push", `{"ref":"refs/heads/feat","after":"abc1234def","deleted":false}`, false},
+		{"empty body", ``, false},
+		{"no after field", `{"ref":"refs/heads/feat"}`, false},
+		{"malformed json", `{not json`, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsBranchDelete([]byte(tc.body)); got != tc.want {
+				t.Errorf("IsBranchDelete(%q) = %v, want %v", tc.body, got, tc.want)
+			}
+		})
+	}
+}

@@ -25,8 +25,10 @@
     "event": "Event",
     "eventPush": "push",
     "eventTag": "tag",
+    "eventPreview": "preview",
     "filterLabelTag": "Filter — glob, blank = any tag",
     "filterLabelBranch": "Filter — glob, blank = any branch",
+    "filterLabelPreview": "Filter — glob, blank = any non-default branch",
     "addRule": "Add rule",
     "webhook": "Webhook",
     "payloadUrl": "Payload URL",
@@ -163,6 +165,20 @@
     "deploying": "Deploy",
     "healthChecking": "Health",
     "done": "Done"
+  },
+  "previews": {
+    "title": "Previews",
+    "intro": "Each non-default branch with a matching preview rule gets its own throwaway stack at a derived URL. Previews share this box's RAM and disk, so they're hard-capped and auto-expire when idle.",
+    "budget": "{{used}} / {{max}} previews",
+    "emptyTitle": "No previews yet",
+    "emptyDescription": "Add a preview trigger rule under Settings → Auto-deploy, then push a branch.",
+    "noUrl": "No URL yet",
+    "lastPush": "pushed {{time}}",
+    "tearDown": "Tear down",
+    "tornDown": "Preview torn down",
+    "tearDownDialogTitle": "Tear down this preview?",
+    "tearDownDialogDescription": "This stops and removes the preview stack for branch {{branch}} along with its volumes and routes. This cannot be undone; the preview is recreated on the next push to the branch.",
+    "deployFallback": "Preview"
   },
   "deploys": {
     "history": "History",

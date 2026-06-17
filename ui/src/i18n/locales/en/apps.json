@@ -44,7 +44,8 @@
       "updated": "Updated",
       "noMatch": "No apps match the current filter.",
       "installedFrom": "Installed from {{name}}",
-      "addonFallback": "add-on"
+      "addonFallback": "add-on",
+      "previewBadge": "Preview"
     },
     "rowActions": {
       "menuAria": "Actions for {{name}}",

@@ -436,6 +436,42 @@ const routes: Route[] = [
     },
   },
 
+  // ── Previews ────────────────────────────────────────────────────────────────
+  {
+    method: 'GET',
+    pattern: 'apps/previews/budget',
+    handler: () => ok({ used: getState().apps.filter((a) => a.is_preview).length, max: 5 }),
+  },
+  {
+    method: 'GET',
+    pattern: 'apps/:id/previews',
+    handler: (ctx) => {
+      appOr404(ctx)
+      const previews = getState().apps.filter((a) => a.parent_app_id === ctx.params.id)
+      return ok(
+        previews.map((p) => ({
+          id: p.id,
+          slug: p.slug,
+          branch: p.git_branch,
+          status: p.status,
+          url: '',
+          hosts: [],
+          created_at: p.created_at,
+          last_push_at: p.updated_at,
+        })),
+      )
+    },
+  },
+  {
+    method: 'DELETE',
+    pattern: 'apps/:id/previews/:previewId',
+    handler: (ctx) => {
+      appOr404(ctx)
+      deleteApp(ctx.params.previewId ?? '')
+      return ok({ deleted: 1 })
+    },
+  },
+
   // ── Env vars ──────────────────────────────────────────────────────────────
   { method: 'GET', pattern: 'apps/:id/env', handler: (ctx) => ok(listEnv(appOr404(ctx))) },
   {

@@ -52,6 +52,8 @@ export const queryKeys = {
     webhook: (id: string) => ['apps', id, 'webhook'] as const,
     metrics: (id: string, since: string) => ['apps', id, 'metrics', since] as const,
     volumes: (id: string) => ['apps', id, 'volumes'] as const,
+    previews: (id: string) => ['apps', id, 'previews'] as const,
+    previewBudget: ['apps', 'previews', 'budget'] as const,
     // Track D — managed services.
     backups: (id: string) => ['apps', id, 'backups'] as const,
     backupRuns: (id: string, cid: string) => ['apps', id, 'backups', cid, 'runs'] as const,

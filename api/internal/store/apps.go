@@ -52,6 +52,31 @@ type App struct {
 	// id for template-sourced apps (Track D / D3).
 	Source     string
 	TemplateID *string
+	// Preview deployments (docs/plans/preview-deployments.md). A preview is an
+	// ordinary app with IsPreview=true and ParentAppID pointing at the app it was
+	// derived from; it overrides only git_branch and inherits the rest by copy.
+	// LastPreviewPushAt stamps the most recent push that (re)deployed it, so the
+	// TTL expirer can reap previews idle past VAC_PREVIEW_TTL. All nil/false on a
+	// normal app.
+	IsPreview         bool
+	ParentAppID       *string
+	LastPreviewPushAt *time.Time
+}
+
+// appColumns is the canonical SELECT/RETURNING list, kept in one place so the
+// field order stays in lockstep with scanApp.
+const appColumns = `id, name, slug, git_url, git_branch, compose_file, build_kind,
+	build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at,
+	source, template_id, is_preview, parent_app_id, last_preview_push_at`
+
+// scanApp scans one row in appColumns order. pgx.Rows satisfies pgx.Row, so the
+// same helper serves both single-row and iterating queries.
+func scanApp(row pgx.Row, a *App) error {
+	return row.Scan(
+		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind,
+		&a.BuildConfig, &a.Status, &a.MemLimitMB, &a.DiskLimitMB, &a.CreatedAt, &a.UpdatedAt,
+		&a.Source, &a.TemplateID, &a.IsPreview, &a.ParentAppID, &a.LastPreviewPushAt,
+	)
 }
 
 func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, composeFile, buildKind string, buildConfig json.RawMessage) (App, error) {
@@ -62,13 +87,11 @@ func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, co
 		buildConfig = json.RawMessage("{}")
 	}
 	var a App
-	err := s.pool.QueryRow(ctx, `
+	err := scanApp(s.pool.QueryRow(ctx, `
 		INSERT INTO apps (name, slug, git_url, git_branch, compose_file, build_kind, build_config)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at, source, template_id
-	`, name, slug, gitURL, gitBranch, composeFile, buildKind, buildConfig).Scan(
-		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.DiskLimitMB, &a.CreatedAt, &a.UpdatedAt, &a.Source, &a.TemplateID,
-	)
+		RETURNING `+appColumns,
+		name, slug, gitURL, gitBranch, composeFile, buildKind, buildConfig), &a)
 	if isUniqueViolation(err) {
 		return App{}, ErrConflict
 	}
@@ -80,13 +103,11 @@ func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, co
 // git_url is empty (the clone step materializes embedded files instead).
 func (s *Store) CreateTemplateApp(ctx context.Context, name, slug, templateID, composeFile string) (App, error) {
 	var a App
-	err := s.pool.QueryRow(ctx, `
+	err := scanApp(s.pool.QueryRow(ctx, `
 		INSERT INTO apps (name, slug, git_url, git_branch, compose_file, build_kind, build_config, source, template_id)
 		VALUES ($1, $2, '', '', $3, 'compose', '{}', 'template', $4)
-		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at, source, template_id
-	`, name, slug, composeFile, templateID).Scan(
-		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.DiskLimitMB, &a.CreatedAt, &a.UpdatedAt, &a.Source, &a.TemplateID,
-	)
+		RETURNING `+appColumns,
+		name, slug, composeFile, templateID), &a)
 	if isUniqueViolation(err) {
 		return App{}, ErrConflict
 	}
@@ -103,13 +124,11 @@ func (s *Store) CreateImageApp(ctx context.Context, name, slug string, buildConf
 		buildConfig = json.RawMessage("{}")
 	}
 	var a App
-	err := s.pool.QueryRow(ctx, `
+	err := scanApp(s.pool.QueryRow(ctx, `
 		INSERT INTO apps (name, slug, git_url, git_branch, compose_file, build_kind, build_config, source)
 		VALUES ($1, $2, '', '', '', 'image', $3, 'image')
-		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at, source, template_id
-	`, name, slug, buildConfig).Scan(
-		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.DiskLimitMB, &a.CreatedAt, &a.UpdatedAt, &a.Source, &a.TemplateID,
-	)
+		RETURNING `+appColumns,
+		name, slug, buildConfig), &a)
 	if isUniqueViolation(err) {
 		return App{}, ErrConflict
 	}
@@ -120,10 +139,10 @@ func (s *Store) CreateImageApp(ctx context.Context, name, slug string, buildConf
 // compose project label back to a VAC app row.
 func (s *Store) GetAppBySlug(ctx context.Context, slug string) (App, error) {
 	var a App
-	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at, source, template_id
+	err := scanApp(s.pool.QueryRow(ctx, `
+		SELECT `+appColumns+`
 		FROM apps WHERE slug = $1
-	`, slug).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.DiskLimitMB, &a.CreatedAt, &a.UpdatedAt, &a.Source, &a.TemplateID)
+	`, slug), &a)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return App{}, ErrNotFound
 	}
@@ -132,10 +151,10 @@ func (s *Store) GetAppBySlug(ctx context.Context, slug string) (App, error) {
 
 func (s *Store) GetApp(ctx context.Context, id string) (App, error) {
 	var a App
-	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at, source, template_id
+	err := scanApp(s.pool.QueryRow(ctx, `
+		SELECT `+appColumns+`
 		FROM apps WHERE id = $1
-	`, id).Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.DiskLimitMB, &a.CreatedAt, &a.UpdatedAt, &a.Source, &a.TemplateID)
+	`, id), &a)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return App{}, ErrNotFound
 	}
@@ -144,7 +163,7 @@ func (s *Store) GetApp(ctx context.Context, id string) (App, error) {
 
 func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at, source, template_id
+		SELECT `+appColumns+`
 		FROM apps ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -154,7 +173,7 @@ func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 	var out []App
 	for rows.Next() {
 		var a App
-		if err := rows.Scan(&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.DiskLimitMB, &a.CreatedAt, &a.UpdatedAt, &a.Source, &a.TemplateID); err != nil {
+		if err := scanApp(rows, &a); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -175,7 +194,7 @@ func (s *Store) UpdateApp(ctx context.Context, id string, name, gitURL, gitBranc
 	if buildConfig != nil {
 		bc = buildConfig
 	}
-	err := s.pool.QueryRow(ctx, `
+	row := s.pool.QueryRow(ctx, `
 		UPDATE apps SET
 			name         = COALESCE($2, name),
 			git_url      = COALESCE($3, git_url),
@@ -187,14 +206,15 @@ func (s *Store) UpdateApp(ctx context.Context, id string, name, gitURL, gitBranc
 			disk_limit_mb = CASE WHEN $9::int IS NULL THEN disk_limit_mb ELSE NULLIF($9::int, 0) END,
 			updated_at   = NOW()
 		WHERE id = $1
-		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at, source, template_id
-	`, id, name, gitURL, gitBranch, composeFile, buildKind, bc, memLimitMB, diskLimitMB).Scan(
-		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.DiskLimitMB, &a.CreatedAt, &a.UpdatedAt, &a.Source, &a.TemplateID,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return App{}, ErrNotFound
+		RETURNING `+appColumns,
+		id, name, gitURL, gitBranch, composeFile, buildKind, bc, memLimitMB, diskLimitMB)
+	if err := scanApp(row, &a); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return App{}, ErrNotFound
+		}
+		return App{}, err
 	}
-	return a, err
+	return a, nil
 }
 
 // SetAppStatus is the lightweight write the deployment pipeline uses to

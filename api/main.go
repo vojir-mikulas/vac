@@ -37,6 +37,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/domainstatus"
 	"github.com/vojir-mikulas/vac/api/internal/logstream"
 	"github.com/vojir-mikulas/vac/api/internal/notify"
+	"github.com/vojir-mikulas/vac/api/internal/preview"
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
 	"github.com/vojir-mikulas/vac/api/internal/reqmetrics"
 	"github.com/vojir-mikulas/vac/api/internal/retention"
@@ -346,6 +347,18 @@ func main() {
 	}, slog.Default())
 	go diskCollector.Run(ctx)
 
+	// Preview deployments (docs/plans/preview-deployments.md). The lifecycle
+	// service reuses the deploy worker (enqueue + interrupt), the proxy manager
+	// (route teardown + reconcile), and the compose controller (down -v) — only
+	// the create-on-branch / reap-on-TTL lifecycle is new. The expirer is a
+	// long-lived goroutine mirroring certcheck/diskusage; it no-ops when
+	// VAC_PREVIEW_TTL is 0.
+	previewSvc := preview.New(st, worker, worker, docker, proxyMgr, notifier, preview.Config{
+		MaxPreviews: cfg.MaxPreviews,
+		TTL:         cfg.PreviewTTL,
+	}, slog.Default())
+	go previewSvc.RunExpirer(ctx)
+
 	// Track D (managed services). The backup engine is always constructed so the
 	// manual "Back up now" endpoint works the moment the flag is on; the
 	// scheduler goroutine, however, only starts when VAC_MANAGED_SERVICES is on
@@ -404,7 +417,7 @@ func main() {
 	proxyMgr.SetStatusEngine(statusEngine)
 	go statusEngine.Run(ctx)
 
-	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost)
+	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost, previewSvc)
 	if err != nil {
 		slog.Error("server init failed", "err", err)
 		os.Exit(1)

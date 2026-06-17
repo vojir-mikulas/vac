@@ -52,7 +52,37 @@ function AppDetailLayout() {
   // the gate is open — but hide them for an add-on app that owns no managed DB:
   // they'd only show empty inputs for a stack the operator doesn't manage here.
   const showManagedTabs = !!instance?.managed_services && (!isAddon || hasManagedDB)
-  const tabs = showManagedTabs ? [...TABS.slice(0, 5), ...MANAGED_TABS, ...TABS.slice(5)] : TABS
+
+  // Assemble the tab strip: base tabs, a Previews tab after Deploys (only on a
+  // real parent app — a preview has no previews of its own), and the managed
+  // tabs before Settings. `to` stays a literal union so the Link route type holds.
+  type Tab = {
+    to:
+      | 'overview'
+      | 'services'
+      | 'deploys'
+      | 'previews'
+      | 'logs'
+      | 'environment'
+      | 'settings'
+      | 'backups'
+      | 'databases'
+    label: string
+  }
+  const tabs: Tab[] = [...TABS]
+  if (app && !app.is_preview) {
+    tabs.splice(tabs.findIndex((tb) => tb.to === 'deploys') + 1, 0, {
+      to: 'previews',
+      label: 'Previews',
+    })
+  }
+  if (showManagedTabs) {
+    tabs.splice(
+      tabs.findIndex((tb) => tb.to === 'settings'),
+      0,
+      ...MANAGED_TABS,
+    )
+  }
 
   return (
     <PageContainer>
@@ -64,6 +94,11 @@ function AppDetailLayout() {
             <div className="flex items-center gap-3">
               <h1 className="truncate text-2xl font-semibold tracking-tight">{app.name}</h1>
               <StatusPill status={app.status} />
+              {app.is_preview ? (
+                <span className="rounded-sm bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand">
+                  Preview
+                </span>
+              ) : null}
             </div>
           )}
           {app ? (

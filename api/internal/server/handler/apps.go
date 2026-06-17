@@ -90,6 +90,10 @@ type appDTO struct {
 	TemplateID   *string `json:"template_id"`
 	TemplateName *string `json:"template_name,omitempty"`
 	TemplateIcon *string `json:"template_icon,omitempty"`
+	// Preview deployments: IsPreview badges a derived preview app in the apps
+	// list; ParentAppID links it back to the app it was branched from.
+	IsPreview   bool    `json:"is_preview"`
+	ParentAppID *string `json:"parent_app_id,omitempty"`
 }
 
 // toAppDTO maps a store row to the wire DTO. cat (nil-able) resolves an add-on
@@ -115,6 +119,8 @@ func toAppDTO(a store.App, cat AddonCatalog) appDTO {
 		UpdatedAt:   a.UpdatedAt,
 		Source:      a.Source,
 		TemplateID:  a.TemplateID,
+		IsPreview:   a.IsPreview,
+		ParentAppID: a.ParentAppID,
 	}
 	if a.Source == store.AppSourceTemplate && a.TemplateID != nil && cat != nil {
 		if t, ok := cat.Get(*a.TemplateID); ok {

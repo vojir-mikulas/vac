@@ -11,21 +11,22 @@ import "time"
 type EventType string
 
 const (
-	EventDeploySucceeded EventType = "deploy_succeeded"
-	EventDeployFailed    EventType = "deploy_failed"
-	EventCrashLoop       EventType = "crash_loop"
-	EventOOMKilled       EventType = "oom_killed"
-	EventVACRestarted    EventType = "vac_restarted"
-	EventCertExpiring    EventType = "cert_expiring"
-	EventBackupFailed    EventType = "backup_failed"
-	EventRestoreFinished EventType = "restore_finished"
-	EventTrafficAnomaly  EventType = "traffic_anomaly"
-	EventDiskUsageHigh   EventType = "disk_usage_high"
+	EventDeploySucceeded   EventType = "deploy_succeeded"
+	EventDeployFailed      EventType = "deploy_failed"
+	EventCrashLoop         EventType = "crash_loop"
+	EventOOMKilled         EventType = "oom_killed"
+	EventVACRestarted      EventType = "vac_restarted"
+	EventCertExpiring      EventType = "cert_expiring"
+	EventBackupFailed      EventType = "backup_failed"
+	EventRestoreFinished   EventType = "restore_finished"
+	EventTrafficAnomaly    EventType = "traffic_anomaly"
+	EventDiskUsageHigh     EventType = "disk_usage_high"
+	EventPreviewCapReached EventType = "preview_cap_reached"
 )
 
 // AllEvents is the set of implemented events, used to default a missing toggle
 // to "on".
-var AllEvents = []EventType{EventDeploySucceeded, EventDeployFailed, EventCrashLoop, EventOOMKilled, EventVACRestarted, EventCertExpiring, EventBackupFailed, EventRestoreFinished, EventTrafficAnomaly, EventDiskUsageHigh}
+var AllEvents = []EventType{EventDeploySucceeded, EventDeployFailed, EventCrashLoop, EventOOMKilled, EventVACRestarted, EventCertExpiring, EventBackupFailed, EventRestoreFinished, EventTrafficAnomaly, EventDiskUsageHigh, EventPreviewCapReached}
 
 // Event is a render-neutral notification. Channels turn it into their own
 // payload shape.

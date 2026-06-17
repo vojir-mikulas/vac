@@ -185,6 +185,14 @@ type Config struct {
 	SecurityExpectFirewall bool `yaml:"security_expect_firewall"`
 	SecurityExpectFail2ban bool `yaml:"security_expect_fail2ban"`
 
+	// Preview deployments (docs/plans/preview-deployments.md). MaxPreviews is the
+	// global hard cap on concurrent preview environments — the single box has one
+	// finite RAM/disk budget, so unbounded preview fan-out is refused rather than
+	// risking an OOM. 0 disables previews entirely. PreviewTTL auto-reaps a
+	// preview that hasn't been pushed to within the window (0 disables expiry).
+	MaxPreviews int           `yaml:"max_previews"`
+	PreviewTTL  time.Duration `yaml:"preview_ttl"`
+
 	// Build metadata injected by main() from ldflags vars; surfaced by the
 	// instance-info endpoint. Not read from env/yaml.
 	Version   string `yaml:"-"`
@@ -256,6 +264,11 @@ func Default() Config {
 		SecurityDir:            "/var/lib/vac/security",
 		SecurityExpectFirewall: true,
 		SecurityExpectFail2ban: true,
+
+		// Previews default to a small cap and a 72h idle TTL — useful but firmly
+		// bounded on a single box (decision #5).
+		MaxPreviews: 5,
+		PreviewTTL:  72 * time.Hour,
 	}
 }
 
@@ -510,6 +523,17 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("VAC_TRUST_PROXY_HEADERS"); v != "" {
 		cfg.TrustProxyHeaders = v == "true" || v == "1"
+	}
+
+	if v := os.Getenv("VAC_MAX_PREVIEWS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			cfg.MaxPreviews = n
+		}
+	}
+	if v := os.Getenv("VAC_PREVIEW_TTL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d >= 0 {
+			cfg.PreviewTTL = d
+		}
 	}
 
 	if v := os.Getenv("VAC_SECURITY_MONITOR"); v != "" {

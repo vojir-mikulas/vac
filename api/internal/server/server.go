@@ -21,6 +21,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 	"github.com/vojir-mikulas/vac/api/internal/domainstatus"
+	"github.com/vojir-mikulas/vac/api/internal/preview"
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
 	"github.com/vojir-mikulas/vac/api/internal/revert"
 	"github.com/vojir-mikulas/vac/api/internal/selfupdate"
@@ -36,7 +37,7 @@ import (
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost) (*http.Server, error) {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost, previewSvc *preview.Service) (*http.Server, error) {
 	// Gate X-Forwarded-Proto trust (cookie Secure decision) on config — the
 	// bundled vac-proxy sets the header; a raw-HTTP box can disable trusting it.
 	handler.SetTrustForwardedProto(cfg.TrustProxyHeaders)
@@ -65,6 +66,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	var domStatus handler.DomainStatusProvider
 	if dstatus != nil {
 		domStatus = dstatus
+	}
+	// Preview lifecycle (preview-deployments.md): nil-able so the webhook fork and
+	// the previews REST surface degrade cleanly when it isn't wired (tests).
+	var previews handler.PreviewService
+	if previewSvc != nil {
+		previews = previewSvc
 	}
 	var routeRec handler.RouteReconciler
 	if pm != nil {
@@ -147,7 +154,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		// legit Git hosts won't trip it) — see WebhookRateLimit defaults.
 		webhookLimiter := middleware.NewRateLimiter(ctx, cfg.WebhookRateLimit, cfg.WebhookRateWindow)
 		r.With(middleware.BodyLimit(middleware.MaxBodyBytes), webhookLimiter.Middleware).
-			Post("/webhooks/{appID}", handler.Webhook(s, box, worker))
+			Post("/webhooks/{appID}", handler.Webhook(s, box, worker, previews))
 	}
 
 	// On-demand-TLS ask hook for Caddy. Unauthenticated by design (Caddy can't
@@ -281,6 +288,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				// Probe a repo for a compose file so the wizard can pre-fill the
 				// compose path. Static path; clones without a key (public repos only).
 				r.Post("/detect-compose", handler.DetectCompose(nil))
+				// Global preview budget (count vs VAC_MAX_PREVIEWS). Static path —
+				// resolved before "/{id}".
+				r.Get("/previews/budget", handler.PreviewBudget(s, previews))
 				r.Get("/{id}", handler.GetApp(s, addonCatalog))
 				r.Get("/{id}/volumes", handler.GetAppVolumes(s))
 				r.Get("/{id}/export", handler.ExportApp(s, box))
@@ -310,6 +320,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Post("/{id}/deployments/{did}/rollback", handler.RollbackDeployment(s, worker))
 					r.Post("/{id}/deployments/{did}/cancel", handler.CancelDeployment(s, worker))
 				}
+
+				// Preview deployments (preview-deployments.md): list a parent app's
+				// previews and tear one down. The list is config-only; teardown needs
+				// the lifecycle service (nil → 503 in tests where it isn't wired).
+				r.Get("/{id}/previews", handler.ListPreviews(s, autoList))
+				r.With(middleware.RequireStepUp).Delete("/{id}/previews/{previewId}", handler.TeardownPreview(s, previews))
 
 				// Push-to-deploy config (plan 01): trigger rules + the inbound
 				// webhook URL/secret. These only read/write config, so unlike the

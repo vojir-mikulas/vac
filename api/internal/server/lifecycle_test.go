@@ -27,7 +27,7 @@ func TestGoroutineCountStaysBounded(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		ctx, cancel := context.WithCancel(context.Background())
-		srv, err := New(ctx, config.Default(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		srv, err := New(ctx, config.Default(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}

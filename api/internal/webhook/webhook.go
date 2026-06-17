@@ -94,6 +94,48 @@ type refPayload struct {
 	Ref string `json:"ref"`
 }
 
+// deletePayload is the slice of a push body that tells us a branch was deleted:
+// GitHub sets "deleted": true (and an all-zero "after"); GitLab sends an all-zero
+// "after" with no "deleted" flag. Either signals the branch is gone — the
+// preview-teardown trigger.
+type deletePayload struct {
+	After   string `json:"after"`
+	Deleted bool   `json:"deleted"`
+}
+
+// IsBranchDelete reports whether a push payload deleted its branch — GitHub's
+// explicit "deleted": true, or the all-zero post-image SHA that both GitHub and
+// GitLab send for a delete. Used to reap the matching preview environment. A
+// generic/body-less caller (no "after", no "deleted") is never a delete.
+func IsBranchDelete(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	var p deletePayload
+	if err := json.Unmarshal(body, &p); err != nil {
+		return false
+	}
+	if p.Deleted {
+		return true
+	}
+	return isAllZeroSHA(p.After)
+}
+
+// isAllZeroSHA reports whether s is a non-empty run of only '0' — the zero
+// object id Git uses for a deleted ref's post-image (40 zeros for SHA-1, 64 for
+// SHA-256).
+func isAllZeroSHA(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] != '0' {
+			return false
+		}
+	}
+	return true
+}
+
 // ExtractRef pulls the Git ref from the request: the JSON body's "ref" field,
 // or failing that a ?ref= query param (the generic, body-less path). Returns
 // ErrNoRef when neither is present.

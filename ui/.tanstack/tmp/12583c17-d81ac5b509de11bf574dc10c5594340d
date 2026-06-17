@@ -37,6 +37,7 @@ import { Route as AppAppsAppIdRouteImport } from './routes/_app/apps/$appId'
 import { Route as AppAppsAppIdIndexRouteImport } from './routes/_app/apps/$appId/index'
 import { Route as AppAppsAppIdSettingsRouteImport } from './routes/_app/apps/$appId/settings'
 import { Route as AppAppsAppIdServicesRouteImport } from './routes/_app/apps/$appId/services'
+import { Route as AppAppsAppIdPreviewsRouteImport } from './routes/_app/apps/$appId/previews'
 import { Route as AppAppsAppIdOverviewRouteImport } from './routes/_app/apps/$appId/overview'
 import { Route as AppAppsAppIdLogsRouteImport } from './routes/_app/apps/$appId/logs'
 import { Route as AppAppsAppIdEnvironmentRouteImport } from './routes/_app/apps/$appId/environment'
@@ -184,6 +185,11 @@ const AppAppsAppIdServicesRoute = AppAppsAppIdServicesRouteImport.update({
   path: '/services',
   getParentRoute: () => AppAppsAppIdRoute,
 } as any)
+const AppAppsAppIdPreviewsRoute = AppAppsAppIdPreviewsRouteImport.update({
+  id: '/previews',
+  path: '/previews',
+  getParentRoute: () => AppAppsAppIdRoute,
+} as any)
 const AppAppsAppIdOverviewRoute = AppAppsAppIdOverviewRouteImport.update({
   id: '/overview',
   path: '/overview',
@@ -246,6 +252,7 @@ export interface FileRoutesByFullPath {
   '/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
   '/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
   '/apps/$appId/overview': typeof AppAppsAppIdOverviewRoute
+  '/apps/$appId/previews': typeof AppAppsAppIdPreviewsRoute
   '/apps/$appId/services': typeof AppAppsAppIdServicesRoute
   '/apps/$appId/settings': typeof AppAppsAppIdSettingsRoute
   '/apps/$appId/': typeof AppAppsAppIdIndexRoute
@@ -279,6 +286,7 @@ export interface FileRoutesByTo {
   '/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
   '/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
   '/apps/$appId/overview': typeof AppAppsAppIdOverviewRoute
+  '/apps/$appId/previews': typeof AppAppsAppIdPreviewsRoute
   '/apps/$appId/services': typeof AppAppsAppIdServicesRoute
   '/apps/$appId/settings': typeof AppAppsAppIdSettingsRoute
   '/apps/$appId': typeof AppAppsAppIdIndexRoute
@@ -316,6 +324,7 @@ export interface FileRoutesById {
   '/_app/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
   '/_app/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
   '/_app/apps/$appId/overview': typeof AppAppsAppIdOverviewRoute
+  '/_app/apps/$appId/previews': typeof AppAppsAppIdPreviewsRoute
   '/_app/apps/$appId/services': typeof AppAppsAppIdServicesRoute
   '/_app/apps/$appId/settings': typeof AppAppsAppIdSettingsRoute
   '/_app/apps/$appId/': typeof AppAppsAppIdIndexRoute
@@ -353,6 +362,7 @@ export interface FileRouteTypes {
     | '/apps/$appId/environment'
     | '/apps/$appId/logs'
     | '/apps/$appId/overview'
+    | '/apps/$appId/previews'
     | '/apps/$appId/services'
     | '/apps/$appId/settings'
     | '/apps/$appId/'
@@ -386,6 +396,7 @@ export interface FileRouteTypes {
     | '/apps/$appId/environment'
     | '/apps/$appId/logs'
     | '/apps/$appId/overview'
+    | '/apps/$appId/previews'
     | '/apps/$appId/services'
     | '/apps/$appId/settings'
     | '/apps/$appId'
@@ -422,6 +433,7 @@ export interface FileRouteTypes {
     | '/_app/apps/$appId/environment'
     | '/_app/apps/$appId/logs'
     | '/_app/apps/$appId/overview'
+    | '/_app/apps/$appId/previews'
     | '/_app/apps/$appId/services'
     | '/_app/apps/$appId/settings'
     | '/_app/apps/$appId/'
@@ -632,6 +644,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAppsAppIdServicesRouteImport
       parentRoute: typeof AppAppsAppIdRoute
     }
+    '/_app/apps/$appId/previews': {
+      id: '/_app/apps/$appId/previews'
+      path: '/previews'
+      fullPath: '/apps/$appId/previews'
+      preLoaderRoute: typeof AppAppsAppIdPreviewsRouteImport
+      parentRoute: typeof AppAppsAppIdRoute
+    }
     '/_app/apps/$appId/overview': {
       id: '/_app/apps/$appId/overview'
       path: '/overview'
@@ -712,6 +731,7 @@ interface AppAppsAppIdRouteChildren {
   AppAppsAppIdEnvironmentRoute: typeof AppAppsAppIdEnvironmentRoute
   AppAppsAppIdLogsRoute: typeof AppAppsAppIdLogsRoute
   AppAppsAppIdOverviewRoute: typeof AppAppsAppIdOverviewRoute
+  AppAppsAppIdPreviewsRoute: typeof AppAppsAppIdPreviewsRoute
   AppAppsAppIdServicesRoute: typeof AppAppsAppIdServicesRoute
   AppAppsAppIdSettingsRoute: typeof AppAppsAppIdSettingsRoute
   AppAppsAppIdIndexRoute: typeof AppAppsAppIdIndexRoute
@@ -724,6 +744,7 @@ const AppAppsAppIdRouteChildren: AppAppsAppIdRouteChildren = {
   AppAppsAppIdEnvironmentRoute: AppAppsAppIdEnvironmentRoute,
   AppAppsAppIdLogsRoute: AppAppsAppIdLogsRoute,
   AppAppsAppIdOverviewRoute: AppAppsAppIdOverviewRoute,
+  AppAppsAppIdPreviewsRoute: AppAppsAppIdPreviewsRoute,
   AppAppsAppIdServicesRoute: AppAppsAppIdServicesRoute,
   AppAppsAppIdSettingsRoute: AppAppsAppIdSettingsRoute,
   AppAppsAppIdIndexRoute: AppAppsAppIdIndexRoute,

@@ -16,6 +16,7 @@ const (
 	TriggeredTag      = "tag"      // a matching git tag (plan 01)
 	TriggeredRollback = "rollback" // redeploy of a prior version (plan 02)
 	TriggeredSystem   = "system"   // VAC itself (future automation)
+	TriggeredPreview  = "preview"  // a push to a preview branch (preview-deployments.md)
 )
 
 // Deployment is one row per deploy attempt. Times beyond TriggeredAt are

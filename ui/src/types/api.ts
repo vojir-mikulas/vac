@@ -45,6 +45,31 @@ export interface App {
   template_name?: string
   /** Brand-icon key the UI maps to a glyph (template apps only). */
   template_icon?: string
+  /** True for a per-branch preview environment (preview-deployments.md). */
+  is_preview: boolean
+  /** The app this preview was branched from; null/absent for a normal app. */
+  parent_app_id?: string
+}
+
+/** A preview environment listed under its parent app's Previews tab. */
+export interface Preview {
+  id: string
+  slug: string
+  branch: string
+  status: AppStatus
+  /** Primary derived https URL; empty until the preview has a routable service. */
+  url?: string
+  /** All derived auto-hosts for the preview (multi-service exposes more). */
+  hosts: string[]
+  created_at: string
+  /** Most recent push that (re)deployed it; drives TTL-remaining. */
+  last_push_at?: string
+}
+
+/** Instance-wide preview budget: count vs VAC_MAX_PREVIEWS. */
+export interface PreviewBudget {
+  used: number
+  max: number
 }
 
 export interface CreateAppInput {

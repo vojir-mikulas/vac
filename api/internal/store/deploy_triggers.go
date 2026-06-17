@@ -11,6 +11,10 @@ const (
 	TriggerEventPush   = "push"   // a branch push whose ref matches Filter
 	TriggerEventTag    = "tag"    // a tag push whose ref matches Filter
 	TriggerEventManual = "manual" // dashboard / API button only (no auto-deploy)
+	// TriggerEventPreview fires a per-branch preview environment: a push to a
+	// matching non-default branch creates-or-redeploys a preview app, distinct
+	// from TriggerEventPush which redeploys the parent (preview-deployments.md).
+	TriggerEventPreview = "preview"
 )
 
 // DeployTrigger is one push-to-deploy rule for an app: deploy when an inbound

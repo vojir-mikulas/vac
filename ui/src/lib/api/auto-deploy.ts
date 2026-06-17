@@ -5,7 +5,7 @@ import { queryKeys } from '@/lib/query/keys'
 
 // Push-to-deploy (plan 01): per-app trigger rules + the inbound webhook secret.
 
-export type TriggerEvent = 'push' | 'tag'
+export type TriggerEvent = 'push' | 'tag' | 'preview'
 
 export interface DeployTrigger {
   id: string

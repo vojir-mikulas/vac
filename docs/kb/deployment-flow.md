@@ -1,4 +1,4 @@
-<!-- generated from commit 83ca77c on 2026-06-17 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy}/ changed, treat as possibly stale -->
+<!-- generated from commit 966359c on 2026-06-17 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy,webhook,preview}/ changed, treat as possibly stale -->
 
 # Deployment flow — git → build → run → route
 
@@ -25,6 +25,14 @@ deployment shows at each step is in **bold**.
 - **Webhook trigger.** Inbound Git webhooks land on the `webhook` handler/package, which
   authenticates against the per-app secret (`apps.webhook_secret_enc`) and matches `ParseRef`
   against the app's `deploy_triggers` rows to decide whether (and on which branch) to deploy.
+- **Preview fork.** Before the parent-deploy path, the webhook handler forks for preview
+  environments (`preview` package): a branch-delete push (`webhook.IsBranchDelete`) reaps that
+  branch's preview (`Service.TeardownByBranch`); a push to a non-default branch matching a
+  `preview`-event `deploy_triggers` rule create-or-redeploys a preview app
+  (`Service.EnsurePreview`) instead of deploying the parent. A preview is just an app
+  (`is_preview`, `parent_app_id`, derived slug `{parent}-{branch}`) so it reuses this whole
+  pipeline verbatim; new previews are refused past `VAC_MAX_PREVIEWS` and the `Service.RunExpirer`
+  goroutine reaps any idle past `VAC_PREVIEW_TTL`.
 - **Per-app guard.** A partial unique index `one_active_deploy_per_app` (migration 00062)
   allows at most one non-terminal deployment per app. `store.CreateDeployment` /
   `CreateRollbackDeployment` translate the unique violation to `ErrActiveDeploymentExists`.

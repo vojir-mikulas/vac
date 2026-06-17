@@ -15,9 +15,20 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/audit"
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
+	"github.com/vojir-mikulas/vac/api/internal/preview"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 	"github.com/vojir-mikulas/vac/api/internal/webhook"
 )
+
+// PreviewService is the slice of *preview.Service the webhook fork and the
+// previews REST surface depend on. An interface so handler tests can fake it and
+// so the surface degrades cleanly (nil) when previews aren't wired.
+type PreviewService interface {
+	EnsurePreview(ctx context.Context, parentID, branch string) error
+	TeardownByBranch(ctx context.Context, parentID, branch string) error
+	Teardown(ctx context.Context, previewID string) error
+	MaxPreviews() int
+}
 
 // webhookSecretBytes is the entropy of a generated webhook secret (32 bytes →
 // 64 hex chars). Plenty for an HMAC key / bearer token.
@@ -127,7 +138,7 @@ func DeleteAppWebhookSecret(s *store.Store) http.HandlerFunc {
 // secret (GitHub HMAC / GitLab token / generic token) rather than a session.
 // It records its own audit rows (it runs outside the /api audit middleware) so
 // matched deploys and ignored/coalesced pushes both show up in the activity log.
-func Webhook(s *store.Store, box *crypto.Box, worker DeploymentEnqueuer) http.HandlerFunc {
+func Webhook(s *store.Store, box *crypto.Box, worker DeploymentEnqueuer, previews PreviewService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		appID := chi.URLParam(r, "appID")
 
@@ -177,6 +188,42 @@ func Webhook(s *store.Store, box *crypto.Box, worker DeploymentEnqueuer) http.Ha
 			WriteError(w, http.StatusInternalServerError, "could not load triggers")
 			return
 		}
+
+		// Preview-deployment fork (preview-deployments.md). A push that deleted a
+		// branch reaps that branch's preview; a push to a non-default branch
+		// matching a `preview` trigger creates-or-redeploys a preview app instead
+		// of deploying the parent. Both run only when the lifecycle is wired.
+		if previews != nil && kind == webhook.KindPush {
+			if webhook.IsBranchDelete(body) {
+				switch err := previews.TeardownByBranch(r.Context(), appID, name); {
+				case err == nil:
+					auditWebhookEntry(s, r, appID, "tore down preview for deleted branch "+name+" of "+app.Slug, http.StatusAccepted)
+					WriteJSON(w, http.StatusAccepted, map[string]string{"status": "preview-teardown"})
+				case errors.Is(err, store.ErrNotFound):
+					auditWebhookEntry(s, r, appID, "ignored delete of "+name+" for "+app.Slug+" (no preview)", http.StatusOK)
+					WriteJSON(w, http.StatusOK, map[string]string{"status": "ignored", "reason": "no preview for branch"})
+				default:
+					WriteError(w, http.StatusInternalServerError, "could not tear down preview")
+				}
+				return
+			}
+			// A push to the parent's tracked branch deploys the parent (the push
+			// trigger below), never a preview; only other branches become previews.
+			if name != app.GitBranch && webhook.MatchTriggers(triggers, store.TriggerEventPreview, name) {
+				switch err := previews.EnsurePreview(r.Context(), appID, name); {
+				case err == nil:
+					auditWebhookEntry(s, r, appID, "preview deploy of "+app.Slug+" from branch "+name, http.StatusAccepted)
+					WriteJSON(w, http.StatusAccepted, map[string]string{"status": "preview"})
+				case errors.Is(err, preview.ErrCapReached):
+					auditWebhookEntry(s, r, appID, "refused preview of "+app.Slug+" from "+name+" (preview limit reached)", http.StatusAccepted)
+					WriteJSON(w, http.StatusAccepted, map[string]string{"status": "capped", "reason": "preview limit reached"})
+				default:
+					WriteError(w, http.StatusInternalServerError, "could not ensure preview")
+				}
+				return
+			}
+		}
+
 		if !webhook.MatchTriggers(triggers, kind, name) {
 			auditWebhookEntry(s, r, appID, "ignored "+kind+" "+name+" for "+app.Slug+" (no matching rule)", http.StatusOK)
 			WriteJSON(w, http.StatusOK, map[string]string{"status": "ignored", "reason": "no matching trigger"})

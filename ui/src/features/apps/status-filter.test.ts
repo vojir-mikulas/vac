@@ -20,6 +20,7 @@ function app(status: string): App {
     updated_at: '',
     source: 'git',
     template_id: null,
+    is_preview: false,
   }
 }
 

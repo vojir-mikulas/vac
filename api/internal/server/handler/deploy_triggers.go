@@ -47,8 +47,10 @@ type createTriggerRequest struct {
 	Filter string `json:"filter"`
 }
 
-// CreateDeployTrigger adds a rule. Only push|tag are accepted — `manual` is the
-// absence of an auto-deploy rule, not a webhook event.
+// CreateDeployTrigger adds a rule. Only push|tag|preview are accepted — `manual`
+// is the absence of an auto-deploy rule, not a webhook event. A `preview` rule
+// makes matching non-default branches spin up preview environments
+// (preview-deployments.md) instead of redeploying the parent.
 func CreateDeployTrigger(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		appID := chi.URLParam(r, "id")
@@ -65,8 +67,8 @@ func CreateDeployTrigger(s *store.Store) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		if req.Event != store.TriggerEventPush && req.Event != store.TriggerEventTag {
-			WriteError(w, http.StatusBadRequest, "event must be 'push' or 'tag'")
+		if req.Event != store.TriggerEventPush && req.Event != store.TriggerEventTag && req.Event != store.TriggerEventPreview {
+			WriteError(w, http.StatusBadRequest, "event must be 'push', 'tag', or 'preview'")
 			return
 		}
 		if len(req.Filter) > maxTriggerFilterLen {

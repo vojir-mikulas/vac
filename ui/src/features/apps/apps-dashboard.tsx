@@ -429,7 +429,14 @@ function AppRow({ app, index }: { app: App; index: number }) {
             )}
           </span>
           <span className="min-w-0">
-            <span className="block truncate text-sm font-medium">{app.name}</span>
+            <span className="flex items-center gap-2">
+              <span className="truncate text-sm font-medium">{app.name}</span>
+              {app.is_preview ? (
+                <span className="shrink-0 rounded-sm bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand">
+                  {t('dashboard.table.previewBadge')}
+                </span>
+              ) : null}
+            </span>
             {isAddon ? (
               <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
                 <Blocks className="size-2.5" />

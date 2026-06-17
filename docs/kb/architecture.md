@@ -1,4 +1,4 @@
-<!-- generated from commit 599c42c on 2026-06-17 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
+<!-- generated from commit 966359c on 2026-06-17 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
 
 # Architecture — current state
 
@@ -60,7 +60,8 @@ Each package owns one concern.
 | `notify` | `Dispatcher` for Discord/Slack/webhook + email (SMTP) (deploy ok/fail, crash-loop, restarted, cert expiry); webhook calls go through the `netguard` dialer, SMTP applies the same `IsPrivate` guard directly (opt-out via `VAC_NOTIFY_SMTP_ALLOW_PRIVATE`, deviation D10) |
 | `netguard` | SSRF-hardened `net/http` `DialContext` for outbound requests to user-controlled URLs (notification webhooks, S3 backup endpoints): rejects loopback/private/link-local/CGNAT, dials the validated literal IP to close DNS-rebinding (`IsPrivate`, `ErrPrivateAddress`) |
 | `retention` | nightly `Pruner`: runtime logs, request metrics, audit log, per-service image prune, deployment history, BuildKit build-cache cap (`VAC_BUILD_CACHE` / `..._MAX_GB`) |
-| `webhook` | turns inbound Git webhooks into deploy decisions (per-app secret auth, `ParseRef` vs `deploy_triggers`) |
+| `webhook` | turns inbound Git webhooks into deploy decisions (per-app secret auth, `ParseRef` vs `deploy_triggers`, `IsBranchDelete` for preview teardown) |
+| `preview` | per-branch preview environments (`Service`): `EnsurePreview` create-or-redeploys a preview app on a matching branch push, `Teardown`/`TeardownByBranch` reaps it, `RunExpirer` is the TTL sweeper; a preview is just an app (`is_preview`, `parent_app_id`) reusing the whole pipeline/router/teardown path, hard-capped by `VAC_MAX_PREVIEWS` |
 | `dbprovision` | provisions/deprovisions managed databases (`Engine` + per-engine recipes), yields connection strings |
 | `addon` | `Registry`/`Installer` materializes catalog templates into an app (env defaults, `@random` secrets, DB provisioning, enqueue deploy); `ServiceHealthPaths` exposes per-service Caddy health-check paths the deploy pipeline applies post-up |
 | `backup` | `Engine` runs a backup end-to-end: exec in container → stream to destination → record run → prune → notify. `Restorer` is the inverse: read a recorded run's artifact back → resolve the engine restore command → stream it into the container over `docker exec -i` (destructive; gated by step-up 2FA) |
@@ -105,7 +106,9 @@ Schema lives in goose migrations under `api/internal/db/migrations/` (embedded a
   `failed_auth_attempts` + `auth_locked_until` for per-account lockout), `sessions` (incl.
   `stepup_verified_at` for fresh-2FA step-up), `api_tokens`.
 - **Apps & services:** `apps` (includes `source` = `git`|`template`|`image`,
-  `webhook_secret_enc`, and `registry_auth_enc` for image apps' private-registry creds),
+  `webhook_secret_enc`, `registry_auth_enc` for image apps' private-registry creds, and
+  `is_preview` / `parent_app_id` (ON DELETE CASCADE) / `last_preview_push_at` for preview
+  environments),
   `services` (incl. `has_volumes`, set from the compose file each deploy to flag stateful
   services), `ssh_keys`, `env_vars`, `domains` (custom/auto hosts, cert expiry, redirects,
   lifecycle).

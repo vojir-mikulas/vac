@@ -129,6 +129,7 @@ function app(
     updated_at: partial.updated_at ?? minutesAgoISO(6),
     source: partial.source ?? 'git',
     template_id: partial.template_id ?? null,
+    is_preview: partial.is_preview ?? false,
     services: partial.services,
     deployments: partial.deployments,
     env: partial.env,
