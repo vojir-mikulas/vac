@@ -372,6 +372,21 @@ func (d *Dispatcher) BackupFailed(appName, appID, service, errMsg string) {
 	})
 }
 
+// JobFailed fires the scheduled-job-failed event (plan: scheduled-jobs.md). Like
+// a backup, only failure warrants a push — a successful job run is surfaced
+// in-UI only. jobName is the operator's label for the job (e.g. "cleanup").
+func (d *Dispatcher) JobFailed(appName, appID, jobName, errMsg string) {
+	msg := fmt.Sprintf("Scheduled job %q failed", jobName)
+	if errMsg != "" {
+		msg += ": " + errMsg
+	}
+	d.dispatch(Event{
+		Type: EventJobFailed, OK: false,
+		Title:   "Job failed: " + appName + "/" + jobName,
+		AppName: appName, AppID: appID, Message: msg,
+	})
+}
+
 // RestoreFinished fires the backup-restore-finished event. Unlike a backup
 // (where only failure warrants a push), a restore is an operator-initiated,
 // destructive action, so both outcomes are surfaced — success confirms the

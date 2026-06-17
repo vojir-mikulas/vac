@@ -37,7 +37,7 @@ import (
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost, previewSvc *preview.Service) (*http.Server, error) {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, jobsEngine handler.JobRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost, previewSvc *preview.Service) (*http.Server, error) {
 	// Gate X-Forwarded-Proto trust (cookie Secure decision) on config — the
 	// bundled vac-proxy sets the header; a raw-HTTP box can disable trusting it.
 	handler.SetTrustForwardedProto(cfg.TrustProxyHeaders)
@@ -359,6 +359,18 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				// Request-rate metrics (Phase 3).
 				r.Get("/{id}/metrics", handler.AppMetrics(s))
 				r.Get("/{id}/services/{name}/metrics", handler.ServiceMetrics(s))
+
+				// Scheduled jobs (plan: scheduled-jobs.md). A core feature — not
+				// gated by the managed-services flag (unlike backups/databases). The
+				// scheduler goroutine still only starts when ≥1 enabled job exists.
+				r.Get("/{id}/jobs", handler.ListJobs(s))
+				r.Post("/{id}/jobs", handler.CreateJob(s))
+				r.Put("/{id}/jobs/{jid}", handler.UpdateJob(s))
+				r.Delete("/{id}/jobs/{jid}", handler.DeleteJob(s))
+				r.Get("/{id}/jobs/{jid}/runs", handler.ListJobRuns(s))
+				if jobsEngine != nil {
+					r.Post("/{id}/jobs/{jid}/run", handler.RunJob(s, jobsEngine))
+				}
 
 				// Managed backups (Track D / D1). Gated by VAC_MANAGED_SERVICES so
 				// the surface stays closed until the operator opts in; the UI hides

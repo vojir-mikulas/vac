@@ -26,6 +26,7 @@ const TABS = [
   { to: 'services', label: 'Services' },
   { to: 'deploys', label: 'Deploys' },
   { to: 'logs', label: 'Logs' },
+  { to: 'jobs', label: 'Jobs' },
   { to: 'environment', label: 'Environment' },
   { to: 'settings', label: 'Settings' },
 ] as const
@@ -63,6 +64,7 @@ function AppDetailLayout() {
       | 'deploys'
       | 'previews'
       | 'logs'
+      | 'jobs'
       | 'environment'
       | 'settings'
       | 'backups'

@@ -25,6 +25,11 @@ const VARIANTS: Record<string, Variant> = {
   canceled: { label: 'Canceled', tone: 'muted' },
   stopped: { label: 'Stopped', tone: 'muted' },
   success: { label: 'Success', tone: 'ok' },
+  // Scheduled-job run outcomes (plan: scheduled-jobs.md) beyond running/success/
+  // failed: a run skipped because the prior one was still in flight, and a run
+  // killed by its hard timeout.
+  skipped: { label: 'Skipped', tone: 'muted' },
+  timeout: { label: 'Timed out', tone: 'err' },
   // Domain DNS/cert states (DomainStatusState — plan 09 F3). Kept distinct so a
   // misconfigured/error domain doesn't masquerade as "Building".
   checking: { label: 'Checking', tone: 'warn', pulse: true },

@@ -1,5 +1,4 @@
 import { formatBytes } from '@/lib/format'
-import type { BackupConfig } from '@/types/api'
 
 // Shared between the per-app Backups tab and the box-wide Backups overview so
 // the two stay in lockstep. The labels are passed in (not resolved here) because
@@ -12,12 +11,25 @@ export interface ScheduleLabels {
   daily: (vars: { at: string }) => string
   /** Localized weekday name for index 0–6 (Sunday = 0). */
   dayName: (index: number) => string
+  /** "Every {{minutes}} min" — only needed by surfaces with interval schedules
+   *  (scheduled jobs). Optional so the backups surface, which has none, can omit it. */
+  interval?: (vars: { minutes: number }) => string
 }
 
-export function scheduleSummary(
-  c: Pick<BackupConfig, 'frequency' | 'hour_of_day' | 'day_of_week'>,
-  labels: ScheduleLabels,
-): string {
+// A schedule can be a backup config (daily/weekly) or a scheduled job, which
+// adds an 'interval' frequency with interval_minutes. The Pick keeps this loose
+// so both shapes satisfy it.
+type Schedulable = {
+  frequency: string
+  hour_of_day: number
+  day_of_week?: number | null
+  interval_minutes?: number | null
+}
+
+export function scheduleSummary(c: Schedulable, labels: ScheduleLabels): string {
+  if (c.frequency === 'interval' && c.interval_minutes != null && labels.interval) {
+    return labels.interval({ minutes: c.interval_minutes })
+  }
   const at = `${String(c.hour_of_day).padStart(2, '0')}:00`
   if (c.frequency === 'weekly' && c.day_of_week != null) {
     return labels.weekly({ day: labels.dayName(c.day_of_week), at })

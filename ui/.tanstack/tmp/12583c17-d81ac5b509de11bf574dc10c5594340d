@@ -40,6 +40,7 @@ import { Route as AppAppsAppIdServicesRouteImport } from './routes/_app/apps/$ap
 import { Route as AppAppsAppIdPreviewsRouteImport } from './routes/_app/apps/$appId/previews'
 import { Route as AppAppsAppIdOverviewRouteImport } from './routes/_app/apps/$appId/overview'
 import { Route as AppAppsAppIdLogsRouteImport } from './routes/_app/apps/$appId/logs'
+import { Route as AppAppsAppIdJobsRouteImport } from './routes/_app/apps/$appId/jobs'
 import { Route as AppAppsAppIdEnvironmentRouteImport } from './routes/_app/apps/$appId/environment'
 import { Route as AppAppsAppIdDeploysRouteImport } from './routes/_app/apps/$appId/deploys'
 import { Route as AppAppsAppIdDatabasesRouteImport } from './routes/_app/apps/$appId/databases'
@@ -200,6 +201,11 @@ const AppAppsAppIdLogsRoute = AppAppsAppIdLogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => AppAppsAppIdRoute,
 } as any)
+const AppAppsAppIdJobsRoute = AppAppsAppIdJobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
+  getParentRoute: () => AppAppsAppIdRoute,
+} as any)
 const AppAppsAppIdEnvironmentRoute = AppAppsAppIdEnvironmentRouteImport.update({
   id: '/environment',
   path: '/environment',
@@ -250,6 +256,7 @@ export interface FileRoutesByFullPath {
   '/apps/$appId/databases': typeof AppAppsAppIdDatabasesRoute
   '/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
   '/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
+  '/apps/$appId/jobs': typeof AppAppsAppIdJobsRoute
   '/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
   '/apps/$appId/overview': typeof AppAppsAppIdOverviewRoute
   '/apps/$appId/previews': typeof AppAppsAppIdPreviewsRoute
@@ -284,6 +291,7 @@ export interface FileRoutesByTo {
   '/apps/$appId/databases': typeof AppAppsAppIdDatabasesRoute
   '/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
   '/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
+  '/apps/$appId/jobs': typeof AppAppsAppIdJobsRoute
   '/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
   '/apps/$appId/overview': typeof AppAppsAppIdOverviewRoute
   '/apps/$appId/previews': typeof AppAppsAppIdPreviewsRoute
@@ -322,6 +330,7 @@ export interface FileRoutesById {
   '/_app/apps/$appId/databases': typeof AppAppsAppIdDatabasesRoute
   '/_app/apps/$appId/deploys': typeof AppAppsAppIdDeploysRoute
   '/_app/apps/$appId/environment': typeof AppAppsAppIdEnvironmentRoute
+  '/_app/apps/$appId/jobs': typeof AppAppsAppIdJobsRoute
   '/_app/apps/$appId/logs': typeof AppAppsAppIdLogsRoute
   '/_app/apps/$appId/overview': typeof AppAppsAppIdOverviewRoute
   '/_app/apps/$appId/previews': typeof AppAppsAppIdPreviewsRoute
@@ -360,6 +369,7 @@ export interface FileRouteTypes {
     | '/apps/$appId/databases'
     | '/apps/$appId/deploys'
     | '/apps/$appId/environment'
+    | '/apps/$appId/jobs'
     | '/apps/$appId/logs'
     | '/apps/$appId/overview'
     | '/apps/$appId/previews'
@@ -394,6 +404,7 @@ export interface FileRouteTypes {
     | '/apps/$appId/databases'
     | '/apps/$appId/deploys'
     | '/apps/$appId/environment'
+    | '/apps/$appId/jobs'
     | '/apps/$appId/logs'
     | '/apps/$appId/overview'
     | '/apps/$appId/previews'
@@ -431,6 +442,7 @@ export interface FileRouteTypes {
     | '/_app/apps/$appId/databases'
     | '/_app/apps/$appId/deploys'
     | '/_app/apps/$appId/environment'
+    | '/_app/apps/$appId/jobs'
     | '/_app/apps/$appId/logs'
     | '/_app/apps/$appId/overview'
     | '/_app/apps/$appId/previews'
@@ -665,6 +677,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAppsAppIdLogsRouteImport
       parentRoute: typeof AppAppsAppIdRoute
     }
+    '/_app/apps/$appId/jobs': {
+      id: '/_app/apps/$appId/jobs'
+      path: '/jobs'
+      fullPath: '/apps/$appId/jobs'
+      preLoaderRoute: typeof AppAppsAppIdJobsRouteImport
+      parentRoute: typeof AppAppsAppIdRoute
+    }
     '/_app/apps/$appId/environment': {
       id: '/_app/apps/$appId/environment'
       path: '/environment'
@@ -729,6 +748,7 @@ interface AppAppsAppIdRouteChildren {
   AppAppsAppIdDatabasesRoute: typeof AppAppsAppIdDatabasesRoute
   AppAppsAppIdDeploysRoute: typeof AppAppsAppIdDeploysRoute
   AppAppsAppIdEnvironmentRoute: typeof AppAppsAppIdEnvironmentRoute
+  AppAppsAppIdJobsRoute: typeof AppAppsAppIdJobsRoute
   AppAppsAppIdLogsRoute: typeof AppAppsAppIdLogsRoute
   AppAppsAppIdOverviewRoute: typeof AppAppsAppIdOverviewRoute
   AppAppsAppIdPreviewsRoute: typeof AppAppsAppIdPreviewsRoute
@@ -742,6 +762,7 @@ const AppAppsAppIdRouteChildren: AppAppsAppIdRouteChildren = {
   AppAppsAppIdDatabasesRoute: AppAppsAppIdDatabasesRoute,
   AppAppsAppIdDeploysRoute: AppAppsAppIdDeploysRoute,
   AppAppsAppIdEnvironmentRoute: AppAppsAppIdEnvironmentRoute,
+  AppAppsAppIdJobsRoute: AppAppsAppIdJobsRoute,
   AppAppsAppIdLogsRoute: AppAppsAppIdLogsRoute,
   AppAppsAppIdOverviewRoute: AppAppsAppIdOverviewRoute,
   AppAppsAppIdPreviewsRoute: AppAppsAppIdPreviewsRoute,

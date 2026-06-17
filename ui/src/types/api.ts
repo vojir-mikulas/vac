@@ -489,6 +489,52 @@ export interface BackupConfigInput {
   enabled?: boolean
 }
 
+// ── Scheduled jobs (cron-as-a-service) ─────────────────────────────────────
+export type JobFrequency = 'interval' | 'daily' | 'weekly'
+export type JobRunStatus = 'running' | 'success' | 'failed' | 'skipped' | 'timeout' | string
+
+export interface JobRun {
+  id: string
+  job_id: string
+  started_at: string
+  finished_at?: string | null
+  status: JobRunStatus
+  exit_code?: number | null
+  output?: string | null
+  error?: string | null
+}
+
+export interface ScheduledJob {
+  id: string
+  app_id: string
+  name: string
+  service_name: string
+  command: string
+  frequency: JobFrequency
+  interval_minutes?: number | null
+  hour_of_day: number
+  day_of_week?: number | null
+  timeout_seconds: number
+  enabled: boolean
+  last_run_at?: string | null
+  next_run_at?: string | null
+  created_at: string
+  updated_at: string
+  last_run?: JobRun | null
+}
+
+export interface ScheduledJobInput {
+  name: string
+  service_name: string
+  command: string
+  frequency: JobFrequency
+  interval_minutes?: number | null
+  hour_of_day: number
+  day_of_week?: number | null
+  timeout_seconds: number
+  enabled?: boolean
+}
+
 // ── Track D: managed databases ─────────────────────────────────────────────
 export type ManagedDBStatus = 'provisioning' | 'ready' | 'error' | string
 

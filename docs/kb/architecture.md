@@ -65,6 +65,7 @@ Each package owns one concern.
 | `dbprovision` | provisions/deprovisions managed databases (`Engine` + per-engine recipes), yields connection strings |
 | `addon` | `Registry`/`Installer` materializes catalog templates into an app (env defaults, `@random` secrets, DB provisioning, enqueue deploy); `ServiceHealthPaths` exposes per-service Caddy health-check paths the deploy pipeline applies post-up |
 | `backup` | `Engine` runs a backup end-to-end: exec in container → stream to destination → record run → prune → notify. `Restorer` is the inverse: read a recorded run's artifact back → resolve the engine restore command → stream it into the container over `docker exec -i` (destructive; gated by step-up 2FA) |
+| `jobs` | user-facing cron (modelled on `backup`): `Scheduler` is one sleeping goroutine (started only when ≥1 enabled job exists; gated on `CountScheduledJobs`, no master flag — jobs are core) with an in-flight overlap guard + completion-wake; `Engine.RunOnce` execs a command in the running service container under a per-job `context.WithTimeout`, captures a bounded (16 KB) output tail into a `cappedBuffer`, records the `job_runs` row (`success`/`failed`/`timeout`), rolls `last_run`/`next_run`, and fires `JobFailed`. `nextOccurrence` adds an `interval` branch (anchored on `last_run`) to `backup`'s daily/weekly |
 | `revert` | `Reverter` applies the inverse of revertable audit entries (env replace, base-domain, app-config) from before-snapshots |
 | `audit` | per-request mutable `Record` carried in context, enriched by handlers, persisted by middleware |
 | `auditdiff` | computes normalized before→current diffs for curated audit entries (`FieldStatus`, secret masking) |
@@ -117,7 +118,7 @@ Schema lives in goose migrations under `api/internal/db/migrations/` (embedded a
 - **Config:** `instance_settings` (singleton: base domain, `max_concurrent_deploys`),
   `notification_settings`.
 - **Managed services:** `managed_databases` (app-owned DBs on shared engines),
-  `backup_configs` + `backup_runs` + `backup_restores` (one row per restore attempt), `addon_installs`.
+  `backup_configs` + `backup_runs` + `backup_restores` (one row per restore attempt), `scheduled_jobs` + `job_runs` (user cron config + history), `addon_installs`.
 - **Audit:** `audit_log` (every mutating action: actor, target, summary, metadata, status).
 
 Encrypted-at-rest columns (sealed with `crypto.Box`, need `VAC_MASTER_KEY`): `env_vars`

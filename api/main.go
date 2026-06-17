@@ -35,6 +35,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 	"github.com/vojir-mikulas/vac/api/internal/dockerevents"
 	"github.com/vojir-mikulas/vac/api/internal/domainstatus"
+	"github.com/vojir-mikulas/vac/api/internal/jobs"
 	"github.com/vojir-mikulas/vac/api/internal/logstream"
 	"github.com/vojir-mikulas/vac/api/internal/notify"
 	"github.com/vojir-mikulas/vac/api/internal/preview"
@@ -393,6 +394,19 @@ func main() {
 		backupRestorer = backup.NewRestorer(st, docker, box, cfg.WorkDir, dbProvisioner, notifier, slog.Default())
 	}
 
+	// Scheduled jobs (plan: scheduled-jobs.md). A core feature, not gated by
+	// VAC_MANAGED_SERVICES — the engine is always built so "run now" works, and
+	// the scheduler goroutine only starts when ≥1 enabled job exists, so idle
+	// footprint stays zero. New jobs added later are picked up within the
+	// scheduler's idle re-check (or immediately on restart / "run now").
+	jobsEngine := jobs.NewEngine(st, docker, notifier, slog.Default())
+	if n, err := st.CountScheduledJobs(ctx); err != nil {
+		slog.Warn("jobs: could not count jobs; scheduler not started", "err", err)
+	} else if n > 0 {
+		go jobs.NewScheduler(st, jobsEngine, slog.Default()).Run(ctx)
+		slog.Info("job scheduler started", "jobs", n)
+	}
+
 	// Add-on installer (D3) — only when the gate is open and the registry loaded.
 	var addonInstaller *addon.Installer
 	if cfg.ManagedServices && addonRegistry != nil {
@@ -417,7 +431,7 @@ func main() {
 	proxyMgr.SetStatusEngine(statusEngine)
 	go statusEngine.Run(ctx)
 
-	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost, previewSvc)
+	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, jobsEngine, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost, previewSvc)
 	if err != nil {
 		slog.Error("server init failed", "err", err)
 		os.Exit(1)

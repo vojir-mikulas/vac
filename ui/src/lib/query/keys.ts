@@ -59,6 +59,9 @@ export const queryKeys = {
     backupRuns: (id: string, cid: string) => ['apps', id, 'backups', cid, 'runs'] as const,
     backupRestores: (id: string, cid: string) => ['apps', id, 'backups', cid, 'restores'] as const,
     databases: (id: string) => ['apps', id, 'databases'] as const,
+    // Scheduled jobs (plan: scheduled-jobs.md) — a core feature, app-scoped.
+    jobs: (id: string) => ['apps', id, 'jobs'] as const,
+    jobRuns: (id: string, jid: string) => ['apps', id, 'jobs', jid, 'runs'] as const,
   },
   addons: {
     all: ['addons'] as const,

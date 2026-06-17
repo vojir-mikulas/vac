@@ -27,7 +27,7 @@ func TestWebhookIsRateLimited(t *testing.T) {
 	// A non-nil worker is all the route needs to mount; an unknown-app delivery
 	// 404s long before the worker is ever consulted, so a no-op worker is fine.
 	worker := deploy.NewWorker(nil, nil, 0, 1, nil)
-	srv, err := server.New(t.Context(), cfg, s, worker, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	srv, err := server.New(t.Context(), cfg, s, worker, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("server.New: %v", err)
 	}
