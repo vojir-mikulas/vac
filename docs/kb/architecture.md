@@ -1,4 +1,4 @@
-<!-- generated from commit 966359c on 2026-06-17 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
+<!-- generated from commit 7fd26c4 on 2026-06-18 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
 
 # Architecture — current state
 
@@ -56,6 +56,7 @@ Each package owns one concern.
 | `crashloop` | `Monitor` watches `die` events, trips on N restarts in a window, stops the service |
 | `logstream` | `Supervisor` tails `docker logs --follow` per container into the `runtime_logs` ring buffer |
 | `stats` | per-app `docker stats` (`Manager`, subscriber-gated, live-only) + host stats (gopsutil) |
+| `diskusage` | `Collector` walks app volumes (`walk.go`) into the `volume_usage` table; powers the Storage view + over-budget alerts |
 | `reqmetrics` | `Collector` scrapes/aggregates the Caddy access log into per-service request rate |
 | `notify` | `Dispatcher` for Discord/Slack/webhook + email (SMTP) (deploy ok/fail, crash-loop, restarted, cert expiry); webhook calls go through the `netguard` dialer, SMTP applies the same `IsPrivate` guard directly (opt-out via `VAC_NOTIFY_SMTP_ALLOW_PRIVATE`, deviation D10) |
 | `netguard` | SSRF-hardened `net/http` `DialContext` for outbound requests to user-controlled URLs (notification webhooks, S3 backup endpoints): rejects loopback/private/link-local/CGNAT, dials the validated literal IP to close DNS-rebinding (`IsPrivate`, `ErrPrivateAddress`) |
@@ -74,7 +75,8 @@ Each package owns one concern.
 | `certprobe` | single TLS-leaf-cert observation (`Func`, reads `NotAfter`), shared by `certcheck`/`domainstatus` |
 | `certcheck` | daily goroutine reading cert `NotAfter` for every managed host, fires expiry alerts |
 | `domainstatus` | background reconciler + in-memory store of DNS/cert health for custom + auto domains |
-| `security` | host security-posture monitor (`PostureFinding`: fail2ban, firewall, kernel settings) |
+| `security` | host security-posture monitor (`Monitor`/`Snapshot`: fail2ban, firewall, kernel settings) + unauthenticated-probe anomaly tracking (`security_events`) |
+| `selfupdate` | `Checker` polls for a newer VAC release and reports availability (`Result`) for the in-product update banner |
 | `promexport` | renders VAC metrics as Prometheus text exposition from a `Snapshot` |
 | `ws` | WebSocket `Hub`: topic-based pub/sub (`build:{id}`, `logs:…`, `stats:{appId}`, `host`, `deployments`) with first/last-subscriber hooks |
 | `admin` | CLI subcommands (password reset, import/export) outside the HTTP stack |
@@ -114,7 +116,9 @@ Schema lives in goose migrations under `api/internal/db/migrations/` (embedded a
   services), `ssh_keys`, `env_vars`, `domains` (custom/auto hosts, cert expiry, redirects,
   lifecycle).
 - **Deploy:** `deployments`, `deployment_logs`, `deploy_triggers` (push-to-deploy rules).
-- **Observability:** `runtime_logs` (ring buffer), `request_metrics` (10s buckets).
+- **Observability:** `runtime_logs` (ring buffer), `request_metrics` (10s buckets),
+  `volume_usage` (per-app volume sizes for the Storage view), `security_events` (recorded
+  unauthenticated probes for the security monitor).
 - **Config:** `instance_settings` (singleton: base domain, `max_concurrent_deploys`),
   `notification_settings`.
 - **Managed services:** `managed_databases` (app-owned DBs on shared engines),

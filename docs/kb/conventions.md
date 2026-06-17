@@ -1,4 +1,4 @@
-<!-- generated from commit 8a77a60 on 2026-06-16 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
+<!-- generated from commit 7fd26c4 on 2026-06-18 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
 
 # Conventions — how the code is organized & how to add a feature
 
@@ -10,7 +10,8 @@ prettier (`make lint`) — don't restate it; this covers structure and patterns.
 - **One package per concern.** A new subsystem gets its own package, not a grab-bag util file
   (see the package table in `architecture.md` for the existing concerns).
 - **HTTP handlers** live in `server/handler/`, one file per resource (`apps.go`,
-  `deployments.go`, `domains.go`, `databases.go`, `backups.go`, `addons.go`, `audit.go`, …).
+  `deployments.go`, `domains.go`, `databases.go`, `backups.go`, `addons.go`, `jobs.go`,
+  `previews.go`, `audit.go`, …).
   Handlers are thin: parse/validate → call a store or a subsystem → write JSON. Shared
   helpers: `json.go` (responses), `validate.go` (input checks).
 - **Persistence** lives only in `store/`, one file per aggregate. Everything goes through pgx;

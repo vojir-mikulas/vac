@@ -1,4 +1,4 @@
-<!-- generated from commit 966359c on 2026-06-17 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy,webhook,preview}/ changed, treat as possibly stale -->
+<!-- generated from commit 7fd26c4 on 2026-06-18 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy,webhook,preview}/ changed, treat as possibly stale -->
 
 # Deployment flow — git → build → run → route
 
