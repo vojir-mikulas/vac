@@ -1,4 +1,4 @@
-<!-- generated from commit 83ca77c on 2026-06-17 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
+<!-- generated from commit 599c42c on 2026-06-17 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
 
 # Architecture — current state
 
@@ -57,7 +57,7 @@ Each package owns one concern.
 | `logstream` | `Supervisor` tails `docker logs --follow` per container into the `runtime_logs` ring buffer |
 | `stats` | per-app `docker stats` (`Manager`, subscriber-gated, live-only) + host stats (gopsutil) |
 | `reqmetrics` | `Collector` scrapes/aggregates the Caddy access log into per-service request rate |
-| `notify` | `Dispatcher` for Discord/Slack/webhook (deploy ok/fail, crash-loop, restarted, cert expiry); outbound calls go through the `netguard` dialer |
+| `notify` | `Dispatcher` for Discord/Slack/webhook + email (SMTP) (deploy ok/fail, crash-loop, restarted, cert expiry); webhook calls go through the `netguard` dialer, SMTP applies the same `IsPrivate` guard directly (opt-out via `VAC_NOTIFY_SMTP_ALLOW_PRIVATE`, deviation D10) |
 | `netguard` | SSRF-hardened `net/http` `DialContext` for outbound requests to user-controlled URLs (notification webhooks, S3 backup endpoints): rejects loopback/private/link-local/CGNAT, dials the validated literal IP to close DNS-rebinding (`IsPrivate`, `ErrPrivateAddress`) |
 | `retention` | nightly `Pruner`: runtime logs, request metrics, audit log, per-service image prune, deployment history, BuildKit build-cache cap (`VAC_BUILD_CACHE` / `..._MAX_GB`) |
 | `webhook` | turns inbound Git webhooks into deploy decisions (per-app secret auth, `ParseRef` vs `deploy_triggers`) |
@@ -119,7 +119,7 @@ Schema lives in goose migrations under `api/internal/db/migrations/` (embedded a
 
 Encrypted-at-rest columns (sealed with `crypto.Box`, need `VAC_MASTER_KEY`): `env_vars`
 values, `ssh_keys.private_key`, `users.totp_secret`, `notification_settings` Discord/Slack
-URLs, `apps.webhook_secret_enc`, `apps.registry_auth_enc` (private-registry `{registry,
+URLs + SMTP password, `apps.webhook_secret_enc`, `apps.registry_auth_enc` (private-registry `{registry,
 username, password}` JSON for image-sourced apps), `managed_databases.secret_enc` (connection
 string + password), and `backup_configs.dest_config` (S3 credentials JSON).
 

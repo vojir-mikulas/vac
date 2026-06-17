@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +28,13 @@ type SettingsStore interface {
 	GetNotificationSettings(ctx context.Context) (store.NotificationSettingsRow, error)
 }
 
+// SMTPEnv carries the VAC_NOTIFY_SMTP_* overrides passed to New (empty fields
+// when unset). It mirrors envDiscord/envSlack but spans the relay's several
+// settings; Password is env-only, never read from the config file.
+type SMTPEnv struct {
+	Host, Port, Username, Password, From, To, TLSMode string
+}
+
 // Dispatcher renders events and POSTs them to the configured channels.
 type Dispatcher struct {
 	store        SettingsStore
@@ -34,30 +42,42 @@ type Dispatcher struct {
 	http         *http.Client
 	envDiscord   string
 	envSlack     string
+	envSMTP      smtpConfig
 	baseURL      string // public base for deep links, e.g. "https://vac.example.com"
 	backoff      time.Duration
 	logger       *slog.Logger
 	blockPrivate bool // SSRF guard: refuse to dial private/loopback/link-local addresses
+	allowPrivate bool // SMTP-only opt-out (D10): permit a LAN/sidecar relay
 }
 
-// New wires a dispatcher. envDiscord/envSlack are the VAC_NOTIFY_* overrides
-// (empty when unset); box decrypts stored URLs (nil disables stored URLs).
-// The returned dispatcher refuses to dial private/loopback/link-local
-// addresses (SSRF guard); tests that point at httptest servers must clear
-// `blockPrivate`.
-func New(s SettingsStore, box *crypto.Box, envDiscord, envSlack, baseURL string, logger *slog.Logger) *Dispatcher {
+// New wires a dispatcher. envDiscord/envSlack/envSMTP are the VAC_NOTIFY_*
+// overrides (empty when unset); box decrypts stored secrets (nil disables them).
+// The returned dispatcher refuses to dial private/loopback/link-local addresses
+// for webhooks (SSRF guard); tests that point at httptest servers must clear
+// `blockPrivate`. allowPrivate relaxes that guard for SMTP only (D10).
+func New(s SettingsStore, box *crypto.Box, envDiscord, envSlack, baseURL string, env SMTPEnv, allowPrivate bool, logger *slog.Logger) *Dispatcher {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	d := &Dispatcher{
-		store:        s,
-		box:          box,
-		envDiscord:   strings.TrimSpace(envDiscord),
-		envSlack:     strings.TrimSpace(envSlack),
+		store:      s,
+		box:        box,
+		envDiscord: strings.TrimSpace(envDiscord),
+		envSlack:   strings.TrimSpace(envSlack),
+		envSMTP: smtpConfig{
+			host:     strings.TrimSpace(env.Host),
+			port:     strings.TrimSpace(env.Port),
+			username: strings.TrimSpace(env.Username),
+			password: env.Password,
+			from:     strings.TrimSpace(env.From),
+			to:       env.To,
+			tlsMode:  strings.TrimSpace(env.TLSMode),
+		},
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		backoff:      time.Second,
 		logger:       logger,
 		blockPrivate: true,
+		allowPrivate: allowPrivate,
 	}
 	d.http = &http.Client{
 		Timeout:   5 * time.Second,
@@ -91,6 +111,7 @@ func (d *Dispatcher) transport() *http.Transport {
 type resolved struct {
 	discordURL string
 	slackURL   string
+	smtp       smtpConfig
 	events     map[string]bool
 }
 
@@ -115,6 +136,7 @@ func (d *Dispatcher) resolve(ctx context.Context) resolved {
 	if out.slackURL == "" {
 		out.slackURL = d.open(row.SlackURLEnc)
 	}
+	out.smtp = d.resolveSMTP(row)
 	if len(row.Events) > 0 {
 		if err := json.Unmarshal(row.Events, &out.events); err != nil {
 			// Falling through means every event is treated as enabled — log so
@@ -124,6 +146,38 @@ func (d *Dispatcher) resolve(ctx context.Context) resolved {
 		}
 	}
 	return out
+}
+
+// resolveSMTP merges the env override (env-first, per field) over the stored
+// row. The password comes from the env override or the decrypted column;
+// tlsMode defaults to starttls.
+func (d *Dispatcher) resolveSMTP(row store.NotificationSettingsRow) smtpConfig {
+	c := d.envSMTP
+	if c.host == "" {
+		c.host = row.SMTPHost
+	}
+	if c.port == "" && row.SMTPPort > 0 {
+		c.port = strconv.Itoa(row.SMTPPort)
+	}
+	if c.username == "" {
+		c.username = row.SMTPUsername
+	}
+	if c.password == "" {
+		c.password = d.open(row.SMTPPasswordEnc)
+	}
+	if c.from == "" {
+		c.from = row.SMTPFrom
+	}
+	if c.to == "" {
+		c.to = row.SMTPTo
+	}
+	if c.tlsMode == "" {
+		c.tlsMode = row.SMTPTLSMode
+	}
+	if c.tlsMode == "" {
+		c.tlsMode = tlsModeStartTLS
+	}
+	return c
 }
 
 func (d *Dispatcher) open(enc []byte) string {
@@ -154,7 +208,23 @@ func (d *Dispatcher) dispatch(ev Event) {
 		if cfg.slackURL != "" {
 			d.post(ctx, cfg.slackURL, slackPayload(ev, d.baseURL))
 		}
+		if cfg.smtp.configured() {
+			d.email(ctx, cfg.smtp, ev)
+		}
 	}()
+}
+
+// email renders an Event and sends it through the configured relay, logging
+// failures (fire-and-forget, same posture as post).
+func (d *Dispatcher) email(ctx context.Context, cfg smtpConfig, ev Event) {
+	subject, body := emailMessage(ev, d.baseURL)
+	if err := sendEmail(ctx, cfg, d.allowPrivate, subject, body); err != nil {
+		if errors.Is(err, ErrPrivateAddress) {
+			d.logger.Warn("notify: refused smtp to private address", "err", err)
+			return
+		}
+		d.logger.Warn("notify: smtp send failed", "err", err)
+	}
 }
 
 // post sends one JSON payload with bounded retry. 2xx is success; other codes
@@ -211,6 +281,10 @@ func (d *Dispatcher) SendTest(ctx context.Context) (int, error) {
 	}
 	if cfg.slackURL != "" {
 		d.post(ctx, cfg.slackURL, slackPayload(ev, d.baseURL))
+		n++
+	}
+	if cfg.smtp.configured() {
+		d.email(ctx, cfg.smtp, ev)
 		n++
 	}
 	if n == 0 {

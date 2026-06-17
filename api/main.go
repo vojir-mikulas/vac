@@ -181,13 +181,23 @@ func main() {
 
 	loadCaddyBaseConfig(ctx, cfg, caddyClient, proxyMgr)
 
-	// Outbound notifications (Discord/Slack). Stored webhook URLs are decrypted
-	// with the master key; VAC_NOTIFY_* env vars override them.
+	// Outbound notifications (Discord/Slack/email). Stored webhook URLs and the
+	// SMTP password are decrypted with the master key; VAC_NOTIFY_* env vars
+	// override them.
 	var notifyBaseURL string
 	if cfg.BaseDomain != "" {
 		notifyBaseURL = "https://" + cfg.BaseDomain
 	}
-	notifier := notify.New(st, box, cfg.NotifyDiscordURL, cfg.NotifySlackURL, notifyBaseURL, slog.Default())
+	smtpEnv := notify.SMTPEnv{
+		Host:     cfg.NotifySMTPHost,
+		Port:     cfg.NotifySMTPPort,
+		Username: cfg.NotifySMTPUsername,
+		Password: cfg.NotifySMTPPassword,
+		From:     cfg.NotifySMTPFrom,
+		To:       cfg.NotifySMTPTo,
+		TLSMode:  cfg.NotifySMTPTLSMode,
+	}
+	notifier := notify.New(st, box, cfg.NotifyDiscordURL, cfg.NotifySlackURL, notifyBaseURL, smtpEnv, cfg.NotifySMTPAllowPrivate, slog.Default())
 
 	pipeline := deploy.NewPipeline(st, keys, box, docker, cfg.WorkDir, cfg.HealthCheckTimeout, cfg.HealthCheckRetries, slog.Default())
 	pipeline.Router = proxyMgr

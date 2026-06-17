@@ -24,7 +24,16 @@ func TestNotificationSettingsRoundTrip(t *testing.T) {
 
 	discord := []byte("sealed-discord")
 	events := []byte(`{"deploy_succeeded":false}`)
-	if err := s.PutNotificationSettings(ctx, discord, nil, events); err != nil {
+	smtp := store.SMTPSettings{
+		Host:        "smtp.example.com",
+		Port:        587,
+		Username:    "vac",
+		PasswordEnc: []byte("sealed-pw"),
+		From:        "vac@example.com",
+		To:          "ops@example.com",
+		TLSMode:     "starttls",
+	}
+	if err := s.PutNotificationSettings(ctx, discord, nil, events, smtp); err != nil {
 		t.Fatalf("PutNotificationSettings: %v", err)
 	}
 
@@ -40,6 +49,13 @@ func TestNotificationSettingsRoundTrip(t *testing.T) {
 	}
 	if string(row.Events) != `{"deploy_succeeded":false}` {
 		t.Errorf("events = %q", row.Events)
+	}
+	if row.SMTPHost != "smtp.example.com" || row.SMTPPort != 587 || row.SMTPFrom != "vac@example.com" ||
+		row.SMTPTo != "ops@example.com" || row.SMTPUsername != "vac" || row.SMTPTLSMode != "starttls" {
+		t.Errorf("smtp fields round-trip mismatch: %+v", row)
+	}
+	if string(row.SMTPPasswordEnc) != "sealed-pw" {
+		t.Errorf("smtp password enc = %q", row.SMTPPasswordEnc)
 	}
 }
 

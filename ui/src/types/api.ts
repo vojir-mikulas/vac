@@ -344,12 +344,27 @@ export interface NotificationSettings {
   discord_hint: string
   slack_configured: boolean
   slack_hint: string
+  smtp_host: string
+  smtp_port: number
+  smtp_username: string
+  smtp_from: string
+  smtp_to: string
+  smtp_tls_mode: string
+  smtp_password_configured: boolean
+  smtp_password_hint: string
   events: NotificationEvents
 }
 
 export interface UpdateNotificationInput {
   discord_url?: string | null
   slack_url?: string | null
+  smtp_host?: string | null
+  smtp_port?: number | null
+  smtp_username?: string | null
+  smtp_password?: string | null
+  smtp_from?: string | null
+  smtp_to?: string | null
+  smtp_tls_mode?: string | null
   events: NotificationEvents
 }
 

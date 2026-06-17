@@ -95,6 +95,23 @@
     "heading": "Notifications",
     "discordWebhook": "Discord webhook",
     "slackWebhook": "Slack webhook",
+    "email": {
+      "heading": "Email (SMTP)",
+      "host": "SMTP host",
+      "port": "Port",
+      "username": "Username",
+      "usernamePlaceholder": "leave blank for an unauthenticated relay",
+      "password": "Password",
+      "from": "From address",
+      "to": "Recipients",
+      "toHint": "Comma- or newline-separated list of recipient addresses.",
+      "tlsMode": "Encryption",
+      "tls": {
+        "starttls": "STARTTLS (587)",
+        "implicit": "Implicit TLS (465)",
+        "none": "None (plaintext)"
+      }
+    },
     "events": "Events",
     "sendTest": "Send test",
     "save": "Save",

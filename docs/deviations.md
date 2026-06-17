@@ -155,6 +155,25 @@ what we do instead, why, and the trade-off (what we give up / when we'd revisit)
   it returned no values. Full-replace `PUT` semantics are unchanged; the UI resolves any
   unrevealed sensitive values (via reveal) before submitting so a save never drops a secret.
 
+### D10 — SMTP private-address guard is opt-out, not the webhook's hard wall
+
+- **Context:** the notification webhook SSRF guard (D8 rationale, `netguard`) is a *hard* wall — a
+  webhook URL must never reach loopback/private/link-local/CGNAT space, because a typo'd or hostile
+  URL pointed at `169.254.169.254` / `vac-db` / loopback is a pure attack surface. SMTP adds a
+  fourth notification channel (email) that also dials an operator-set host.
+- **We do instead** (plan `email-notifications`): SMTP reuses the same `netguard.IsPrivate`
+  predicate and the same TOCTOU-safe shape (resolve the host, reject if any address is private,
+  dial the validated literal IP) — but as an **opt-out** gated on `VAC_NOTIFY_SMTP_ALLOW_PRIVATE`
+  (default off → guarded). `net/smtp` (stdlib) doesn't ride the dispatcher's guarded `http.Client`,
+  so the guard is applied directly in `notify.sendEmail` rather than via the transport dial hook.
+- **Why:** unlike a webhook, a *legitimate* SMTP relay can live on the LAN — a sidecar Postfix, a
+  `vac-edge`-adjacent MTA. A hard wall would block that real, intended deployment; the webhook case
+  has no such legitimate need.
+- **Trade-off:** an operator who sets the allow-flag can point SMTP at a private address. Accepted:
+  it's their own relay, explicitly enabled, and far narrower than the typo'd-public-webhook risk
+  the hard wall exists to close. The SMTP password is sealed at rest exactly like the webhook URLs
+  (D8); host/port/from/recipients are operator config, stored plaintext.
+
 ---
 
 ## Improvements batch (2026-05-31) — settings/instance

@@ -125,6 +125,19 @@ type Config struct {
 	NotifyDiscordURL string `yaml:"-"`
 	NotifySlackURL   string `yaml:"-"`
 
+	// Email (SMTP) notification channel. Like the webhook URLs these override any
+	// UI-stored value; the password is env-only (never the config file). TLSMode
+	// is starttls (default) / implicit / none. AllowPrivate is the SMTP-only
+	// opt-out that lets the relay be a LAN/sidecar MTA (deviation D10).
+	NotifySMTPHost         string `yaml:"-"`
+	NotifySMTPPort         string `yaml:"-"`
+	NotifySMTPUsername     string `yaml:"-"`
+	NotifySMTPPassword     string `yaml:"-"`
+	NotifySMTPFrom         string `yaml:"-"`
+	NotifySMTPTo           string `yaml:"-"`
+	NotifySMTPTLSMode      string `yaml:"-"`
+	NotifySMTPAllowPrivate bool   `yaml:"-"`
+
 	// Track D (managed services). ManagedServices is the master gate: when off
 	// (the default) the backup scheduler / managed-DB goroutines never start,
 	// the nav entries stay hidden, and the <200 MB control-plane claim holds.
@@ -475,6 +488,16 @@ func applyEnv(cfg *Config) {
 	}
 	cfg.NotifyDiscordURL = os.Getenv("VAC_NOTIFY_DISCORD_URL")
 	cfg.NotifySlackURL = os.Getenv("VAC_NOTIFY_SLACK_URL")
+	cfg.NotifySMTPHost = os.Getenv("VAC_NOTIFY_SMTP_HOST")
+	cfg.NotifySMTPPort = os.Getenv("VAC_NOTIFY_SMTP_PORT")
+	cfg.NotifySMTPUsername = os.Getenv("VAC_NOTIFY_SMTP_USERNAME")
+	cfg.NotifySMTPPassword = os.Getenv("VAC_NOTIFY_SMTP_PASSWORD")
+	cfg.NotifySMTPFrom = os.Getenv("VAC_NOTIFY_SMTP_FROM")
+	cfg.NotifySMTPTo = os.Getenv("VAC_NOTIFY_SMTP_TO")
+	cfg.NotifySMTPTLSMode = os.Getenv("VAC_NOTIFY_SMTP_TLS_MODE")
+	if v := os.Getenv("VAC_NOTIFY_SMTP_ALLOW_PRIVATE"); v != "" {
+		cfg.NotifySMTPAllowPrivate = v == "true" || v == "1"
+	}
 
 	if v := os.Getenv("VAC_MANAGED_SERVICES"); v != "" {
 		cfg.ManagedServices = v == "true" || v == "1"
