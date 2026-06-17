@@ -3,6 +3,7 @@ import { m } from 'motion/react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import {
   Activity,
+  Archive,
   Blocks,
   Boxes,
   Database,
@@ -14,6 +15,7 @@ import {
 
 import { Meter } from '@/components/common/meter'
 import { transition } from '@/lib/motion'
+import { useBackupAttention } from '@/lib/api/backups'
 import { useActiveDeployments } from '@/lib/api/deployments'
 import { useHostStats } from '@/lib/api/metrics'
 import { useInstanceInfo } from '@/lib/api/instance'
@@ -32,6 +34,7 @@ const NAV = [
 
 // Shown only when the managed-services gate (Track D) is open.
 const ADDONS_NAV = { to: '/addons', label: 'Add-ons', icon: Blocks } as const
+const BACKUPS_NAV = { to: '/backups', label: 'Backups', icon: Archive } as const
 
 export function Sidebar() {
   return (
@@ -51,8 +54,11 @@ interface NavBadge {
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { data: instance } = useInstanceInfo()
+  const managed = instance?.managed_services ?? false
   const { data: queue } = useActiveDeployments()
   const security = useSecurityAttention()
+  // Only polls when managed services are on (the Backups surface exists then).
+  const backups = useBackupAttention(managed)
   const deployCount = queue?.length ?? 0
 
   // Which top-level section is active, derived from the path so the highlight pill
@@ -88,11 +94,21 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             : 'border border-warn-border bg-warn-bg text-warn-foreground',
       }
     }
+    if (to === '/backups' && backups.count > 0) {
+      return {
+        count: backups.count,
+        label: `${backups.count} backup${backups.count === 1 ? '' : 's'} failed recently`,
+        className: 'border border-err-border bg-err-bg text-err-foreground',
+      }
+    }
     return null
   }
 
-  // Slot Add-ons in before Settings when managed services are enabled.
-  const nav = instance?.managed_services ? [...NAV.slice(0, 4), ADDONS_NAV, ...NAV.slice(4)] : NAV
+  // Slot the managed-services surfaces (Add-ons, Backups) in around Database when
+  // the gate is open: … Security, Add-ons, Database, Backups, Settings.
+  const nav = managed
+    ? [...NAV.slice(0, 4), ADDONS_NAV, ...NAV.slice(4, 5), BACKUPS_NAV, ...NAV.slice(5)]
+    : NAV
   return (
     <>
       <div className="border-b px-4.5 pb-3 pt-4.5">

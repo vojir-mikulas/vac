@@ -21,6 +21,10 @@ export const queryKeys = {
   databases: {
     inventory: ['databases', 'inventory'] as const,
   },
+  // Box-wide backups overview (every app's configs + health summary).
+  backups: {
+    fleet: ['backups', 'fleet'] as const,
+  },
   // Instance-wide deploy queue (running + queued across all apps).
   deployments: {
     active: ['deployments', 'active'] as const,

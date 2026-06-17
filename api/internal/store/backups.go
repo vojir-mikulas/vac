@@ -56,6 +56,12 @@ const backupConfigColumns = `id, app_id, service_name, command, frequency,
 	hour_of_day, day_of_week, destination, dest_config, keep_count, enabled,
 	created_at, updated_at`
 
+// bBackupConfigColumns is the same column list qualified with the `b` alias, for
+// queries that join backup_configs to apps.
+const bBackupConfigColumns = `b.id, b.app_id, b.service_name, b.command, b.frequency,
+	b.hour_of_day, b.day_of_week, b.destination, b.dest_config, b.keep_count, b.enabled,
+	b.created_at, b.updated_at`
+
 func scanBackupConfig(row pgx.Row) (BackupConfig, error) {
 	var c BackupConfig
 	err := row.Scan(
@@ -164,6 +170,98 @@ func (s *Store) ListEnabledBackupConfigs(ctx context.Context) ([]BackupConfig, e
 			return nil, err
 		}
 		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// BackupConfigWithApp pairs a config with its owning app's identity. The
+// per-app list already has the app in context; the box-wide overview does not,
+// so it joins it in.
+type BackupConfigWithApp struct {
+	BackupConfig
+	AppSlug string
+	AppName string
+}
+
+func scanBackupConfigWithApp(row pgx.Row) (BackupConfigWithApp, error) {
+	var c BackupConfigWithApp
+	err := row.Scan(
+		&c.ID, &c.AppID, &c.ServiceName, &c.Command, &c.Frequency,
+		&c.HourOfDay, &c.DayOfWeek, &c.Destination, &c.DestConfig, &c.KeepCount,
+		&c.Enabled, &c.CreatedAt, &c.UpdatedAt,
+		&c.AppSlug, &c.AppName,
+	)
+	return c, err
+}
+
+// ListAllBackupConfigs returns every backup config across all apps (enabled or
+// not), joined to its app's slug/name — the working set for the box-wide
+// Backups overview. Ordered by app name then service for a stable UI grouping.
+func (s *Store) ListAllBackupConfigs(ctx context.Context) ([]BackupConfigWithApp, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+bBackupConfigColumns+`, a.slug, a.name
+		FROM backup_configs b
+		JOIN apps a ON a.id = b.app_id
+		ORDER BY a.name, b.service_name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BackupConfigWithApp
+	for rows.Next() {
+		c, err := scanBackupConfigWithApp(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// CountFailedBackupRunsSince counts backup runs that ended in failure on or
+// after `since` — backs the sidebar's "N failed" attention badge.
+func (s *Store) CountFailedBackupRunsSince(ctx context.Context, since time.Time) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM backup_runs WHERE status = 'failed' AND finished_at >= $1
+	`, since).Scan(&n)
+	return n, err
+}
+
+// UncoveredService is a volume-bearing service with no backup configured — the
+// "what isn't protected" list for the box-wide overview. Mirrors the per-app
+// nudge in services-tab.tsx (has_volumes && no backup), box-wide.
+type UncoveredService struct {
+	AppID       string
+	AppSlug     string
+	AppName     string
+	ServiceName string
+}
+
+func (s *Store) ListUncoveredServices(ctx context.Context) ([]UncoveredService, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.id, a.slug, a.name, s.service_name
+		FROM services s
+		JOIN apps a ON a.id = s.app_id
+		WHERE s.has_volumes = TRUE
+		  AND NOT EXISTS (
+			SELECT 1 FROM backup_configs b
+			WHERE b.app_id = s.app_id AND b.service_name = s.service_name
+		  )
+		ORDER BY a.name, s.service_name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []UncoveredService
+	for rows.Next() {
+		var u UncoveredService
+		if err := rows.Scan(&u.AppID, &u.AppSlug, &u.AppName, &u.ServiceName); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
 	}
 	return out, rows.Err()
 }

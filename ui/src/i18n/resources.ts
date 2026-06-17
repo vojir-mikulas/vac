@@ -6,6 +6,7 @@ import logs from './locales/en/logs.json'
 import settings from './locales/en/settings.json'
 import security from './locales/en/security.json'
 import addons from './locales/en/addons.json'
+import backups from './locales/en/backups.json'
 import database from './locales/en/database.json'
 import activity from './locales/en/activity.json'
 import onboarding from './locales/en/onboarding.json'
@@ -27,6 +28,7 @@ export const enResources = {
   settings,
   security,
   addons,
+  backups,
   database,
   activity,
   onboarding,

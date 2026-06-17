@@ -150,6 +150,97 @@ func ListBackups(s *store.Store) http.HandlerFunc {
 	}
 }
 
+// fleetBackupConfigDTO is a config in the box-wide overview: the per-app shape
+// plus its owning app's slug/name so the UI can group and link without a second
+// lookup.
+type fleetBackupConfigDTO struct {
+	backupConfigDTO
+	AppSlug string `json:"app_slug"`
+	AppName string `json:"app_name"`
+}
+
+type uncoveredServiceDTO struct {
+	AppID       string `json:"app_id"`
+	AppSlug     string `json:"app_slug"`
+	AppName     string `json:"app_name"`
+	ServiceName string `json:"service_name"`
+}
+
+// fleetBackupsDTO is the box-wide Backups overview: a health summary, every
+// config (each with its last run), and the volume-bearing services that have no
+// backup configured yet.
+type fleetBackupsDTO struct {
+	Summary struct {
+		Configs           int   `json:"configs"`
+		FailedLast7d      int   `json:"failed_last_7d"`
+		UncoveredServices int   `json:"uncovered_services"`
+		LocalBytes        int64 `json:"local_bytes"`
+	} `json:"summary"`
+	Configs   []fleetBackupConfigDTO `json:"configs"`
+	Uncovered []uncoveredServiceDTO  `json:"uncovered"`
+}
+
+// ListAllBackups is the box-wide Backups overview (GET /api/backups). It
+// aggregates configs across every app, each with its last run, plus a health
+// summary and the uncovered-service list. Read-only: config edits stay on the
+// per-app surface. local_bytes covers the local destination only.
+func ListAllBackups(s *store.Store, workDir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		configs, err := s.ListAllBackupConfigs(ctx)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not list backups")
+			return
+		}
+		uncovered, err := s.ListUncoveredServices(ctx)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not list services")
+			return
+		}
+		failed, err := s.CountFailedBackupRunsSince(ctx, time.Now().Add(-7*24*time.Hour))
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not count backup failures")
+			return
+		}
+
+		var out fleetBackupsDTO
+		out.Configs = make([]fleetBackupConfigDTO, 0, len(configs))
+		for _, c := range configs {
+			dto := fleetBackupConfigDTO{
+				backupConfigDTO: toBackupConfigDTO(c.BackupConfig),
+				AppSlug:         c.AppSlug,
+				AppName:         c.AppName,
+			}
+			if last, err := s.LatestBackupRun(ctx, c.ID); err == nil {
+				rd := toBackupRunDTO(last)
+				dto.LastRun = &rd
+			}
+			out.Configs = append(out.Configs, dto)
+		}
+
+		out.Uncovered = make([]uncoveredServiceDTO, 0, len(uncovered))
+		for _, u := range uncovered {
+			out.Uncovered = append(out.Uncovered, uncoveredServiceDTO{
+				AppID:       u.AppID,
+				AppSlug:     u.AppSlug,
+				AppName:     u.AppName,
+				ServiceName: u.ServiceName,
+			})
+		}
+
+		// local_bytes is best-effort: a walk failure shouldn't sink the overview,
+		// so it falls back to 0 rather than erroring the whole response.
+		localBytes, _ := backup.LocalDiskUsage(workDir)
+
+		out.Summary.Configs = len(out.Configs)
+		out.Summary.FailedLast7d = failed
+		out.Summary.UncoveredServices = len(out.Uncovered)
+		out.Summary.LocalBytes = localBytes
+
+		WriteJSON(w, http.StatusOK, out)
+	}
+}
+
 // CreateBackup adds a per-service backup config. The service must exist on the
 // app; S3 credentials are sealed with the master key.
 func CreateBackup(s *store.Store, box *crypto.Box) http.HandlerFunc {

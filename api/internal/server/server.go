@@ -371,6 +371,13 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/databases", handler.DatabaseInventory(dbHandler))
 			}
 
+			// Box-wide backups overview: read-only fleet view (every config + its
+			// last run, a health summary, uncovered services). Edits stay on the
+			// per-app surface. Same managed-services gate as the per-app routes.
+			if cfg.ManagedServices {
+				r.Get("/backups", handler.ListAllBackups(s, cfg.WorkDir))
+			}
+
 			// Add-on catalog (Track D / D3). Global surface (installs become
 			// apps); gated by the managed-services flag like backups/databases.
 			if cfg.ManagedServices && addonCatalog != nil {

@@ -2,10 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
-import type { BackupConfig, BackupConfigInput, BackupRun } from '@/types/api'
+import type { BackupConfig, BackupConfigInput, BackupRun, FleetBackups } from '@/types/api'
 
 export const backupsApi = {
   list: (appId: string) => api.get<BackupConfig[]>(`apps/${appId}/backups`),
+  // Box-wide overview: every app's configs + a health summary. Read-only.
+  fleet: () => api.get<FleetBackups>('backups'),
   create: (appId: string, input: BackupConfigInput) =>
     api.post<BackupConfig>(`apps/${appId}/backups`, input),
   update: (appId: string, cid: string, input: BackupConfigInput) =>
@@ -63,6 +65,41 @@ export function useRunBackup(appId: string) {
       }, 2_000)
     },
   })
+}
+
+export function useFleetBackups(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.backups.fleet,
+    queryFn: () => backupsApi.fleet(),
+    enabled,
+    // The overview is a health dashboard — refresh periodically so a failed
+    // nightly run or a freshly-finished manual run surfaces without a reload.
+    refetchInterval: 30_000,
+  })
+}
+
+// useRunFleetBackup triggers a manual run from the overview, where the app isn't
+// fixed at hook-call time (each row carries its own app_id). Invalidates the
+// fleet query so the row's last-run pill catches up.
+export function useRunFleetBackup() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ appId, cid }: { appId: string; cid: string }) => backupsApi.run(appId, cid),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.backups.fleet })
+      // The run is detached server-side; refetch shortly so the status catches up.
+      setTimeout(() => qc.invalidateQueries({ queryKey: queryKeys.backups.fleet }), 2_000)
+    },
+  })
+}
+
+// useBackupAttention collapses the overview into a single sidebar badge signal:
+// how many backups failed in the last 7 days. Reuses the fleet query — no extra
+// request beyond what the page already polls. Gated on the same managed-services
+// flag as the page (pass enabled=false to skip the request entirely).
+export function useBackupAttention(enabled = true): { count: number } {
+  const { data } = useFleetBackups(enabled)
+  return { count: data?.summary.failed_last_7d ?? 0 }
 }
 
 export function useBackupRuns(appId: string, cid: string, enabled = true) {

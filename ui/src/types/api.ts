@@ -342,6 +342,33 @@ export interface BackupConfig {
   last_run?: BackupRun | null
 }
 
+// Box-wide Backups overview (GET /api/backups). A config augmented with its
+// owning app's identity so the page can group and link without a second lookup.
+export interface FleetBackupConfig extends BackupConfig {
+  app_slug: string
+  app_name: string
+}
+
+// A volume-bearing service with no backup configured — the "what isn't
+// protected" list in the overview.
+export interface UncoveredService {
+  app_id: string
+  app_slug: string
+  app_name: string
+  service_name: string
+}
+
+export interface FleetBackups {
+  summary: {
+    configs: number
+    failed_last_7d: number
+    uncovered_services: number
+    local_bytes: number
+  }
+  configs: FleetBackupConfig[]
+  uncovered: UncoveredService[]
+}
+
 // S3 credentials are write-only — sent on create/update, never returned.
 export interface S3DestinationInput {
   endpoint: string

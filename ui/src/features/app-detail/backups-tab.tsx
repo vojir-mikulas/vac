@@ -49,6 +49,7 @@ import {
   useBackupRuns,
 } from '@/lib/api/backups'
 import { useServices } from '@/lib/api/services'
+import { formatBackupSize, scheduleSummary, type ScheduleLabels } from '@/lib/backups'
 import type { BackupConfig, BackupConfigInput, BackupFrequency } from '@/types/api'
 
 type AppDetailT = ReturnType<typeof useTranslation<'app-detail'>>['t']
@@ -56,19 +57,6 @@ type AppDetailT = ReturnType<typeof useTranslation<'app-detail'>>['t']
 // 0–6 mirrors JS getDay() / the backend's day_of_week; the translation keys
 // backups.days.0…6 carry the localized weekday names.
 const DAY_INDEXES = [0, 1, 2, 3, 4, 5, 6] as const
-
-function formatBytes(n?: number | null): string {
-  if (n == null) return '—'
-  if (n < 1024) return `${n} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
-  let v = n / 1024
-  let i = 0
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i++
-  }
-  return `${v.toFixed(1)} ${units[i]}`
-}
 
 // Day-of-week (0=Sunday … 6=Saturday) → its catalog key, kept as a literal tuple
 // so t() stays type-safe (a `backups.days.${number}` template would be too wide).
@@ -82,13 +70,13 @@ const DAY_KEYS = [
   'backups.days.6',
 ] as const
 
-function scheduleSummary(c: BackupConfig, t: AppDetailT): string {
-  const at = `${String(c.hour_of_day).padStart(2, '0')}:00`
-  if (c.frequency === 'weekly' && c.day_of_week != null) {
-    const dayKey = DAY_KEYS[c.day_of_week] ?? DAY_KEYS[0]
-    return t('backups.weeklySummary', { day: t(dayKey), at })
+// scheduleLabels binds the shared scheduleSummary helper to this namespace's keys.
+function scheduleLabels(t: AppDetailT): ScheduleLabels {
+  return {
+    weekly: (v) => t('backups.weeklySummary', v),
+    daily: (v) => t('backups.dailySummary', v),
+    dayName: (i) => t(DAY_KEYS[i] ?? DAY_KEYS[0]),
   }
-  return t('backups.dailySummary', { at })
 }
 
 export function BackupsTab({ appId }: { appId: string }) {
@@ -191,7 +179,10 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
       </div>
 
       <div className="grid gap-x-6 gap-y-1.5 px-5 py-4 text-sm sm:grid-cols-2">
-        <Field label={t('backups.fieldSchedule')} value={scheduleSummary(config, t)} />
+        <Field
+          label={t('backups.fieldSchedule')}
+          value={scheduleSummary(config, scheduleLabels(t))}
+        />
         <Field
           label={t('backups.fieldDestination')}
           value={
@@ -206,7 +197,7 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
           label={t('backups.fieldLastRun')}
           value={
             config.last_run?.finished_at
-              ? `${new Date(config.last_run.finished_at).toLocaleString()} · ${formatBytes(config.last_run.size_bytes)}`
+              ? `${new Date(config.last_run.finished_at).toLocaleString()} · ${formatBackupSize(config.last_run.size_bytes)}`
               : t('backups.lastRunNever')
           }
         />
@@ -265,7 +256,7 @@ function RunHistory({ appId, config }: { appId: string; config: BackupConfig }) 
                 </span>
               ) : null}
             </TableCell>
-            <TableCell className="text-xs">{formatBytes(r.size_bytes)}</TableCell>
+            <TableCell className="text-xs">{formatBackupSize(r.size_bytes)}</TableCell>
             <TableCell className="text-right">
               {r.status === 'success' ? (
                 <a

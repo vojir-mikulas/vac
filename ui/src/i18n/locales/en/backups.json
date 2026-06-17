@@ -1,0 +1,53 @@
+{
+  "page": {
+    "title": "Backups",
+    "description": "Backup health across all apps. Configure and edit on each app's Backups tab."
+  },
+  "stats": {
+    "configs": "Configured",
+    "configsSub": "backup jobs",
+    "failed": "Failed (7d)",
+    "failedSub": "runs in last 7 days",
+    "uncovered": "Unprotected",
+    "uncoveredSub": "services with volumes",
+    "localDisk": "Local disk",
+    "localDiskSub": "stored on this box"
+  },
+  "table": {
+    "title": "Backup jobs",
+    "app": "App",
+    "service": "Service",
+    "schedule": "Schedule",
+    "destination": "Destination",
+    "lastRun": "Last run",
+    "actions": "Actions"
+  },
+  "destinationS3": "S3",
+  "destinationLocal": "Local",
+  "weeklySummary": "Weekly on {{day}} at {{at}} UTC",
+  "dailySummary": "Daily at {{at}} UTC",
+  "paused": "paused",
+  "backupNow": "Back up now",
+  "backupStarted": "Backup started",
+  "download": "Download",
+  "edit": "Edit",
+  "lastRunNever": "never",
+  "empty": {
+    "title": "No backups configured",
+    "description": "Schedule a dump for a stateful service from its app's Backups tab — it'll show up here."
+  },
+  "uncovered": {
+    "title": "Unprotected services",
+    "description": "These services have persistent volumes but no backup configured.",
+    "configure": "Configure"
+  },
+  "days": {
+    "0": "Sunday",
+    "1": "Monday",
+    "2": "Tuesday",
+    "3": "Wednesday",
+    "4": "Thursday",
+    "5": "Friday",
+    "6": "Saturday"
+  }
+}

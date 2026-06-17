@@ -144,3 +144,30 @@ func (l *LocalDestination) Prune(_ context.Context, prefix string, keep int) err
 func keyJoin(segments ...string) string {
 	return strings.Join(segments, "/")
 }
+
+// LocalDiskUsage sums the bytes of every artifact under {workDir}/backups — the
+// honest on-box footprint of local backups for the overview summary. S3-bound
+// artifacts only stage here transiently, so this is the local destination total.
+// A missing directory (no local backups yet) is zero, not an error.
+func LocalDiskUsage(workDir string) (int64, error) {
+	base := filepath.Join(workDir, "backups")
+	var total int64
+	err := filepath.WalkDir(base, func(_ string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		total += info.Size()
+		return nil
+	})
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	return total, err
+}
