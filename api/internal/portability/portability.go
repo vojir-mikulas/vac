@@ -189,7 +189,7 @@ func createApp(ctx context.Context, st *store.Store, in appspec.AppInputs) (stor
 	// CreateApp leaves mem_limit_mb NULL (unlimited); set it only when the spec
 	// asks for a ceiling.
 	if in.MemLimitMB != nil {
-		if _, err := st.UpdateApp(ctx, a.ID, nil, nil, nil, nil, nil, nil, in.MemLimitMB); err != nil {
+		if _, err := st.UpdateApp(ctx, a.ID, nil, nil, nil, nil, nil, nil, in.MemLimitMB, nil); err != nil {
 			return store.App{}, err
 		}
 	}
@@ -203,10 +203,10 @@ func updateApp(ctx context.Context, st *store.Store, existing store.App, in apps
 	if in.Source == appspec.SourceTemplate {
 		// Template apps keep their git-less/compose wiring; only the operator-facing
 		// fields are patched.
-		_, err := st.UpdateApp(ctx, existing.ID, &in.Name, nil, nil, &in.ComposeFile, nil, nil, mem)
+		_, err := st.UpdateApp(ctx, existing.ID, &in.Name, nil, nil, &in.ComposeFile, nil, nil, mem, nil)
 		return err
 	}
-	_, err := st.UpdateApp(ctx, existing.ID, &in.Name, &in.GitURL, &in.GitBranch, &in.ComposeFile, &in.BuildKind, in.BuildConfig, mem)
+	_, err := st.UpdateApp(ctx, existing.ID, &in.Name, &in.GitURL, &in.GitBranch, &in.ComposeFile, &in.BuildKind, in.BuildConfig, mem, nil)
 	return err
 }
 

@@ -45,6 +45,14 @@ func (f fakeMetricsStore) SumRequestMetrics(context.Context, time.Time) ([]store
 	return []store.RequestTotal{{Slug: "blog", Service: "web", Requests: 9, Errors: 1}}, nil
 }
 
+func (f fakeMetricsStore) ListVolumeUsage(context.Context) ([]store.VolumeUsage, error) {
+	if f.fail {
+		return nil, context.DeadlineExceeded
+	}
+	used := int64(824567321)
+	return []store.VolumeUsage{{AppSlug: "blog", ServiceName: "db", VolumeName: "vac-blog_pgdata", UsedBytes: &used}}, nil
+}
+
 func TestMetricsExposition_RendersAllSections(t *testing.T) {
 	h := MetricsExposition(fakeStatsProvider{}, fakeMetricsStore{}, time.Hour, "v9", "deadbeef")
 	rr := httptest.NewRecorder()

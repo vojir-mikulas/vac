@@ -43,7 +43,7 @@ func (f *fakeStore) ReplaceEnvVars(_ context.Context, appID string, vars []store
 func (f *fakeStore) GetApp(_ context.Context, _ string) (store.App, error) {
 	return store.App{}, nil
 }
-func (f *fakeStore) UpdateApp(_ context.Context, _ string, name, _, _, _, _ *string, _ json.RawMessage, mem *int) (store.App, error) {
+func (f *fakeStore) UpdateApp(_ context.Context, _ string, name, _, _, _, _ *string, _ json.RawMessage, mem, _ *int) (store.App, error) {
 	f.appPatch = true
 	f.appName = name
 	f.appMem = mem

@@ -230,6 +230,7 @@ export function createApp(input: CreateAppInput): AppRecord {
     build_config: input.build_config ?? {},
     status: 'stopped',
     mem_limit_mb: null,
+    disk_limit_mb: null,
     created_at: nowISO(),
     updated_at: nowISO(),
     source: 'git',

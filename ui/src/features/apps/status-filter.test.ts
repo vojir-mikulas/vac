@@ -15,6 +15,7 @@ function app(status: string): App {
     build_config: {},
     status,
     mem_limit_mb: null,
+    disk_limit_mb: null,
     created_at: '',
     updated_at: '',
     source: 'git',

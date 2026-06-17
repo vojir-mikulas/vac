@@ -62,6 +62,9 @@ function SettingsForm({ app }: { app: App }) {
     build_config: app.build_config ?? {},
   })
   const [ramLimit, setRamLimit] = useState(app.mem_limit_mb != null ? String(app.mem_limit_mb) : '')
+  const [diskLimit, setDiskLimit] = useState(
+    app.disk_limit_mb != null ? String(app.disk_limit_mb) : '',
+  )
 
   const saveRuntime = () => {
     const trimmed = ramLimit.trim()
@@ -77,6 +80,26 @@ function SettingsForm({ app }: { app: App }) {
         onSuccess: () =>
           toast.success(
             value === 0 ? t('settings.ramLimitRemoved') : t('settings.ramLimitUpdated'),
+          ),
+        onError: (e) => toast.error(e.message),
+      },
+    )
+  }
+
+  const saveDisk = () => {
+    const trimmed = diskLimit.trim()
+    // Blank clears the soft budget (0 → no alert on the backend).
+    const value = trimmed === '' ? 0 : Number(trimmed)
+    if (!Number.isInteger(value) || value < 0) {
+      toast.error(t('settings.diskLimitInvalid'))
+      return
+    }
+    update.mutate(
+      { disk_limit_mb: value },
+      {
+        onSuccess: () =>
+          toast.success(
+            value === 0 ? t('settings.diskLimitRemoved') : t('settings.diskLimitUpdated'),
           ),
         onError: (e) => toast.error(e.message),
       },
@@ -254,6 +277,29 @@ function SettingsForm({ app }: { app: App }) {
           </div>
           <div className="flex justify-end">
             <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveRuntime}>
+              {t('settings.save')}
+            </Button>
+          </div>
+        </Card>
+      </section>
+
+      <section>
+        <SectionHeader>{t('settings.storage')}</SectionHeader>
+        <Card className="gap-4 p-5">
+          <div className="grid gap-2">
+            <Label htmlFor="disk-limit">{t('settings.diskLimit')}</Label>
+            <Input
+              id="disk-limit"
+              inputMode="numeric"
+              placeholder={t('settings.diskLimitPlaceholder')}
+              value={diskLimit}
+              onChange={(e) => setDiskLimit(e.target.value)}
+              className="max-w-40 font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">{t('settings.diskLimitHint')}</p>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveDisk}>
               {t('settings.save')}
             </Button>
           </div>

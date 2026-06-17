@@ -295,6 +295,14 @@
     "stopped": "Stack stopped",
     "restarted": "Stack restarted"
   },
+  "storage": {
+    "heading": "Storage",
+    "budget": "Disk budget",
+    "notMeasured": "not measured",
+    "measured": "measured {{when}}",
+    "named": "volume",
+    "bind": "bind"
+  },
   "settings": {
     "ramLimitInvalid": "RAM limit must be a whole number of MiB (or blank for unlimited)",
     "ramLimitRemoved": "RAM limit removed",
@@ -320,6 +328,13 @@
     "ramLimit": "RAM limit (MiB)",
     "ramLimitPlaceholder": "Unlimited",
     "ramLimitHint": "Hard memory ceiling per container — VAC kills it before it can OOM the box. Leave blank for unlimited. Applied on the next deploy.",
+    "diskLimitInvalid": "Disk budget must be a whole number of MiB (or blank for no limit)",
+    "diskLimitRemoved": "Disk budget removed",
+    "diskLimitUpdated": "Disk budget updated",
+    "storage": "Storage",
+    "diskLimit": "Disk budget (MiB)",
+    "diskLimitPlaceholder": "No limit",
+    "diskLimitHint": "Soft budget for this app's volumes — VAC alerts you when usage crosses the threshold, but never enforces a filesystem quota. Leave blank for no limit.",
     "portability": "Portability",
     "exportSpec": "Export app spec",
     "exportSpecNote": "Download this app as a portable <0>vac.app.yaml</0> — build config, services, domains, triggers, and env keys. Nothing here is proprietary: re-import it on another VAC, or keep it in version control for disaster recovery. Sensitive secret values are omitted — you re-enter them on the far side.",

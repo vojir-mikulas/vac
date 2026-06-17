@@ -308,6 +308,26 @@ const routes: Route[] = [
   },
   { method: 'GET', pattern: 'apps/:id', handler: (ctx) => ok(stripApp(appOr404(ctx))) },
   {
+    method: 'GET',
+    pattern: 'apps/:id/volumes',
+    handler: (ctx) => {
+      const app = appOr404(ctx)
+      const limit = app.disk_limit_mb != null ? app.disk_limit_mb * 1024 * 1024 : null
+      const volumes = app.services
+        .filter((s) => s.has_volumes)
+        .map((s) => ({
+          service: s.name,
+          volume: `vac-${app.slug}_${s.name}`,
+          mount_path: '/var/lib/data',
+          source: 'named' as const,
+          used_bytes: 824567321,
+          limit_bytes: limit,
+          sampled_at: nowISO(),
+        }))
+      return ok({ volumes })
+    },
+  },
+  {
     method: 'PATCH',
     pattern: 'apps/:id',
     handler: (ctx) => ok(stripApp(updateApp(appOr404(ctx), (ctx.body ?? {}) as UpdateAppInput))),

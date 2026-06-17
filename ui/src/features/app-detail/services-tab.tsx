@@ -8,6 +8,7 @@ import { ErrorState } from '@/components/common/error-state'
 import { ConnectionBadge } from '@/components/common/connection-badge'
 import { ServiceCard } from '@/features/app-detail/service-card'
 import { StackControls } from '@/features/app-detail/stack-controls'
+import { StorageSection } from '@/features/app-detail/storage-section'
 import { useAppStatsStatus } from '@/features/app-detail/stats-context'
 import { useServices } from '@/lib/api/services'
 import { useApp } from '@/lib/api/apps'
@@ -69,6 +70,8 @@ export function ServicesTab({ appId }: { appId: string }) {
           />
         )}
       </SwapFade>
+
+      <StorageSection appId={appId} />
     </div>
   )
 }

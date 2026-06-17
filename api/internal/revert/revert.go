@@ -30,7 +30,7 @@ type Store interface {
 	MarkAuditReverted(ctx context.Context, id string) error
 	ReplaceEnvVars(ctx context.Context, appID string, vars []store.EnvVarInput) error
 	GetApp(ctx context.Context, id string) (store.App, error)
-	UpdateApp(ctx context.Context, id string, name, gitURL, gitBranch, composeFile, buildKind *string, buildConfig json.RawMessage, memLimitMB *int) (store.App, error)
+	UpdateApp(ctx context.Context, id string, name, gitURL, gitBranch, composeFile, buildKind *string, buildConfig json.RawMessage, memLimitMB, diskLimitMB *int) (store.App, error)
 	SetBaseDomain(ctx context.Context, baseDomain string) error
 }
 
@@ -208,7 +208,8 @@ func (rv *Reverter) revertApp(ctx context.Context, appID string, before json.Raw
 	if a.MemLimitMB != nil {
 		mem = *a.MemLimitMB
 	}
-	if _, err := rv.store.UpdateApp(ctx, appID, a.Name, a.GitURL, a.GitBranch, a.ComposeFile, a.BuildKind, a.BuildConfig, &mem); err != nil {
+	// Disk limit is not captured in the config snapshot, so leave it unchanged.
+	if _, err := rv.store.UpdateApp(ctx, appID, a.Name, a.GitURL, a.GitBranch, a.ComposeFile, a.BuildKind, a.BuildConfig, &mem, nil); err != nil {
 		return "", err
 	}
 	return "restored app configuration", nil

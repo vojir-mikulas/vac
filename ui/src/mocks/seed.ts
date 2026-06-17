@@ -124,6 +124,7 @@ function app(
     build_config: partial.build_config ?? {},
     status: partial.status,
     mem_limit_mb: partial.mem_limit_mb ?? null,
+    disk_limit_mb: partial.disk_limit_mb ?? null,
     created_at: partial.created_at ?? daysAgoISO(12),
     updated_at: partial.updated_at ?? minutesAgoISO(6),
     source: partial.source ?? 'git',

@@ -64,6 +64,9 @@ type updateAppRequest struct {
 	// MemLimitMB: nil leaves the limit unchanged; 0 clears it (unlimited);
 	// a positive value sets the per-app RAM ceiling in MiB (plan 06).
 	MemLimitMB *int `json:"mem_limit_mb,omitempty"`
+	// DiskLimitMB: same semantics as MemLimitMB — the per-app soft disk budget in
+	// MiB that the storage monitor alerts against (never enforced as a quota).
+	DiskLimitMB *int `json:"disk_limit_mb,omitempty"`
 }
 
 type appDTO struct {
@@ -77,6 +80,7 @@ type appDTO struct {
 	BuildConfig json.RawMessage `json:"build_config"`
 	Status      string          `json:"status"`
 	MemLimitMB  *int            `json:"mem_limit_mb"`
+	DiskLimitMB *int            `json:"disk_limit_mb"`
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 	// Source is "git" or "template"; TemplateID/Name/Icon are populated for
@@ -106,6 +110,7 @@ func toAppDTO(a store.App, cat AddonCatalog) appDTO {
 		BuildConfig: bc,
 		Status:      a.Status,
 		MemLimitMB:  a.MemLimitMB,
+		DiskLimitMB: a.DiskLimitMB,
 		CreatedAt:   a.CreatedAt,
 		UpdatedAt:   a.UpdatedAt,
 		Source:      a.Source,
@@ -331,6 +336,13 @@ func UpdateApp(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "mem_limit_mb must be 0 (unlimited) or at least "+strconv.Itoa(minMemLimitMB))
 			return
 		}
+		// Disk limit: 0 clears it; a positive value must be non-negative. Unlike
+		// RAM there's no hard floor — a tiny volume budget is legitimate — we only
+		// reject a negative typo.
+		if req.DiskLimitMB != nil && *req.DiskLimitMB < 0 {
+			WriteError(w, http.StatusBadRequest, "disk_limit_mb must be 0 (unlimited) or a positive number of MiB")
+			return
+		}
 
 		// Curated-revert snapshot: capture the full prior config so this patch can
 		// be undone. Best-effort — a read failure must not block the update.
@@ -340,7 +352,7 @@ func UpdateApp(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 			audit.Snapshot(r.Context(), map[string]any{"app": appConfigSnapshot(prior)})
 		}
 
-		a, err := s.UpdateApp(r.Context(), id, req.Name, req.GitURL, req.GitBranch, req.ComposeFile, req.BuildKind, buildConfig, req.MemLimitMB)
+		a, err := s.UpdateApp(r.Context(), id, req.Name, req.GitURL, req.GitBranch, req.ComposeFile, req.BuildKind, buildConfig, req.MemLimitMB, req.DiskLimitMB)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				WriteError(w, http.StatusNotFound, "app not found")

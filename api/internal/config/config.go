@@ -98,6 +98,16 @@ type Config struct {
 	CertExpiryDays int    `yaml:"cert_expiry_days"`
 	CertProbeAddr  string `yaml:"cert_probe_addr"`
 
+	// Volume usage & storage alerts. DiskPollInterval is how often the diskusage
+	// collector samples volume sizes (slow + expensive, so minutes not seconds).
+	// DiskAlertPercent is the threshold (% of an app's soft disk budget, and of
+	// the host disk) at which a storage-high notification fires. DiskScanBinds
+	// opts into walking bind mounts with a bounded `du` — off by default because
+	// it can be slow on an external HDD; named volumes are always sampled cheaply.
+	DiskPollInterval time.Duration `yaml:"disk_poll_interval"`
+	DiskAlertPercent int           `yaml:"disk_alert_percent"`
+	DiskScanBinds    bool          `yaml:"disk_scan_binds"`
+
 	// Track B (observability): bearer token gating /metrics and /debug/* — both
 	// leak instance topology / runtime internals, so they are default-closed.
 	// Env-only secret (VAC_METRICS_TOKEN); unset → those endpoints return 404.
@@ -218,6 +228,10 @@ func Default() Config {
 		StatsPollInterval:       2 * time.Second,
 		RequestMetricsRetention: 24 * time.Hour,
 		CertExpiryDays:          14,
+
+		DiskPollInterval: 5 * time.Minute,
+		DiskAlertPercent: 85,
+		DiskScanBinds:    false,
 
 		SecurityMonitor:      true,
 		SecurityRPSThreshold: 300, // requests from one IP within the window
@@ -406,6 +420,19 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("VAC_CERT_PROBE_ADDR"); v != "" {
 		cfg.CertProbeAddr = v
+	}
+	if v := os.Getenv("VAC_DISK_POLL_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.DiskPollInterval = d
+		}
+	}
+	if v := os.Getenv("VAC_DISK_ALERT_PERCENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			cfg.DiskAlertPercent = n
+		}
+	}
+	if v := os.Getenv("VAC_DISK_SCAN_BINDS"); v != "" {
+		cfg.DiskScanBinds = v == "true" || v == "1"
 	}
 	if v := os.Getenv("VAC_BASE_DOMAIN"); v != "" {
 		cfg.BaseDomain = v

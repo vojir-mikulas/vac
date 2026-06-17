@@ -4,6 +4,7 @@ import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
 import type {
   App,
+  AppVolumes,
   ComposeDetectResult,
   CreateAppInput,
   EnvExampleResult,
@@ -28,6 +29,7 @@ export const appsApi = {
     api.post<ComposeDetectResult>('apps/detect-compose', input),
   sshKey: (id: string) => api.get<SSHKey>(`apps/${id}/ssh-key`),
   regenerateSshKey: (id: string) => api.post<SSHKey>(`apps/${id}/ssh-key/regenerate`),
+  volumes: (id: string) => api.get<AppVolumes>(`apps/${id}/volumes`),
 }
 
 export function useApps() {
@@ -41,6 +43,15 @@ export function useApp(id: string) {
   return useQuery({
     queryKey: queryKeys.apps.detail(id),
     queryFn: () => appsApi.get(id),
+  })
+}
+
+// Volume usage is a slow-changing periodic snapshot (the collector samples every
+// few minutes), so the default cache behaviour is fine — no live subscription.
+export function useAppVolumes(id: string) {
+  return useQuery({
+    queryKey: queryKeys.apps.volumes(id),
+    queryFn: () => appsApi.volumes(id),
   })
 }
 

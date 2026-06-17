@@ -269,6 +269,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				// compose path. Static path; clones without a key (public repos only).
 				r.Post("/detect-compose", handler.DetectCompose(nil))
 				r.Get("/{id}", handler.GetApp(s, addonCatalog))
+				r.Get("/{id}/volumes", handler.GetAppVolumes(s))
 				r.Get("/{id}/export", handler.ExportApp(s, box))
 				r.Patch("/{id}", handler.UpdateApp(s, addonCatalog))
 				// Deleting an app tears down its stack + volumes — gate on fresh 2FA.

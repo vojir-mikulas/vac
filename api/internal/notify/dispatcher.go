@@ -318,6 +318,18 @@ func (d *Dispatcher) CertExpiring(host string, daysLeft int, notAfter time.Time)
 	})
 }
 
+// DiskUsageHigh fires the storage-high event (volume usage / disk alerts). scope
+// names what's full (an app name, or "host disk") and detail carries the figures
+// (e.g. "82% of the 1.0 GiB disk budget (824 MiB used)"). appName/appID are empty
+// for the host-level alert that isn't attributable to one app.
+func (d *Dispatcher) DiskUsageHigh(appName, appID, scope, detail string) {
+	d.dispatch(Event{
+		Type: EventDiskUsageHigh, OK: false,
+		Title:   "Storage high: " + scope,
+		AppName: appName, AppID: appID, Message: detail,
+	})
+}
+
 // VACRestarted fires the control-plane-restarted event.
 func (d *Dispatcher) VACRestarted() {
 	d.dispatch(Event{

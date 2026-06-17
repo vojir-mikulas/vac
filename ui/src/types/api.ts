@@ -30,6 +30,8 @@ export interface App {
   status: AppStatus
   /** Per-app RAM ceiling in MiB; null = unlimited / box default (plan 06). */
   mem_limit_mb: number | null
+  /** Per-app soft disk budget in MiB; null = no limit / no storage alert. */
+  disk_limit_mb: number | null
   created_at: string
   updated_at: string
   /** 'git' (clones a repo) or 'template' (an installed add-on). */
@@ -61,6 +63,28 @@ export interface UpdateAppInput {
   build_config?: BuildConfig
   /** 0 clears the limit (unlimited); a positive value sets it in MiB. */
   mem_limit_mb?: number
+  /** 0 clears the soft disk budget (no alert); a positive value sets it in MiB. */
+  disk_limit_mb?: number
+}
+
+/** One volume's latest disk-usage sample (GET /api/apps/{id}/volumes). */
+export interface VolumeUsage {
+  service: string
+  /** Docker volume name; empty for bind mounts. */
+  volume: string
+  /** Mount path inside the container. */
+  mount_path: string
+  /** 'named' (a Docker volume) or 'bind' (a host path). */
+  source: 'named' | 'bind'
+  /** Latest measured size in bytes; null = not yet measured. */
+  used_bytes: number | null
+  /** The app's soft disk budget in bytes, echoed on each row; null = no budget. */
+  limit_bytes: number | null
+  sampled_at: string
+}
+
+export interface AppVolumes {
+  volumes: VolumeUsage[]
 }
 
 // Result of importing a portable spec (plan 18). Mirrors

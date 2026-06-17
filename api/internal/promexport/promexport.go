@@ -20,6 +20,7 @@ import (
 type Snapshot struct {
 	Host       HostVitals
 	Apps       []AppSample
+	Volumes    []VolumeSample
 	Deploys    []DeployCount
 	DeployDurs []DeployDuration
 	Requests   []RequestTotal
@@ -42,6 +43,14 @@ type AppSample struct {
 	Service    string
 	CPUPercent float64
 	MemBytes   int64
+}
+
+// VolumeSample is one volume's latest persisted on-disk size.
+type VolumeSample struct {
+	App     string
+	Service string
+	Volume  string
+	Bytes   int64
 }
 
 // DeployCount is a (app, status, trigger) tally.
@@ -103,6 +112,12 @@ func Write(w io.Writer, s Snapshot) {
 	gauge(b, "vac_app_mem_bytes", "Per-service container memory usage, bytes.")
 	for _, a := range s.Apps {
 		sample(b, "vac_app_mem_bytes", labels("app", a.App, "service", a.Service), i(a.MemBytes))
+	}
+
+	// --- per-volume disk usage (latest persisted sample; collected on a slow timer) ---
+	gauge(b, "vac_app_volume_bytes", "Per-volume on-disk usage, bytes (latest sample).")
+	for _, v := range s.Volumes {
+		sample(b, "vac_app_volume_bytes", labels("app", v.App, "service", v.Service, "volume", v.Volume), i(v.Bytes))
 	}
 
 	// --- deployments ---

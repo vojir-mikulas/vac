@@ -23,6 +23,7 @@ type MetricsStore interface {
 	CountDeploymentsByStatus(ctx context.Context) ([]store.DeployStatusCount, error)
 	LatestDeployDurations(ctx context.Context) ([]store.DeployDuration, error)
 	SumRequestMetrics(ctx context.Context, since time.Time) ([]store.RequestTotal, error)
+	ListVolumeUsage(ctx context.Context) ([]store.VolumeUsage, error)
 }
 
 // MetricsExposition renders VAC's metrics in Prometheus text format. It gathers
@@ -59,6 +60,16 @@ func MetricsExposition(sp StatsProvider, s MetricsStore, window time.Duration, v
 			for _, t := range reqs {
 				snap.Requests = append(snap.Requests, promexport.RequestTotal{
 					App: t.Slug, Service: t.Service, Requests: t.Requests, Errors: t.Errors,
+				})
+			}
+		}
+		if vols, err := s.ListVolumeUsage(ctx); err == nil {
+			for _, v := range vols {
+				if v.UsedBytes == nil {
+					continue // not yet measured — don't emit a false 0
+				}
+				snap.Volumes = append(snap.Volumes, promexport.VolumeSample{
+					App: v.AppSlug, Service: v.ServiceName, Volume: v.VolumeName, Bytes: *v.UsedBytes,
 				})
 			}
 		}

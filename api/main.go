@@ -31,6 +31,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/db"
 	"github.com/vojir-mikulas/vac/api/internal/dbprovision"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
+	"github.com/vojir-mikulas/vac/api/internal/diskusage"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 	"github.com/vojir-mikulas/vac/api/internal/dockerevents"
 	"github.com/vojir-mikulas/vac/api/internal/domainstatus"
@@ -319,6 +320,21 @@ func main() {
 		Threshold: time.Duration(cfg.CertExpiryDays) * 24 * time.Hour,
 	}, slog.Default())
 	go certChecker.Run(ctx)
+
+	// Volume usage & storage alerts. A slow timer samples each app's volume sizes
+	// (named volumes via `docker system df -v`, bind mounts via an opt-in bounded
+	// walk) and alerts when an app's soft disk budget or the host disk crosses
+	// VAC_DISK_ALERT_PERCENT. Mirrors certcheck's long-lived-goroutine shape — it's
+	// periodic + persisted, not the real-time WS stats stream.
+	diskCollector := diskusage.New(st, docker, notifier, func(ctx context.Context) (uint64, uint64) {
+		snap := hostCollector.Snapshot(ctx)
+		return snap.DiskUsedBytes, snap.DiskTotalBytes
+	}, diskusage.Config{
+		Interval:     cfg.DiskPollInterval,
+		AlertPercent: cfg.DiskAlertPercent,
+		ScanBinds:    cfg.DiskScanBinds,
+	}, slog.Default())
+	go diskCollector.Run(ctx)
 
 	// Track D (managed services). The backup engine is always constructed so the
 	// manual "Back up now" endpoint works the moment the flag is on; the
