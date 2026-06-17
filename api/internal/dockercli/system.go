@@ -114,10 +114,15 @@ func (c *Compose) PruneBuildCacheAll(ctx context.Context) (int64, error) {
 }
 
 // sizeRe matches a docker human size like "1.6GB", "512kB", "0B", "1.2GiB".
-// reclaimedRe pulls the size off docker's "Total reclaimed space: …" footer.
+// reclaimedRe pulls the size off docker's "Total reclaimed space: …" footer
+// (image/container/volume/system prune). buildxTotalRe handles the *different*
+// footer that `docker buildx prune` and `docker builder prune` emit — a bare
+// "Total:  …" line — which reclaimedRe would miss, silently reporting 0 bytes
+// freed for build cache.
 var (
-	sizeRe      = regexp.MustCompile(`(?i)([0-9]+(?:\.[0-9]+)?)\s*([KMGTP]?I?B)`)
-	reclaimedRe = regexp.MustCompile(`(?i)Total reclaimed space:\s*(.+)`)
+	sizeRe        = regexp.MustCompile(`(?i)([0-9]+(?:\.[0-9]+)?)\s*([KMGTP]?I?B)`)
+	reclaimedRe   = regexp.MustCompile(`(?i)Total reclaimed space:\s*(.+)`)
+	buildxTotalRe = regexp.MustCompile(`(?im)^\s*Total:\s*(.+)$`)
 )
 
 func atoiSafe(s string) int {
@@ -169,12 +174,16 @@ func parseDockerSize(s string) int64 {
 	return int64(val * mult)
 }
 
-// parseReclaimed extracts the byte count from a prune command's
-// "Total reclaimed space: 1.2GB" footer; 0 when the line is absent.
+// parseReclaimed extracts the byte count from a prune command's footer. Docker
+// is inconsistent here: image/container/volume/system prune print "Total
+// reclaimed space: 1.2GB", while buildx/builder prune print a bare "Total:
+// 1.2GB". We accept both so build-cache reclaims aren't miscounted as 0.
 func parseReclaimed(out []byte) int64 {
-	m := reclaimedRe.FindSubmatch(out)
-	if m == nil {
-		return 0
+	if m := reclaimedRe.FindSubmatch(out); m != nil {
+		return parseDockerSize(string(m[1]))
 	}
-	return parseDockerSize(string(m[1]))
+	if m := buildxTotalRe.FindSubmatch(out); m != nil {
+		return parseDockerSize(string(m[1]))
+	}
+	return 0
 }
