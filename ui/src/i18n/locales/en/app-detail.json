@@ -217,6 +217,7 @@
     "ramCap": "RAM cap",
     "ramCapValue": "{{value}} MiB",
     "ramCapUnlimited": "Unlimited",
+    "storage": "Storage",
     "network": "Network"
   },
   "overview": {
@@ -298,6 +299,8 @@
   "storage": {
     "heading": "Storage",
     "budget": "Disk budget",
+    "total": "Total",
+    "unmeasured": "+{{n}} not measured",
     "notMeasured": "not measured",
     "measured": "measured {{when}}",
     "named": "volume",

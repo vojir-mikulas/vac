@@ -4,11 +4,12 @@ import { Blocks, GitBranch, GitCommitHorizontal } from 'lucide-react'
 import { BrandIcon, brandFor } from '@/components/common/brand-icon'
 import { SectionHeader } from '@/components/common/section-header'
 import { Card } from '@/components/ui/card'
-import { useApp } from '@/lib/api/apps'
+import { useApp, useAppVolumes } from '@/lib/api/apps'
 import { useDeployments } from '@/lib/api/deployments'
 import { useServices } from '@/lib/api/services'
-import { shortSha } from '@/lib/format'
+import { formatBytes, shortSha } from '@/lib/format'
 import type { BuildKind } from '@/types/api'
+import { sumVolumes } from './storage-total'
 
 // The known build adapters. Mirrors api/internal/adapter — build_kind selects
 // which adapter ran the build. Kept as a literal union so the
@@ -23,8 +24,14 @@ export function OverviewPanel({ appId }: { appId: string }) {
   const { data: app } = useApp(appId)
   const { data: services } = useServices(appId)
   const { data: deployments } = useDeployments(appId)
+  const { data: volumesData } = useAppVolumes(appId)
 
   if (!app) return null
+
+  // Aggregated volume total — only for apps that actually have volumes, so a
+  // stateless web app doesn't get a "0 B" row. Mirrors StorageSection's empty guard.
+  const volumes = volumesData?.volumes ?? []
+  const storage = volumes.length > 0 ? sumVolumes(volumes) : null
 
   const isAddon = app.source === 'template'
   const latest = deployments?.[0]
@@ -103,6 +110,18 @@ export function OverviewPanel({ appId }: { appId: string }) {
               <span className="text-muted-foreground">{t('overviewPanel.ramCapUnlimited')}</span>
             )}
           </Row>
+          {storage ? (
+            <Row label={t('overviewPanel.storage')}>
+              <span className="font-mono text-xs">
+                {formatBytes(storage.total)}
+                {storage.unmeasured > 0 ? (
+                  <span className="ml-1 text-muted-foreground">
+                    {t('storage.unmeasured', { n: storage.unmeasured })}
+                  </span>
+                ) : null}
+              </span>
+            </Row>
+          ) : null}
           <Row label={t('overviewPanel.network')}>
             {/* vac-edge is the fixed Docker network name, not display copy. */}
             {/* eslint-disable-next-line i18next/no-literal-string */}

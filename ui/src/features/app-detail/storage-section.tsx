@@ -7,6 +7,7 @@ import { Meter } from '@/components/common/meter'
 import { SectionHeader } from '@/components/common/section-header'
 import { useAppVolumes } from '@/lib/api/apps'
 import { formatBytes, relativeTime } from '@/lib/format'
+import { sumVolumes } from './storage-total'
 
 // StorageSection renders the latest persisted volume-usage snapshot for an app.
 // It renders nothing until at least one volume has been recorded, so stateless
@@ -22,24 +23,34 @@ export function StorageSection({ appId }: { appId: string }) {
 
   // limit_bytes is the per-app budget, echoed on every row — read it once.
   const limit = volumes[0]?.limit_bytes ?? null
-  const total = volumes.reduce((sum, v) => sum + (v.used_bytes ?? 0), 0)
-  const pct = limit && limit > 0 ? (total / limit) * 100 : 0
+  const { total, unmeasured } = sumVolumes(volumes)
+  const hasBudget = limit != null && limit > 0
+  const pct = hasBudget ? (total / limit) * 100 : 0
 
   return (
     <div className="flex flex-col gap-3">
       <SectionHeader className="mb-0">{t('storage.heading')}</SectionHeader>
       <Card className="gap-4 p-5">
-        {limit && limit > 0 ? (
-          <div>
-            <div className="mb-1.5 flex justify-between text-xs">
-              <span className="text-muted-foreground">{t('storage.budget')}</span>
-              <span className="font-mono tabular-nums">
-                {formatBytes(total)} / {formatBytes(limit)}
-              </span>
-            </div>
-            <Meter pct={pct} className="h-1.5" tone="brand" label={t('storage.budget')} />
+        {/* Always show the measured total; the budget meter only appears when a
+            soft disk limit is set. Without a limit it's just the headline number. */}
+        <div>
+          <div className="mb-1.5 flex justify-between text-xs">
+            <span className="text-muted-foreground">
+              {hasBudget ? t('storage.budget') : t('storage.total')}
+            </span>
+            <span className="font-mono tabular-nums">
+              {hasBudget ? `${formatBytes(total)} / ${formatBytes(limit)}` : formatBytes(total)}
+              {unmeasured > 0 ? (
+                <span className="ml-1.5 text-muted-foreground">
+                  {t('storage.unmeasured', { n: unmeasured })}
+                </span>
+              ) : null}
+            </span>
           </div>
-        ) : null}
+          {hasBudget ? (
+            <Meter pct={pct} className="h-1.5" tone="brand" label={t('storage.budget')} />
+          ) : null}
+        </div>
 
         <ul className="flex flex-col divide-y">
           {volumes.map((v) => (
