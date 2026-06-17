@@ -27,6 +27,7 @@ const (
 	KindDockerfile = "dockerfile"
 	KindFramework  = "framework"
 	KindStatic     = "static"
+	KindImage      = "image"
 )
 
 // ErrUndetected is returned when build_kind is "auto" but the repo matches no
@@ -49,6 +50,11 @@ type BuildConfig struct {
 	// static
 	StaticDir   string `json:"staticDir,omitempty"`
 	SPAFallback bool   `json:"spaFallback,omitempty"`
+	// image: a prebuilt image ref (e.g. ghcr.io/me/app:1.4.2). Port (above,
+	// shared with framework) is the container's internal port to expose; 0 = a
+	// port-less worker (no route). Registry credentials are NOT here — they're
+	// a bearer secret sealed in apps.registry_auth_enc, never in this JSONB blob.
+	Image string `json:"image,omitempty"`
 	// safety (plan 16 / Track E): downgrade the "VAC owns the edge" preflight
 	// hard errors (edge-port conflict, bundled reverse proxy) to logged
 	// warnings. Never downgrades host-escape findings (docker.sock, privileged).
@@ -92,6 +98,8 @@ func For(kind, repoDir string) (Adapter, error) {
 		return staticAdapter{}, nil
 	case KindFramework:
 		return frameworkAdapter{}, nil
+	case KindImage:
+		return imageAdapter{}, nil
 	default:
 		return nil, ErrUndetected
 	}
@@ -124,6 +132,14 @@ func Validate(kind string, cfg BuildConfig) error {
 	case KindFramework:
 		if strings.TrimSpace(cfg.Framework) == "" {
 			return errors.New("adapter: framework build requires a framework")
+		}
+		if cfg.Port < 0 || cfg.Port > 65535 {
+			return errors.New("adapter: port must be 0..65535")
+		}
+		return nil
+	case KindImage:
+		if err := validateImageRef(strings.TrimSpace(cfg.Image)); err != nil {
+			return err
 		}
 		if cfg.Port < 0 || cfg.Port > 65535 {
 			return errors.New("adapter: port must be 0..65535")

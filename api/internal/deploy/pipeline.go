@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -39,6 +40,11 @@ type DockerClient interface {
 	// Config renders the fully merged compose document (include/extends/overrides
 	// resolved) so the preflight lints what `up` will actually run.
 	Config(ctx context.Context, projectDir, composeFile, projectName string) ([]byte, error)
+	// Login authenticates the daemon to a private registry before a pull.
+	Login(ctx context.Context, registry, username, password string) error
+	// Pull explicitly fetches the project's images (`docker compose pull`) so a
+	// moved tag is picked up on redeploy — used for image-sourced apps.
+	Pull(ctx context.Context, projectDir, composeFile, projectName string) error
 }
 
 // Router projects an app's domains into the reverse proxy and gates a deploy on
@@ -217,6 +223,14 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		if err := p.Templates.Materialize(*app.TemplateID, repoDir); err != nil {
 			return fmt.Errorf("pipeline: materialize template: %w", err)
 		}
+	} else if app.Source == store.AppSourceImage {
+		// Image-sourced apps have no repo to clone: the image adapter generates a
+		// compose.yaml into an empty work dir, and `up` pulls the ref. Same shape
+		// as a template app (no clone, no commit) — the source is a registry ref.
+		_ = p.logSystem(ctx, deploymentID, "image source: no clone")
+		if err := os.MkdirAll(repoDir, 0o755); err != nil { //nolint:gosec // G301: app working dir
+			return fmt.Errorf("pipeline: mkdir workdir: %w", err)
+		}
 	} else if err := p.cloneOrPull(ctx, app, repoDir, keyPath); err != nil {
 		return err
 	}
@@ -354,6 +368,19 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 	}
 	_ = lw.Flush()
 
+	// ---- Pull (image-sourced apps) ----
+	// `build` is a no-op for an image app (no `build:` context), so the real
+	// fetch is an explicit `docker compose pull` — preceded by a `docker login`
+	// when the app carries private-registry creds. This also re-pulls a moved tag
+	// (`:latest`) on redeploy, which `up` alone would not. A pull failure is a
+	// transparent deploy error (handled like a build failure); the prior stack
+	// keeps serving.
+	if app.Source == store.AppSourceImage {
+		if err := p.registryPull(ctx, deploymentID, app, repoDir, composeFile, projectName); err != nil {
+			return err
+		}
+	}
+
 	// ---- Up ----
 	if err := p.setStatus(ctx, deploymentID, DeploymentStatusDeploying); err != nil {
 		return err
@@ -446,6 +473,49 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		p.Notifier.DeploySucceeded(app.Name, app.ID, sha, msg, time.Since(runStart))
 	}
 	return nil
+}
+
+// registryPull logs the daemon in to the app's private registry (when creds are
+// stored) and then explicitly pulls the project's image. For a public image the
+// login is skipped and only the pull runs. Credentials are opened from the
+// sealed column with the master key — a set-but-unreadable credential (no key)
+// is a clear error rather than a silent fall-through to an unauthenticated pull.
+func (p *Pipeline) registryPull(ctx context.Context, deploymentID string, app store.App, projectDir, composeFile, projectName string) error {
+	enc, err := p.Store.GetAppRegistryAuth(ctx, app.ID)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("load registry auth: %w", err)
+	}
+	if len(enc) > 0 {
+		if p.Box == nil {
+			return errors.New("registry credentials are set but VAC_MASTER_KEY is not configured")
+		}
+		plain, oerr := p.Box.Open(enc)
+		if oerr != nil {
+			return fmt.Errorf("decrypt registry auth: %w", oerr)
+		}
+		var creds store.RegistryAuth
+		if jerr := json.Unmarshal(plain, &creds); jerr != nil {
+			return fmt.Errorf("parse registry auth: %w", jerr)
+		}
+		_ = p.logSystem(ctx, deploymentID, "registry login: "+registryLabel(creds.Registry))
+		if lerr := p.Docker.Login(ctx, creds.Registry, creds.Username, creds.Password); lerr != nil {
+			return fmt.Errorf("registry login: %w", lerr)
+		}
+	}
+	_ = p.logSystem(ctx, deploymentID, "pulling image")
+	if err := p.Docker.Pull(ctx, projectDir, composeFile, projectName); err != nil {
+		return fmt.Errorf("pull: %w", err)
+	}
+	return nil
+}
+
+// registryLabel is the human label for a registry host in the deploy log; an
+// empty host means the Docker Hub default.
+func registryLabel(registry string) string {
+	if registry == "" {
+		return "docker.io"
+	}
+	return registry
 }
 
 // logSystem persists a pipeline-level system message and tees it to live

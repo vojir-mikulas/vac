@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Blocks, GitBranch, GitCommitHorizontal } from 'lucide-react'
+import { Blocks, Container, GitBranch, GitCommitHorizontal } from 'lucide-react'
 
 import { BrandIcon, brandFor } from '@/components/common/brand-icon'
 import { SectionHeader } from '@/components/common/section-header'
@@ -14,7 +14,14 @@ import { sumVolumes } from './storage-total'
 // The known build adapters. Mirrors api/internal/adapter — build_kind selects
 // which adapter ran the build. Kept as a literal union so the
 // `overviewPanel.buildKind.<kind>` translation keys stay type-checked.
-const BUILD_KINDS = ['auto', 'compose', 'dockerfile', 'framework', 'static'] satisfies BuildKind[]
+const BUILD_KINDS = [
+  'auto',
+  'compose',
+  'dockerfile',
+  'framework',
+  'static',
+  'image',
+] satisfies BuildKind[]
 
 // Right-column overview: where the app came from (Source) and how it runs
 // (Stack). Every field is already on the client — the app DTO, the services
@@ -34,6 +41,7 @@ export function OverviewPanel({ appId }: { appId: string }) {
   const storage = volumes.length > 0 ? sumVolumes(volumes) : null
 
   const isAddon = app.source === 'template'
+  const isImage = app.source === 'image'
   const latest = deployments?.[0]
   const framework = app.build_config?.framework
   const buildLabel = BUILD_KINDS.includes(app.build_kind)
@@ -54,6 +62,13 @@ export function OverviewPanel({ appId }: { appId: string }) {
                   <Blocks className="size-3.5 text-muted-foreground" />
                 )}
                 {app.template_name ?? t('overviewPanel.addonFallback')}
+              </span>
+            </Row>
+          ) : isImage ? (
+            <Row label={t('overviewPanel.image')}>
+              <span className="flex items-center gap-1.5 truncate font-mono text-xs">
+                <Container className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{app.build_config?.image ?? '—'}</span>
               </span>
             </Row>
           ) : (

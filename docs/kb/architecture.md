@@ -1,4 +1,4 @@
-<!-- generated from commit 8a77a60 on 2026-06-16 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
+<!-- generated from commit 83ca77c on 2026-06-17 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
 
 # Architecture — current state
 
@@ -45,7 +45,7 @@ Each package owns one concern.
 | `auth` | sessions (`SessionManager`, SHA-256-hashed tokens), TOTP pre-auth + replay/lockout, password, API-token auth, **step-up** (`StepUpTTL`, `MarkStepUp`, `StepUpFresh` for fresh-2FA gating of destructive actions) |
 | `crypto` | `crypto.Box` AES-256-GCM seal/open for secrets at rest |
 | `deploy` | the deploy pipeline (`Pipeline`) + worker pool/queue (`Worker`) + reaper; status enums (`status.go`); build-log writer (`LogWriter`) |
-| `adapter` | normalizes a build source (compose / Dockerfile / framework / static) to one compose file via `adapter.For` + `Prepare` |
+| `adapter` | normalizes a build source (compose / Dockerfile / framework / static / image) to one compose file via `adapter.For` + `Prepare`; the `image` adapter generates a compose for a prebuilt image (no `build:`) |
 | `compose` | shallow compose parse, `Detect` build type, `Wrap` a Dockerfile, `Preflight` lint, `WriteResourceOverride` (per-app RAM cap + box-wide CPU cap), `ServicesWithVolumes` (which services are stateful → backup nudge) |
 | `dockercli` | thin wrappers over `docker`/`docker compose` (`Compose.Build/Up/Down/Ps/Exec`, `ExecStdin` (the stdin-piping mirror of `Exec`, used by backup restore), `Events`, `BuildCachePrune`) |
 | `dockerevents` | single `docker events` stream fanned out to subscribers (`Bus`) with reconnect |
@@ -104,9 +104,11 @@ Schema lives in goose migrations under `api/internal/db/migrations/` (embedded a
 - **Auth:** `users` (incl. `totp_secret`, `last_totp_step` for TOTP replay protection,
   `failed_auth_attempts` + `auth_locked_until` for per-account lockout), `sessions` (incl.
   `stepup_verified_at` for fresh-2FA step-up), `api_tokens`.
-- **Apps & services:** `apps` (includes `webhook_secret_enc`), `services` (incl.
-  `has_volumes`, set from the compose file each deploy to flag stateful services),
-  `ssh_keys`, `env_vars`, `domains` (custom/auto hosts, cert expiry, redirects, lifecycle).
+- **Apps & services:** `apps` (includes `source` = `git`|`template`|`image`,
+  `webhook_secret_enc`, and `registry_auth_enc` for image apps' private-registry creds),
+  `services` (incl. `has_volumes`, set from the compose file each deploy to flag stateful
+  services), `ssh_keys`, `env_vars`, `domains` (custom/auto hosts, cert expiry, redirects,
+  lifecycle).
 - **Deploy:** `deployments`, `deployment_logs`, `deploy_triggers` (push-to-deploy rules).
 - **Observability:** `runtime_logs` (ring buffer), `request_metrics` (10s buckets).
 - **Config:** `instance_settings` (singleton: base domain, `max_concurrent_deploys`),
@@ -117,8 +119,9 @@ Schema lives in goose migrations under `api/internal/db/migrations/` (embedded a
 
 Encrypted-at-rest columns (sealed with `crypto.Box`, need `VAC_MASTER_KEY`): `env_vars`
 values, `ssh_keys.private_key`, `users.totp_secret`, `notification_settings` Discord/Slack
-URLs, `apps.webhook_secret_enc`, `managed_databases.secret_enc` (connection string + password),
-and `backup_configs.dest_config` (S3 credentials JSON).
+URLs, `apps.webhook_secret_enc`, `apps.registry_auth_enc` (private-registry `{registry,
+username, password}` JSON for image-sourced apps), `managed_databases.secret_enc` (connection
+string + password), and `backup_configs.dest_config` (S3 credentials JSON).
 
 ## Invariants
 

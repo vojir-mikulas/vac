@@ -5,7 +5,7 @@ export type AppStatus = 'running' | 'degraded' | 'stopped' | 'building' | 'crash
 
 // Build adapters (mirrors api/internal/adapter). build_kind selects the adapter;
 // build_config carries its kind-specific knobs (only relevant fields are set).
-export type BuildKind = 'auto' | 'compose' | 'dockerfile' | 'framework' | 'static'
+export type BuildKind = 'auto' | 'compose' | 'dockerfile' | 'framework' | 'static' | 'image'
 
 export interface BuildConfig {
   composePath?: string
@@ -16,6 +16,8 @@ export interface BuildConfig {
   port?: number
   staticDir?: string
   spaFallback?: boolean
+  /** Prebuilt image ref for image-sourced apps (e.g. ghcr.io/me/app:1.4.2). */
+  image?: string
 }
 
 export interface App {
@@ -34,8 +36,9 @@ export interface App {
   disk_limit_mb: number | null
   created_at: string
   updated_at: string
-  /** 'git' (clones a repo) or 'template' (an installed add-on). */
-  source: 'git' | 'template'
+  /** 'git' (clones a repo), 'template' (an installed add-on), or 'image'
+   *  (deploys a prebuilt image — no repo, no commit). */
+  source: 'git' | 'template' | 'image'
   /** Add-on template id for template-sourced apps; null for git apps. */
   template_id: string | null
   /** Resolved add-on display name (template apps only). */
@@ -47,11 +50,27 @@ export interface App {
 export interface CreateAppInput {
   name: string
   slug?: string
-  git_url: string
+  /** Required for git apps; omitted/empty for image apps (build_kind 'image'). */
+  git_url?: string
   git_branch?: string
   compose_file?: string
   build_kind?: BuildKind
   build_config?: BuildConfig
+}
+
+/** Private-registry credentials for an image-sourced app. Write-only: the
+ *  password is never returned by the API (PUT /api/apps/{id}/registry-auth). */
+export interface RegistryAuthInput {
+  registry?: string
+  username: string
+  password: string
+}
+
+/** Read shape of GET /api/apps/{id}/registry-auth — whether creds are stored
+ *  and, if so, the (non-secret) registry host. */
+export interface RegistryAuthConfig {
+  configured: boolean
+  registry?: string
 }
 
 export interface UpdateAppInput {

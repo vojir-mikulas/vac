@@ -1,4 +1,4 @@
-<!-- generated from commit 8a77a60 on 2026-06-16 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy}/ changed, treat as possibly stale -->
+<!-- generated from commit 83ca77c on 2026-06-17 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy}/ changed, treat as possibly stale -->
 
 # Deployment flow — git → build → run → route
 
@@ -58,12 +58,18 @@ deployment shows at each step is in **bold**.
   shallow clone, then detached checkout).
 - **Template-sourced apps** (add-ons / managed DBs) skip git entirely: the pipeline calls
   `Templates.Materialize()` to write embedded files into the work dir.
+- **Image-sourced apps** (`app.Source == store.AppSourceImage`) also skip git: the pipeline
+  just `MkdirAll`s an empty work dir. There is no clone and no commit — the source is a
+  registry ref carried in `build_config.image`, and the `image` adapter generates the compose.
 
 ## 2. Resolve build → compose file
 
 - An **adapter** layer normalizes the build source to a single compose file: `adapter.For`
-  selects the right adapter (compose / Dockerfile / framework / static) and `Prepare`
-  generates or returns the compose file.
+  selects the right adapter (compose / Dockerfile / framework / static / image) and `Prepare`
+  generates or returns the compose file. The `image` adapter (`adapter/image.go`) writes a
+  generated `compose.yaml` with a single `app` service (`image:` ref, `restart: always`,
+  `env_file: .env`, and an `expose:` of the operator's port when set — no `build:`, no host
+  `ports:`), so vac-edge auto-detect routes it like any app and a port-less image is a worker.
 - `compose/detect.go` `Detect` looks, in order, for `compose.yaml` → `compose.yml` →
   `docker-compose.yml` → `docker-compose.yaml` → `Dockerfile`. No match ⇒
   `ErrNoComposeOrDockerfile`.
@@ -92,6 +98,12 @@ deployment shows at each step is in **bold**.
 
 ## 4. Up (**deploying**)
 
+- **Image-sourced apps pull first.** `build` is a no-op for an image app (no `build:`), so the
+  pipeline runs `Pipeline.registryPull` between build and up: when `apps.registry_auth_enc` is
+  set it opens the sealed `{registry, username, password}` and `dockercli.Compose.Login`
+  (`docker login`, password on stdin) before `dockercli.Compose.Pull` (`docker compose pull`).
+  The explicit pull re-fetches a moved tag (`:latest`) that `up` alone would keep cached; a
+  pull/login failure is a transparent deploy **error** (prior stack keeps serving).
 - Env vars are decrypted and rendered to an env file (when a `crypto.Box` is available), and
   per-app resource caps are layered on via `compose.WriteResourceOverride` — `mem_limit` from
   the per-app `App.MemLimitMB` and/or `cpus` from the box-wide `Pipeline.AppCPULimit`

@@ -19,6 +19,10 @@ const pgUniqueViolation = "23505"
 const (
 	AppSourceGit      = "git"
 	AppSourceTemplate = "template"
+	// AppSourceImage deploys a prebuilt image — no git clone, no commit. The
+	// deploy clone step makes an empty work dir and the image adapter writes a
+	// generated compose; git_url/git_branch are empty (like a template app).
+	AppSourceImage = "image"
 )
 
 type App struct {
@@ -81,6 +85,29 @@ func (s *Store) CreateTemplateApp(ctx context.Context, name, slug, templateID, c
 		VALUES ($1, $2, '', '', $3, 'compose', '{}', 'template', $4)
 		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at, source, template_id
 	`, name, slug, composeFile, templateID).Scan(
+		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.DiskLimitMB, &a.CreatedAt, &a.UpdatedAt, &a.Source, &a.TemplateID,
+	)
+	if isUniqueViolation(err) {
+		return App{}, ErrConflict
+	}
+	return a, err
+}
+
+// CreateImageApp creates an image-sourced app (deploy from a prebuilt image).
+// source is 'image' and build_kind is 'image'; git_url/git_branch are empty (the
+// deploy makes an empty work dir instead of cloning). compose_file is empty too
+// — the image adapter generates the compose every deploy. The image ref + port
+// live in buildConfig; private-registry creds are sealed separately.
+func (s *Store) CreateImageApp(ctx context.Context, name, slug string, buildConfig json.RawMessage) (App, error) {
+	if len(buildConfig) == 0 {
+		buildConfig = json.RawMessage("{}")
+	}
+	var a App
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO apps (name, slug, git_url, git_branch, compose_file, build_kind, build_config, source)
+		VALUES ($1, $2, '', '', '', 'image', $3, 'image')
+		RETURNING id, name, slug, git_url, git_branch, compose_file, build_kind, build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at, source, template_id
+	`, name, slug, buildConfig).Scan(
 		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind, &a.BuildConfig, &a.Status, &a.MemLimitMB, &a.DiskLimitMB, &a.CreatedAt, &a.UpdatedAt, &a.Source, &a.TemplateID,
 	)
 	if isUniqueViolation(err) {

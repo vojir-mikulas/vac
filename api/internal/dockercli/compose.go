@@ -69,6 +69,40 @@ func (c *Compose) Up(ctx context.Context, projectDir, composeFile, projectName s
 	return nil
 }
 
+// Login authenticates the daemon to a registry so a subsequent pull of a
+// private image succeeds. The password is fed on stdin (never argv, so it can't
+// leak via the process table); an empty registry logs in to Docker Hub. The
+// credential is written to the daemon's ~/.docker/config.json (HOME is scoped
+// to a temp dir per `command`). Used only for image-sourced apps with stored
+// creds — the generated compose stays credential-free.
+func (c *Compose) Login(ctx context.Context, registry, username, password string) error {
+	args := []string{"login", "--username", username, "--password-stdin"}
+	if registry != "" {
+		args = append(args, registry)
+	}
+	cmd := c.command(ctx, "", args...)
+	cmd.Stdin = strings.NewReader(password)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return mapCmdError(err, out)
+	}
+	return nil
+}
+
+// Pull runs `docker compose pull` to fetch the project's images explicitly. For
+// image-sourced apps this picks up a moved tag (`:latest`/`:stable`) before
+// `up`, and surfaces a pull failure (bad ref / missing auth) as a transparent
+// error distinct from an up failure. A digest-pinned ref is a no-op after the
+// first pull.
+func (c *Compose) Pull(ctx context.Context, projectDir, composeFile, projectName string) error {
+	cmd := c.command(ctx, projectDir, "compose", "-p", projectName, "-f", composeFile, "pull")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return mapCmdError(err, out)
+	}
+	return nil
+}
+
 // Down stops and removes the project's containers + networks. Volumes are
 // preserved unless removeVolumes is true (data loss — caller's call).
 func (c *Compose) Down(ctx context.Context, projectName string, removeVolumes bool) error {

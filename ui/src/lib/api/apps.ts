@@ -8,6 +8,8 @@ import type {
   ComposeDetectResult,
   CreateAppInput,
   EnvExampleResult,
+  RegistryAuthConfig,
+  RegistryAuthInput,
   SSHKey,
   TestConnectionResult,
   UpdateAppInput,
@@ -30,6 +32,10 @@ export const appsApi = {
   sshKey: (id: string) => api.get<SSHKey>(`apps/${id}/ssh-key`),
   regenerateSshKey: (id: string) => api.post<SSHKey>(`apps/${id}/ssh-key/regenerate`),
   volumes: (id: string) => api.get<AppVolumes>(`apps/${id}/volumes`),
+  registryAuth: (id: string) => api.get<RegistryAuthConfig>(`apps/${id}/registry-auth`),
+  setRegistryAuth: (id: string, input: RegistryAuthInput) =>
+    api.put<RegistryAuthConfig>(`apps/${id}/registry-auth`, input),
+  clearRegistryAuth: (id: string) => api.del<RegistryAuthConfig>(`apps/${id}/registry-auth`),
 }
 
 export function useApps() {

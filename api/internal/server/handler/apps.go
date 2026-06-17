@@ -47,7 +47,7 @@ var gitRefRe = regexp.MustCompile(`^[A-Za-z0-9._/][A-Za-z0-9._/-]*$`)
 type createAppRequest struct {
 	Name        string          `json:"name"                    validate:"required,min=1,max=100"`
 	Slug        string          `json:"slug,omitempty"          validate:"omitempty,max=63"`
-	GitURL      string          `json:"git_url"                 validate:"required,min=1,max=500"`
+	GitURL      string          `json:"git_url,omitempty"       validate:"omitempty,max=500"`
 	GitBranch   string          `json:"git_branch,omitempty"    validate:"omitempty,max=200"`
 	ComposeFile string          `json:"compose_file,omitempty"  validate:"omitempty,max=200"`
 	BuildKind   string          `json:"build_kind,omitempty"    validate:"omitempty,max=32"`
@@ -136,7 +136,11 @@ var validBuildKinds = map[string]bool{
 	adapter.KindDockerfile: true,
 	adapter.KindFramework:  true,
 	adapter.KindStatic:     true,
+	adapter.KindImage:      true,
 }
+
+// buildKindsLabel lists the accepted build_kind values for error messages.
+const buildKindsLabel = "auto, compose, dockerfile, framework, static, image"
 
 // normalizeBuildConfig validates a (kind, raw build_config) pair and returns
 // the canonical JSON to persist (unknown fields dropped). A blank raw → "{}".
@@ -174,8 +178,13 @@ func CreateApp(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, msg)
 			return
 		}
-		if !gitURLRe.MatchString(req.GitURL) {
-			WriteError(w, http.StatusBadRequest, "git_url must be an https:// or git@ SSH URL")
+
+		buildKind := strings.TrimSpace(req.BuildKind)
+		if buildKind == "" {
+			buildKind = adapter.KindAuto
+		}
+		if !validBuildKinds[buildKind] {
+			WriteError(w, http.StatusBadRequest, "build_kind must be one of "+buildKindsLabel)
 			return
 		}
 
@@ -185,6 +194,34 @@ func CreateApp(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 		}
 		if slug == "" || !slugRe.MatchString(slug) || len(slug) > maxSlugLen {
 			WriteError(w, http.StatusBadRequest, "slug must be lowercase alphanumeric segments separated by '-'")
+			return
+		}
+
+		buildConfig, msg, ok := normalizeBuildConfig(buildKind, req.BuildConfig)
+		if !ok {
+			WriteError(w, http.StatusBadRequest, msg)
+			return
+		}
+
+		// Image-sourced apps have no git repo: skip the git_url/branch/compose
+		// requirements and persist with source='image' (empty git fields). The
+		// image ref + port were validated above by normalizeBuildConfig.
+		if buildKind == adapter.KindImage {
+			a, err := s.CreateImageApp(r.Context(), req.Name, slug, buildConfig)
+			if err != nil {
+				if errors.Is(err, store.ErrConflict) {
+					WriteError(w, http.StatusConflict, "slug already in use")
+					return
+				}
+				WriteError(w, http.StatusInternalServerError, "could not create app")
+				return
+			}
+			WriteJSON(w, http.StatusCreated, toAppDTO(a, cat))
+			return
+		}
+
+		if !gitURLRe.MatchString(req.GitURL) {
+			WriteError(w, http.StatusBadRequest, "git_url must be an https:// or git@ SSH URL")
 			return
 		}
 
@@ -199,20 +236,6 @@ func CreateApp(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 		composeFile := req.ComposeFile
 		if composeFile == "" {
 			composeFile = defaultComposeFile
-		}
-
-		buildKind := strings.TrimSpace(req.BuildKind)
-		if buildKind == "" {
-			buildKind = adapter.KindAuto
-		}
-		if !validBuildKinds[buildKind] {
-			WriteError(w, http.StatusBadRequest, "build_kind must be one of auto, compose, dockerfile, framework, static")
-			return
-		}
-		buildConfig, msg, ok := normalizeBuildConfig(buildKind, req.BuildConfig)
-		if !ok {
-			WriteError(w, http.StatusBadRequest, msg)
-			return
 		}
 
 		a, err := s.CreateApp(r.Context(), req.Name, slug, req.GitURL, branch, composeFile, buildKind, buildConfig)
@@ -309,7 +332,25 @@ func UpdateApp(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 		if req.BuildKind != nil {
 			trimmed := strings.TrimSpace(*req.BuildKind)
 			if !validBuildKinds[trimmed] {
-				WriteError(w, http.StatusBadRequest, "build_kind must be one of auto, compose, dockerfile, framework, static")
+				WriteError(w, http.StatusBadRequest, "build_kind must be one of "+buildKindsLabel)
+				return
+			}
+			// `source` is immutable after creation, and build_kind 'image' is bound
+			// to source 'image' (one image app = source=image, build_kind=image).
+			// Reject a patch that would cross that boundary either way — otherwise
+			// the row desyncs (e.g. source='image' + build_kind='auto' would skip
+			// the clone and then fail auto-detect on an empty work dir).
+			cur, err := s.GetApp(r.Context(), id)
+			if err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					WriteError(w, http.StatusNotFound, "app not found")
+					return
+				}
+				WriteError(w, http.StatusInternalServerError, "could not load app")
+				return
+			}
+			if (trimmed == adapter.KindImage) != (cur.Source == store.AppSourceImage) {
+				WriteError(w, http.StatusBadRequest, "build_kind 'image' is only valid for image-sourced apps; an app's source cannot change after creation")
 				return
 			}
 			req.BuildKind = &trimmed

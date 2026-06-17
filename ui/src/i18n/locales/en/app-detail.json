@@ -211,7 +211,8 @@
       "compose": "Docker Compose",
       "dockerfile": "Dockerfile (wrapped)",
       "framework": "Framework",
-      "static": "Static site"
+      "static": "Static site",
+      "image": "Prebuilt image"
     },
     "source": "Source",
     "addon": "Add-on",
@@ -228,7 +229,8 @@
     "ramCapValue": "{{value}} MiB",
     "ramCapUnlimited": "Unlimited",
     "storage": "Storage",
-    "network": "Network"
+    "network": "Network",
+    "image": "Image"
   },
   "overview": {
     "totalCpu": "Total CPU",

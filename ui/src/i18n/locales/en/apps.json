@@ -105,11 +105,26 @@
       "branch": "Branch",
       "slugPreview": "Deploys as <0>{{slug}}</0>",
       "slugTaken": "An app named <0>{{slug}}</0> already exists. Pick a different name.",
-      "slugInvalid": "Use letters, numbers, and hyphens — at least one letter or number."
+      "slugInvalid": "Use letters, numbers, and hyphens — at least one letter or number.",
+      "imageTitle": "Deploy a prebuilt image",
+      "imageSubtitle": "Point VAC at a published image. It pulls and runs it — no repo, no build.",
+      "imageRef": "Image reference",
+      "imageRefHint": "e.g. ghcr.io/me/app:1.4.2 or nginx:alpine. A moved tag re-pulls on deploy; a @sha256 digest is pinned.",
+      "internalPort": "Internal port",
+      "internalPortHint": "The port your container listens on, exposed to the VAC edge. Leave empty for a non-HTTP worker.",
+      "registry": {
+        "toggle": "Private registry",
+        "hint": "Add credentials if the image is in a private registry. Stored encrypted; never shown again.",
+        "host": "Registry host",
+        "hostHint": "e.g. ghcr.io. Leave empty for Docker Hub.",
+        "username": "Username",
+        "password": "Password or token"
+      }
     },
     "build": {
       "title": "Build configuration",
-      "subtitle": "Choose how VAC builds this repo, or let it auto-detect."
+      "subtitle": "Choose how VAC builds this repo, or let it auto-detect.",
+      "imageNote": "Prebuilt image — no build step. VAC pulls the image and runs it."
     },
     "domain": {
       "title": "Domain",
@@ -161,14 +176,17 @@
       "domain": "Domain",
       "env": "Variables",
       "envCount_one": "{{count}} variable",
-      "envCount_other": "{{count}} variables"
+      "envCount_other": "{{count}} variables",
+      "image": "Image",
+      "port": "Port"
     },
     "summary": {
       "auto": "Auto-detect",
       "compose": "Compose ({{path}})",
       "dockerfile": "Dockerfile ({{path}})",
       "framework": "Framework: {{name}}",
-      "static": "Static ({{path}})"
+      "static": "Static ({{path}})",
+      "image": "Image ({{ref}})"
     },
     "notices": {
       "created": "{{name}} created",
@@ -194,6 +212,17 @@
     "toast": {
       "created": "App created",
       "deployTriggered": "Deploy triggered"
+    },
+    "sourceType": {
+      "heading": "How do you want to deploy?",
+      "git": {
+        "label": "Git repository",
+        "hint": "Clone & build from source"
+      },
+      "image": {
+        "label": "Container image",
+        "hint": "Run a prebuilt image"
+      }
     }
   },
   "buildSource": {
@@ -217,6 +246,10 @@
       "static": {
         "label": "Static",
         "hint": "serve a built directory"
+      },
+      "image": {
+        "label": "Image",
+        "hint": "deploy a prebuilt image"
       }
     },
     "detected": "detected",

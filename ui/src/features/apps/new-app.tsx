@@ -7,7 +7,9 @@ import {
   ArrowRight,
   Check,
   ChevronLeft,
+  Container,
   FileDown,
+  GitBranch,
   Loader2,
   Lock,
   LockOpen,
@@ -52,6 +54,10 @@ interface WizardEnvRow {
 let envUid = 0
 const newEnvUid = () => ++envUid
 
+// How the operator wants to deploy: clone & build from git, or run a prebuilt
+// image. Drives the Source step's fields and the create payload (source/build_kind).
+type SourceType = 'git' | 'image'
+
 // t() scoped to the `apps` namespace, for helpers that render outside a hook.
 type AppsTFunction = ReturnType<typeof useTranslation<'apps'>>['t']
 
@@ -84,9 +90,18 @@ function Wizard() {
 
   // [step, direction] — direction drives which way the step slides.
   const [[step, dir], setStepState] = useState<[number, number]>([0, 1])
+  const [sourceType, setSourceType] = useState<SourceType>('git')
   const [name, setName] = useState('')
   const [gitUrl, setGitUrl] = useState('')
   const [branch, setBranch] = useState('main')
+  // Image source: the prebuilt ref, the internal port to expose (string in the
+  // input; parsed at submit), and optional private-registry credentials.
+  const [imageRef, setImageRef] = useState('')
+  const [port, setPort] = useState('')
+  const [regOpen, setRegOpen] = useState(false)
+  const [regHost, setRegHost] = useState('')
+  const [regUser, setRegUser] = useState('')
+  const [regPass, setRegPass] = useState('')
   const [domain, setDomain] = useState('')
   const [build, setBuild] = useState<BuildSourceValue>({ build_kind: 'auto', build_config: {} })
   const [envRows, setEnvRows] = useState<WizardEnvRow[]>([])
@@ -99,8 +114,10 @@ function Wizard() {
 
   const goTo = (next: number) => setStepState([next, next > step ? 1 : -1])
 
-  const effectiveName = name.trim() || repoName(gitUrl)
-  const ssh = isSshUrl(gitUrl)
+  const isImage = sourceType === 'image'
+  const effectiveName = name.trim() || (isImage ? imageName(imageRef) : repoName(gitUrl))
+  // SSH gating (deploy key + connection test) is git-only; image apps never need it.
+  const ssh = !isImage && isSshUrl(gitUrl)
 
   // Validate the derived slug against existing apps up front, so a collision is
   // caught on the first step instead of as a 409 after the whole form is filled.
@@ -111,8 +128,9 @@ function Wizard() {
   // over-long) slug the backend would reject.
   const slugInvalid = effectiveName !== '' && (slug === '' || slug.length > MAX_SLUG_LEN)
 
+  const sourceFilled = isImage ? Boolean(imageRef.trim()) : Boolean(gitUrl.trim())
   const canContinue =
-    step === 0 ? Boolean(gitUrl.trim() && effectiveName) && !slugTaken && !slugInvalid : true
+    step === 0 ? sourceFilled && Boolean(effectiveName) && !slugTaken && !slugInvalid : true
 
   // Once the operator reaches the build step we probe the repo (keyless clone)
   // for a compose file, so we can pre-fill the path and badge the compose card.
@@ -169,44 +187,76 @@ function Wizard() {
     return [...out.values()]
   }
 
-  const createApp = (thenDeploy: boolean) => {
-    const input: CreateAppInput = {
-      name: effectiveName,
-      git_url: gitUrl.trim(),
-      git_branch: branch.trim() || 'main',
-      build_kind: build.build_kind,
-      build_config: build.build_config,
+  // finishCreate runs the post-create side effects shared by both source types:
+  // store private-registry creds (image only), apply env vars, then deploy or
+  // surface the review panel. Any step's failure aborts before deploy and leaves
+  // the operator on the created state to retry.
+  const finishCreate = async (app: App, thenDeploy: boolean) => {
+    // Seal registry creds first, so the very first pull can authenticate.
+    if (isImage && regOpen && regUser.trim() && regPass.trim()) {
+      try {
+        await appsApi.setRegistryAuth(app.id, {
+          registry: regHost.trim() || undefined,
+          username: regUser.trim(),
+          password: regPass.trim(),
+        })
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : t('new.env.saveFailed'))
+        setCreated(app)
+        return
+      }
     }
-    // Keep compose_file meaningful for back-compat / auto detection.
-    if (build.build_kind === 'compose' && build.build_config.composePath) {
-      input.compose_file = build.build_config.composePath
+    // Apply env vars before the first deploy so the stack comes up with them
+    // already set. A save failure aborts the deploy — better to surface it
+    // than to deploy with missing config.
+    const vars = envInputs()
+    if (vars.length) {
+      setApplyingEnv(true)
+      try {
+        await envApi.replace(app.id, vars)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : t('new.env.saveFailed'))
+        setApplyingEnv(false)
+        setCreated(app)
+        return
+      }
+      setApplyingEnv(false)
+    }
+    toast.success(t('new.toast.created'))
+    // When deploying immediately we redirect to the deploys page, so skip the
+    // "created" review panel entirely — otherwise its connection-test card
+    // flashes in for a frame before the navigation tears it back down.
+    if (thenDeploy) deployNow.mutate(app.id)
+    else setCreated(app)
+  }
+
+  const createApp = (thenDeploy: boolean) => {
+    let input: CreateAppInput
+    if (isImage) {
+      const portNum = Number(port.trim())
+      input = {
+        name: effectiveName,
+        build_kind: 'image',
+        build_config: {
+          image: imageRef.trim(),
+          ...(port.trim() && portNum > 0 ? { port: portNum } : {}),
+        },
+      }
+    } else {
+      input = {
+        name: effectiveName,
+        git_url: gitUrl.trim(),
+        git_branch: branch.trim() || 'main',
+        build_kind: build.build_kind,
+        build_config: build.build_config,
+      }
+      // Keep compose_file meaningful for back-compat / auto detection.
+      if (build.build_kind === 'compose' && build.build_config.composePath) {
+        input.compose_file = build.build_config.composePath
+      }
     }
     create.mutate(input, {
-      onSuccess: async (app) => {
-        // Apply env vars before the first deploy so the stack comes up with them
-        // already set. A save failure aborts the deploy — better to surface it
-        // than to deploy with missing config.
-        const vars = envInputs()
-        if (vars.length) {
-          setApplyingEnv(true)
-          try {
-            await envApi.replace(app.id, vars)
-          } catch (e) {
-            toast.error(e instanceof Error ? e.message : t('new.env.saveFailed'))
-            setApplyingEnv(false)
-            // Surface the created state so the operator can retry the deploy.
-            setCreated(app)
-            return
-          }
-          setApplyingEnv(false)
-        }
-        toast.success(t('new.toast.created'))
-        // When deploying immediately we redirect to the deploys page, so skip the
-        // "created" review panel entirely — otherwise its connection-test card
-        // flashes in for a frame before the navigation tears it back down.
-        if (thenDeploy) deployNow.mutate(app.id)
-        else setCreated(app)
-      },
+      onSuccess: (app) => finishCreate(app, thenDeploy),
       onError: (e) => toast.error(e.message),
     })
   }
@@ -239,12 +289,26 @@ function Wizard() {
           >
             {step === 0 ? (
               <SourceStep
+                sourceType={sourceType}
+                setSourceType={setSourceType}
                 name={name}
                 setName={setName}
                 gitUrl={gitUrl}
                 setGitUrl={setGitUrl}
                 branch={branch}
                 setBranch={setBranch}
+                imageRef={imageRef}
+                setImageRef={setImageRef}
+                port={port}
+                setPort={setPort}
+                regOpen={regOpen}
+                setRegOpen={setRegOpen}
+                regHost={regHost}
+                setRegHost={setRegHost}
+                regUser={regUser}
+                setRegUser={setRegUser}
+                regPass={regPass}
+                setRegPass={setRegPass}
                 slug={slug}
                 slugTaken={slugTaken}
                 slugInvalid={slugInvalid}
@@ -254,12 +318,18 @@ function Wizard() {
             {step === 1 ? (
               <div>
                 <StepHeading title={t('new.build.title')} subtitle={t('new.build.subtitle')} />
-                <BuildSourcePicker
-                  value={build}
-                  onChange={setBuild}
-                  detectedKind={detectedComposePath ? 'compose' : undefined}
-                  detectedComposePath={detectedComposePath}
-                />
+                {isImage ? (
+                  <p className="rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
+                    {t('new.build.imageNote')}
+                  </p>
+                ) : (
+                  <BuildSourcePicker
+                    value={build}
+                    onChange={setBuild}
+                    detectedKind={detectedComposePath ? 'compose' : undefined}
+                    detectedComposePath={detectedComposePath}
+                  />
+                )}
               </div>
             ) : null}
 
@@ -274,9 +344,12 @@ function Wizard() {
             {step === 4 ? (
               <ReviewDeployStep
                 app={created}
+                sourceType={sourceType}
                 name={effectiveName}
                 gitUrl={gitUrl}
                 branch={branch}
+                imageRef={imageRef}
+                port={port}
                 build={build}
                 domain={domain}
                 envCount={envInputs().length}
@@ -456,44 +529,106 @@ function StepHeading({ title, subtitle }: { title: string; subtitle: string }) {
 }
 
 function SourceStep({
+  sourceType,
+  setSourceType,
   name,
   setName,
   gitUrl,
   setGitUrl,
   branch,
   setBranch,
+  imageRef,
+  setImageRef,
+  port,
+  setPort,
+  regOpen,
+  setRegOpen,
+  regHost,
+  setRegHost,
+  regUser,
+  setRegUser,
+  regPass,
+  setRegPass,
   slug,
   slugTaken,
   slugInvalid,
 }: {
+  sourceType: SourceType
+  setSourceType: (v: SourceType) => void
   name: string
   setName: (v: string) => void
   gitUrl: string
   setGitUrl: (v: string) => void
   branch: string
   setBranch: (v: string) => void
+  imageRef: string
+  setImageRef: (v: string) => void
+  port: string
+  setPort: (v: string) => void
+  regOpen: boolean
+  setRegOpen: (v: boolean) => void
+  regHost: string
+  setRegHost: (v: string) => void
+  regUser: string
+  setRegUser: (v: string) => void
+  regPass: string
+  setRegPass: (v: string) => void
   slug: string
   slugTaken: boolean
   slugInvalid: boolean
 }) {
   const { t } = useTranslation('apps')
+  const isImage = sourceType === 'image'
   const nameError = slugTaken || slugInvalid
   return (
     <div>
-      <StepHeading title={t('new.source.title')} subtitle={t('new.source.subtitle')} />
+      <StepHeading
+        title={isImage ? t('new.source.imageTitle') : t('new.source.title')}
+        subtitle={isImage ? t('new.source.imageSubtitle') : t('new.source.subtitle')}
+      />
       <div className="flex flex-col gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="git">{t('new.source.repoUrl')}</Label>
-          <Input
-            id="git"
-            autoFocus
-            value={gitUrl}
-            onChange={(e) => setGitUrl(e.target.value)}
-            placeholder="git@github.com:user/repo.git"
-            className="font-mono text-xs"
-          />
-          <p className="text-2xs text-muted-foreground">{t('new.source.repoHint')}</p>
-        </div>
+        <SourceTypeToggle value={sourceType} onChange={setSourceType} />
+
+        {isImage ? (
+          <>
+            <div className="grid gap-2">
+              <Label htmlFor="image">{t('new.source.imageRef')}</Label>
+              <Input
+                id="image"
+                autoFocus
+                value={imageRef}
+                onChange={(e) => setImageRef(e.target.value)}
+                placeholder="ghcr.io/me/app:1.4.2"
+                className="font-mono text-xs"
+              />
+              <p className="text-2xs text-muted-foreground">{t('new.source.imageRefHint')}</p>
+            </div>
+            <RegistryDisclosure
+              open={regOpen}
+              setOpen={setRegOpen}
+              host={regHost}
+              setHost={setRegHost}
+              user={regUser}
+              setUser={setRegUser}
+              pass={regPass}
+              setPass={setRegPass}
+            />
+          </>
+        ) : (
+          <div className="grid gap-2">
+            <Label htmlFor="git">{t('new.source.repoUrl')}</Label>
+            <Input
+              id="git"
+              autoFocus
+              value={gitUrl}
+              onChange={(e) => setGitUrl(e.target.value)}
+              placeholder="git@github.com:user/repo.git"
+              className="font-mono text-xs"
+            />
+            <p className="text-2xs text-muted-foreground">{t('new.source.repoHint')}</p>
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="name">{t('new.source.appName')}</Label>
@@ -501,7 +636,10 @@ function SourceStep({
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={repoName(gitUrl) || t('new.source.appNameFallback')}
+              placeholder={
+                (isImage ? imageName(imageRef) : repoName(gitUrl)) ||
+                t('new.source.appNameFallback')
+              }
               aria-invalid={nameError}
               className={cn(nameError && 'border-err-border')}
             />
@@ -527,17 +665,165 @@ function SourceStep({
               </p>
             ) : null}
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="branch">{t('new.source.branch')}</Label>
-            <Input
-              id="branch"
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-              className="font-mono text-xs"
-            />
-          </div>
+          {isImage ? (
+            <div className="grid gap-2">
+              <Label htmlFor="port">{t('new.source.internalPort')}</Label>
+              <Input
+                id="port"
+                value={port}
+                inputMode="numeric"
+                onChange={(e) => setPort(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="8080"
+                className="font-mono text-xs"
+              />
+              <p className="text-2xs text-muted-foreground">{t('new.source.internalPortHint')}</p>
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              <Label htmlFor="branch">{t('new.source.branch')}</Label>
+              <Input
+                id="branch"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                className="font-mono text-xs"
+              />
+            </div>
+          )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// SourceTypeToggle picks between cloning a git repo and running a prebuilt image.
+function SourceTypeToggle({
+  value,
+  onChange,
+}: {
+  value: SourceType
+  onChange: (v: SourceType) => void
+}) {
+  const { t } = useTranslation('apps')
+  const opts: { id: SourceType; icon: typeof GitBranch }[] = [
+    { id: 'git', icon: GitBranch },
+    { id: 'image', icon: Container },
+  ]
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {opts.map((opt) => {
+        const active = value === opt.id
+        const Icon = opt.icon
+        return (
+          <m.button
+            key={opt.id}
+            type="button"
+            onClick={() => onChange(opt.id)}
+            whileTap={{ scale: 0.98 }}
+            transition={transition.fast}
+            className={cn(
+              'flex cursor-pointer flex-col gap-1 rounded-lg border p-3 text-left transition-colors',
+              active ? 'border-brand bg-brand/5' : 'hover:bg-surface-2',
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <Icon className={cn('size-4', active ? 'text-brand' : 'text-muted-foreground')} />
+              <span className="text-sm font-medium">{t(`new.sourceType.${opt.id}.label`)}</span>
+            </div>
+            <span className="text-2xs text-muted-foreground">
+              {t(`new.sourceType.${opt.id}.hint`)}
+            </span>
+          </m.button>
+        )
+      })}
+    </div>
+  )
+}
+
+// RegistryDisclosure is the optional private-registry credential form for image
+// apps. Collapsed by default (public images need nothing); when expanded it
+// collects host/username/password, submitted to the sealed-write endpoint after
+// the app is created.
+function RegistryDisclosure({
+  open,
+  setOpen,
+  host,
+  setHost,
+  user,
+  setUser,
+  pass,
+  setPass,
+}: {
+  open: boolean
+  setOpen: (v: boolean) => void
+  host: string
+  setHost: (v: string) => void
+  user: string
+  setUser: (v: string) => void
+  pass: string
+  setPass: (v: string) => void
+}) {
+  const { t } = useTranslation('apps')
+  return (
+    <div className="rounded-lg border p-3">
+      <label className="flex cursor-pointer items-center justify-between gap-3">
+        <span className="flex items-center gap-2 text-sm font-medium">
+          <Lock className="size-3.5 text-muted-foreground" />
+          {t('new.source.registry.toggle')}
+        </span>
+        <Switch checked={open} onCheckedChange={setOpen} />
+      </label>
+      <AnimatePresence initial={false}>
+        {open ? (
+          <m.div
+            key="reg-fields"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={transition.base}
+            className="overflow-hidden"
+          >
+            <div className="mt-3 flex flex-col gap-3">
+              <p className="text-2xs text-muted-foreground">{t('new.source.registry.hint')}</p>
+              <div className="grid gap-2">
+                <Label htmlFor="reg-host">{t('new.source.registry.host')}</Label>
+                <Input
+                  id="reg-host"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  placeholder="ghcr.io"
+                  className="font-mono text-xs"
+                />
+                <p className="text-2xs text-muted-foreground">
+                  {t('new.source.registry.hostHint')}
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="reg-user">{t('new.source.registry.username')}</Label>
+                  <Input
+                    id="reg-user"
+                    value={user}
+                    autoComplete="off"
+                    onChange={(e) => setUser(e.target.value)}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="reg-pass">{t('new.source.registry.password')}</Label>
+                  <Input
+                    id="reg-pass"
+                    type="password"
+                    value={pass}
+                    autoComplete="new-password"
+                    onChange={(e) => setPass(e.target.value)}
+                    className="font-mono text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+          </m.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   )
 }
@@ -867,9 +1153,12 @@ function PasteEnvPanel({
 // wizard to verify access.
 function ReviewDeployStep({
   app,
+  sourceType,
   name,
   gitUrl,
   branch,
+  imageRef,
+  port,
   build,
   domain,
   envCount,
@@ -878,9 +1167,12 @@ function ReviewDeployStep({
   onConnectionResult,
 }: {
   app: App | null
+  sourceType: SourceType
   name: string
   gitUrl: string
   branch: string
+  imageRef: string
+  port: string
   build: BuildSourceValue
   domain: string
   envCount: number
@@ -889,15 +1181,25 @@ function ReviewDeployStep({
   onConnectionResult: (ok: boolean) => void
 }) {
   const { t } = useTranslation('apps')
+  const isImage = sourceType === 'image'
   return (
     <div>
       <StepHeading title={t('new.review.title')} subtitle={t('new.review.subtitle')} />
 
       <div className="flex flex-col gap-2 rounded-lg border p-4">
         <ReviewLine k={t('new.review.name')} v={name || '—'} />
-        <ReviewLine k={t('new.review.source')} v={gitUrl || '—'} mono />
-        <ReviewLine k={t('new.review.branch')} v={branch} mono />
-        <ReviewLine k={t('new.review.build')} v={buildSummary(build, t)} />
+        {isImage ? (
+          <>
+            <ReviewLine k={t('new.review.image')} v={imageRef || '—'} mono />
+            {port.trim() ? <ReviewLine k={t('new.review.port')} v={port} mono /> : null}
+          </>
+        ) : (
+          <>
+            <ReviewLine k={t('new.review.source')} v={gitUrl || '—'} mono />
+            <ReviewLine k={t('new.review.branch')} v={branch} mono />
+            <ReviewLine k={t('new.review.build')} v={buildSummary(build, t)} />
+          </>
+        )}
         {domain ? <ReviewLine k={t('new.review.domain')} v={domain} mono /> : null}
         {envCount > 0 ? (
           <ReviewLine k={t('new.review.env')} v={t('new.review.envCount', { count: envCount })} />
@@ -922,7 +1224,9 @@ function ReviewDeployStep({
                 <DeployKeyCard appId={app.id} gitUrl={app.git_url} />
               </>
             ) : null}
-            <ConnectionTest app={app} onResult={onConnectionResult} />
+            {/* Connection test clones the repo — git apps only. An image app has
+                nothing to reach until the first pull. */}
+            {!isImage ? <ConnectionTest app={app} onResult={onConnectionResult} /> : null}
             {ssh && !connectionOk ? (
               <p className="text-2xs text-muted-foreground">{t('new.connect.deployLocked')}</p>
             ) : null}
@@ -1028,6 +1332,16 @@ function buildSummary(build: BuildSourceValue, t: AppsTFunction): string {
 function repoName(gitUrl: string): string {
   const last = gitUrl.trim().split('/').pop() ?? ''
   return last.replace(/\.git$/, '')
+}
+
+// imageName derives a default app name from an image ref: the repo path's last
+// segment, minus any `:tag` or `@digest`. e.g. ghcr.io/me/app:1.4.2 → "app".
+// Splits the path first so a registry port (ghcr.io:5000/…) isn't mistaken for
+// a tag.
+function imageName(imageRef: string): string {
+  const noDigest = imageRef.trim().split('@')[0] ?? ''
+  const lastSegment = noDigest.split('/').pop() ?? ''
+  return lastSegment.split(':')[0] ?? ''
 }
 
 // Mirror of the backend's deriveSlug (api/internal/server/handler/apps.go): the

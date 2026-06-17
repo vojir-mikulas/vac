@@ -325,6 +325,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Put("/{id}/env", handler.ReplaceAppEnv(s, box))
 				r.Get("/{id}/env/{key}/reveal", handler.RevealAppEnv(s, box))
 
+				// Private-registry credentials for image-sourced apps. Sealed write
+				// (never echoed back); the password is write-only like an env secret.
+				r.Get("/{id}/registry-auth", handler.GetAppRegistryAuth(s, box))
+				r.Put("/{id}/registry-auth", handler.SetAppRegistryAuth(s, box))
+				r.Delete("/{id}/registry-auth", handler.DeleteAppRegistryAuth(s))
+
 				r.Get("/{id}/services", handler.ListAppServices(s))
 				r.Patch("/{id}/services/{name}", handler.PatchAppService(s, proxyMgr))
 
