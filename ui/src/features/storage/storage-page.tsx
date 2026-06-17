@@ -27,6 +27,7 @@ import {
   type DiskUsageEntry,
 } from '@/lib/api/instance'
 import { formatBytes } from '@/lib/format'
+import { HostDiskChart, HOST_COLORS } from './host-disk-chart'
 
 export function StoragePage() {
   const { t } = useTranslation('storage')
@@ -73,11 +74,22 @@ function HostDisk({ host }: { host: DiskUsage }) {
     <section>
       <SectionHeader>{t('host.heading')}</SectionHeader>
       <Card className="gap-5 p-5">
-        <div className="flex flex-col gap-2">
-          <UsageRow label={t('host.images')} entry={host.images} />
-          <UsageRow label={t('host.containers')} entry={host.containers} />
-          <UsageRow label={t('host.volumes')} entry={host.volumes} />
-          <UsageRow label={t('host.buildCache')} entry={host.build_cache} />
+        <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-8">
+          <HostDiskChart host={host} className="w-40 shrink-0" />
+          <div className="flex w-full flex-1 flex-col gap-2">
+            <UsageRow label={t('host.images')} entry={host.images} color={HOST_COLORS.images} />
+            <UsageRow
+              label={t('host.containers')}
+              entry={host.containers}
+              color={HOST_COLORS.containers}
+            />
+            <UsageRow label={t('host.volumes')} entry={host.volumes} color={HOST_COLORS.volumes} />
+            <UsageRow
+              label={t('host.buildCache')}
+              entry={host.build_cache}
+              color={HOST_COLORS.buildCache}
+            />
+          </div>
         </div>
         <div className="flex items-center justify-between gap-4">
           <p className="text-xs text-muted-foreground">{t('host.note')}</p>
@@ -95,11 +107,26 @@ function HostDisk({ host }: { host: DiskUsage }) {
   )
 }
 
-function UsageRow({ label, entry }: { label: string; entry: DiskUsageEntry }) {
+function UsageRow({
+  label,
+  entry,
+  color,
+}: {
+  label: string
+  entry: DiskUsageEntry
+  color: string
+}) {
   const { t } = useTranslation('storage')
   return (
     <div className="flex items-baseline justify-between gap-4 border-b pb-2 last:border-b-0 last:pb-0">
-      <span className="text-sm font-medium">{label}</span>
+      <span className="flex items-center gap-2 text-sm font-medium">
+        <span
+          className="size-2.5 shrink-0 rounded-[2px]"
+          style={{ background: color }}
+          aria-hidden
+        />
+        {label}
+      </span>
       <div className="flex items-baseline gap-3 font-mono text-xs">
         <span className="tabular-nums">{formatBytes(entry.size_bytes)}</span>
         {entry.reclaimable_bytes > 0 ? (

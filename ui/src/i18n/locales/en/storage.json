@@ -10,6 +10,8 @@
     "volumes": "Volumes",
     "buildCache": "Build cache",
     "reclaimable": "{{size}} reclaimable",
+    "used": "Used",
+    "empty": "No usage",
     "reclaim": "Reclaim space",
     "reclaiming": "Reclaiming…",
     "reclaimed": "Reclaimed {{size}}",
