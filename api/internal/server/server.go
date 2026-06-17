@@ -272,7 +272,15 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/{id}/export", handler.ExportApp(s, box))
 				r.Patch("/{id}", handler.UpdateApp(s, addonCatalog))
 				// Deleting an app tears down its stack + volumes — gate on fresh 2FA.
-				r.With(middleware.RequireStepUp).Delete("/{id}", handler.DeleteApp(s, proxyMgr, dbDeprov, docker))
+				// Pass the worker (when wired) so the delete can interrupt an
+				// in-flight deploy and free its pool slot; keep the interface nil
+				// in tests where the worker is absent (a nil *Worker boxed in the
+				// interface would be non-nil and panic on Cancel).
+				var deployInterrupter handler.DeployInterrupter
+				if worker != nil {
+					deployInterrupter = worker
+				}
+				r.With(middleware.RequireStepUp).Delete("/{id}", handler.DeleteApp(s, proxyMgr, dbDeprov, docker, deployInterrupter))
 
 				r.Get("/{id}/ssh-key", handler.GetAppSSHKey(s, keys))
 				r.Post("/{id}/ssh-key/regenerate", handler.RegenerateAppSSHKey(s, keys))

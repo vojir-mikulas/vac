@@ -92,6 +92,10 @@ function Wizard() {
   const [envRows, setEnvRows] = useState<WizardEnvRow[]>([])
   const [applyingEnv, setApplyingEnv] = useState(false)
   const [created, setCreated] = useState<App | null>(null)
+  // For SSH repos, the first deploy can't clone until the operator adds the
+  // deploy key to their Git host. A passing connection test is the only proof
+  // the key is registered, so it gates the deploy button below.
+  const [connectionOk, setConnectionOk] = useState(false)
 
   const goTo = (next: number) => setStepState([next, next > step ? 1 : -1])
 
@@ -258,6 +262,8 @@ function Wizard() {
                 domain={domain}
                 envCount={envInputs().length}
                 ssh={ssh}
+                connectionOk={connectionOk}
+                onConnectionResult={setConnectionOk}
               />
             ) : null}
           </m.div>
@@ -287,7 +293,8 @@ function Wizard() {
               </Button>
               <Button
                 variant="brand"
-                disabled={deployNow.isPending}
+                disabled={deployNow.isPending || (ssh && !connectionOk)}
+                title={ssh && !connectionOk ? t('new.connect.deployLocked') : undefined}
                 onClick={() => deployNow.mutate(created.id)}
               >
                 {deployNow.isPending ? (
@@ -303,24 +310,37 @@ function Wizard() {
               <Button variant="outline" disabled={busy} onClick={() => goTo(step - 1)}>
                 {t('actions.back')}
               </Button>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" disabled={busy} onClick={() => createApp(false)}>
-                  {create.isPending && !deployNow.isPending ? (
+              {/* SSH repos can't clone until the deploy key is on the host, so we
+                  only create here and unlock deploy after the connection test. */}
+              {ssh ? (
+                <Button variant="brand" disabled={busy} onClick={() => createApp(false)}>
+                  {create.isPending ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : (
                     <Check className="size-4" />
                   )}
                   {t('new.createOnly')}
                 </Button>
-                <Button variant="brand" disabled={busy} onClick={() => createApp(true)}>
-                  {busy ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Rocket className="size-4" />
-                  )}
-                  {t('new.createAndDeploy')}
-                </Button>
-              </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" disabled={busy} onClick={() => createApp(false)}>
+                    {create.isPending && !deployNow.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Check className="size-4" />
+                    )}
+                    {t('new.createOnly')}
+                  </Button>
+                  <Button variant="brand" disabled={busy} onClick={() => createApp(true)}>
+                    {busy ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Rocket className="size-4" />
+                    )}
+                    {t('new.createAndDeploy')}
+                  </Button>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -805,6 +825,8 @@ function ReviewDeployStep({
   domain,
   envCount,
   ssh,
+  connectionOk,
+  onConnectionResult,
 }: {
   app: App | null
   name: string
@@ -814,6 +836,8 @@ function ReviewDeployStep({
   domain: string
   envCount: number
   ssh: boolean
+  connectionOk: boolean
+  onConnectionResult: (ok: boolean) => void
 }) {
   const { t } = useTranslation('apps')
   return (
@@ -841,8 +865,18 @@ function ReviewDeployStep({
             className="mt-4 flex flex-col gap-4"
           >
             <NotificationBar tone="success" title={t('new.notices.created', { name: app.name })} />
-            {ssh ? <DeployKeyCard appId={app.id} gitUrl={app.git_url} /> : null}
-            <ConnectionTest app={app} />
+            {ssh ? (
+              <>
+                <NotificationBar tone="info" title={t('new.notices.addKey.title')}>
+                  {t('new.notices.addKey.body')}
+                </NotificationBar>
+                <DeployKeyCard appId={app.id} gitUrl={app.git_url} />
+              </>
+            ) : null}
+            <ConnectionTest app={app} onResult={onConnectionResult} />
+            {ssh && !connectionOk ? (
+              <p className="text-2xs text-muted-foreground">{t('new.connect.deployLocked')}</p>
+            ) : null}
           </m.div>
         ) : ssh ? (
           <m.div
@@ -863,10 +897,12 @@ function ReviewDeployStep({
   )
 }
 
-function ConnectionTest({ app }: { app: App }) {
+function ConnectionTest({ app, onResult }: { app: App; onResult: (ok: boolean) => void }) {
   const { t } = useTranslation('apps')
   const test = useMutation({
     mutationFn: () => appsApi.testConnection(app.id),
+    onSuccess: (res) => onResult(res.ok),
+    onError: () => onResult(false),
   })
 
   return (

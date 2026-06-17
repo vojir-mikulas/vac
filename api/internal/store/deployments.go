@@ -208,6 +208,34 @@ func (s *Store) HasActiveDeployment(ctx context.Context, appID string) (bool, er
 	return exists, err
 }
 
+// ActiveDeploymentIDsForApp returns the ids of the app's non-terminal
+// deployments (at most one given the per-app uniqueness guard, but returned as a
+// slice for safety). App deletion uses it to interrupt an in-flight build before
+// the cascade removes the rows: without the interrupt the worker grinds the
+// pipeline against torn-down infra until its deploy timeout, wedging the pool
+// (with concurrency=1, every other deploy). The status set mirrors deploy's
+// non-terminal enum.
+func (s *Store) ActiveDeploymentIDsForApp(ctx context.Context, appID string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id FROM deployments
+		WHERE app_id = $1
+		  AND status IN ('queued', 'cloning', 'building', 'deploying', 'health-checking')
+	`, appID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // UpdateDeploymentStatus is called by the pipeline at each step transition.
 // `errMsg` is set only on the terminal failure transition.
 func (s *Store) UpdateDeploymentStatus(ctx context.Context, id, status string, errMsg *string) error {

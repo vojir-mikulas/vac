@@ -379,7 +379,18 @@ type AppDBDeprovisioner interface {
 	DeprovisionApp(ctx context.Context, appID string)
 }
 
-func DeleteApp(s *store.Store, pm ProxyManager, dbDeprov AppDBDeprovisioner, ctrl AppStackController) http.HandlerFunc {
+// DeployInterrupter cancels an app's in-flight deployment when the app is
+// deleted. Without it the worker keeps running the pipeline against torn-down
+// infra (the build/up/health-gate never re-checks that the app still exists)
+// until the per-deploy timeout fires ~30 min later — and with the default
+// concurrency=1 that one wedged slot blocks every queued deploy. *deploy.Worker
+// satisfies it; nil (tests / no deploy surface) disables the interrupt.
+type DeployInterrupter interface {
+	Cancel(deploymentID string) bool
+	NotifyChanged()
+}
+
+func DeleteApp(s *store.Store, pm ProxyManager, dbDeprov AppDBDeprovisioner, ctrl AppStackController, worker DeployInterrupter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		app, err := s.GetApp(r.Context(), id)
@@ -390,6 +401,20 @@ func DeleteApp(s *store.Store, pm ProxyManager, dbDeprov AppDBDeprovisioner, ctr
 			}
 			WriteError(w, http.StatusInternalServerError, "could not load app")
 			return
+		}
+		// Interrupt any in-flight deploy first — its deploy context dies, so the
+		// worker frees its pool slot promptly instead of grinding the pipeline
+		// against the infra we're about to tear down. Capture the ids before the
+		// cascade below removes the deployment rows. Best-effort: a lookup miss
+		// must not block the delete.
+		if worker != nil {
+			if dids, derr := s.ActiveDeploymentIDsForApp(r.Context(), id); derr != nil {
+				slog.Warn("delete: could not list active deployments", "app", app.ID, "err", derr)
+			} else {
+				for _, did := range dids {
+					worker.Cancel(did)
+				}
+			}
 		}
 		// Stop and remove the app's containers + named volumes. Deleting an app is
 		// permanent, so its data goes with it (e.g. an add-on's data volume).
@@ -414,6 +439,11 @@ func DeleteApp(s *store.Store, pm ProxyManager, dbDeprov AppDBDeprovisioner, ctr
 			}
 			WriteError(w, http.StatusInternalServerError, "could not delete app")
 			return
+		}
+		// The interrupted deploy left the queue panel; nudge live subscribers so it
+		// drops off without waiting for the next worker tick.
+		if worker != nil {
+			worker.NotifyChanged()
 		}
 		WriteJSON(w, http.StatusOK, map[string]int{"deleted": 1})
 	}

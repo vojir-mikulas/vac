@@ -168,8 +168,12 @@
     "notices": {
       "created": "{{name}} created",
       "sshKey": {
-        "title": "A deploy key will be generated",
-        "body": "This is an SSH repo — once the app is created, add its read-only deploy key to your Git host so VAC can clone. Deploying before then will fail to clone."
+        "title": "This SSH repo needs a deploy key",
+        "body": "Create the app first — VAC then generates a read-only deploy key. Add it to your Git host and test the connection to unlock the first deploy."
+      },
+      "addKey": {
+        "title": "Add this deploy key to your Git host",
+        "body": "Copy the key below and add it as a read-only deploy key on your Git host (Deploy keys / SSH keys with read access). Then run the connection test — deploy unlocks once it succeeds."
       }
     },
     "connect": {
@@ -179,7 +183,8 @@
       "succeeded": "Connection succeeded",
       "connectionFailed": "Connection failed",
       "goToApp": "Go to app",
-      "deployNow": "Deploy now"
+      "deployNow": "Deploy now",
+      "deployLocked": "Add the deploy key to your Git host and pass the connection test to unlock deploy."
     },
     "toast": {
       "created": "App created",
