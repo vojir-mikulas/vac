@@ -14,6 +14,37 @@ export interface InstanceInfo {
   enable_shell: boolean
 }
 
+export interface UpdateInfo {
+  current: string
+  latest: string
+  update_available: boolean
+  release_url: string
+  checked_at: string
+  /** Non-empty when the upstream check failed; the card shows "couldn't check". */
+  error?: string
+}
+
+export interface DiskUsageEntry {
+  type: string
+  total_count: number
+  active: number
+  size_bytes: number
+  reclaimable_bytes: number
+}
+
+export interface DiskUsage {
+  images: DiskUsageEntry
+  containers: DiskUsageEntry
+  volumes: DiskUsageEntry
+  build_cache: DiskUsageEntry
+}
+
+export interface PruneResult {
+  images_reclaimed_bytes: number
+  build_cache_reclaimed_bytes: number
+  total_reclaimed_bytes: number
+}
+
 export interface BaseDomainInfo {
   base_domain: string // the runtime override ("" = unset, using config)
   effective: string // override or config fallback
@@ -41,6 +72,9 @@ export interface DeployConcurrency {
 
 export const instanceApi = {
   info: () => api.get<InstanceInfo>('instance/info'),
+  updateCheck: () => api.get<UpdateInfo>('instance/update-check'),
+  diskUsage: () => api.get<DiskUsage>('instance/disk'),
+  pruneDisk: () => api.post<PruneResult>('instance/prune'),
   getBaseDomain: () => api.get<BaseDomainInfo>('instance/base-domain'),
   setBaseDomain: (baseDomain: string) =>
     api.put<BaseDomainInfo>('instance/base-domain', { base_domain: baseDomain }),
@@ -62,6 +96,32 @@ export function useInstanceInfo() {
     queryKey: queryKeys.instance.info,
     queryFn: () => instanceApi.info(),
     staleTime: 5 * 60_000,
+  })
+}
+
+export function useUpdateCheck() {
+  return useQuery({
+    queryKey: queryKeys.instance.updateCheck,
+    queryFn: () => instanceApi.updateCheck(),
+    // Cached server-side for an hour; a 30-min client window keeps the badge
+    // fresh without re-fetching on every settings visit.
+    staleTime: 30 * 60_000,
+  })
+}
+
+export function useDiskUsage() {
+  return useQuery({
+    queryKey: queryKeys.instance.disk,
+    queryFn: () => instanceApi.diskUsage(),
+    staleTime: 60_000,
+  })
+}
+
+export function usePruneDisk() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => instanceApi.pruneDisk(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.instance.disk }),
   })
 }
 

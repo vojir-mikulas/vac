@@ -11,6 +11,17 @@
       "value": "vac · {{version}}",
       "builtAt": "Built {{date}}"
     },
+    "update": {
+      "label": "Updates",
+      "checking": "Checking for updates…",
+      "upToDate": "Up to date",
+      "available": "Update available",
+      "latest": "Latest: {{version}}",
+      "failed": "Couldn't check for updates",
+      "releaseNotes": "Release notes",
+      "instructions": "Run this on the host to upgrade. VAC pulls the new images and recreates its own containers — your apps keep running.",
+      "copyCommand": "Copy command"
+    },
     "channel": {
       "label": "Update channel",
       "hint": "Switching channels is not available yet."
@@ -21,6 +32,20 @@
       "ariaLabel": "Auto update (coming soon)"
     },
     "comingSoon": "Coming soon"
+  },
+  "maintenance": {
+    "heading": "Maintenance",
+    "description": "Reclaim disk space taken by leftover Docker images and build cache. Safe — the images your running apps use are kept; only orphaned layers are removed.",
+    "images": "Dangling images",
+    "buildCache": "Build cache",
+    "reclaimable": "{{size}} reclaimable",
+    "nothingToReclaim": "Nothing to reclaim",
+    "reclaim": "Reclaim space",
+    "reclaiming": "Reclaiming…",
+    "reclaimed": "Reclaimed {{size}}",
+    "reclaimedNothing": "Already clean — nothing to reclaim",
+    "loadError": "Couldn't read disk usage",
+    "note": "VAC also prunes old images automatically every night."
   },
   "apiTokens": {
     "heading": "API tokens",

@@ -23,6 +23,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/domainstatus"
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
 	"github.com/vojir-mikulas/vac/api/internal/revert"
+	"github.com/vojir-mikulas/vac/api/internal/selfupdate"
 	"github.com/vojir-mikulas/vac/api/internal/server/handler"
 	"github.com/vojir-mikulas/vac/api/internal/server/middleware"
 	"github.com/vojir-mikulas/vac/api/internal/sshkey"
@@ -227,7 +228,11 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			// Instance-level settings & operations (info, base domain, DNS
 			// check, danger-zone control-plane ops).
 			r.Route("/instance", func(r chi.Router) {
+				// One Checker per process so opening settings repeatedly serves the
+				// cached release info instead of re-hitting GitHub each load.
+				updateChecker := selfupdate.New(cfg.Version)
 				r.Get("/info", handler.InstanceInfo(cfg))
+				r.Get("/update-check", handler.UpdateCheck(updateChecker))
 				r.Get("/base-domain", handler.GetBaseDomain(s, cfg))
 				r.Put("/base-domain", handler.PutBaseDomain(s, cfg, baseDom, routeRec))
 				r.Get("/deploy-concurrency", handler.GetDeployConcurrency(s))
@@ -239,6 +244,11 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				if docker != nil {
 					r.Post("/restart-control-plane", handler.RestartControlPlane(docker))
 					r.Post("/stop-all-apps", handler.StopAllApps(s, docker, proxyMgr))
+					// Disk maintenance: report docker disk usage and reclaim it on
+					// demand (dangling images + unused build cache). Safe — never
+					// removes a service's live or rollback image.
+					r.Get("/disk", handler.DiskUsage(docker))
+					r.Post("/prune", handler.PruneDisk(docker))
 					// Irreversible box-wide wipe — gate on fresh 2FA (on top of
 					// the typed "RESET" confirmation the handler enforces).
 					r.With(middleware.RequireStepUp).Post("/reset", handler.ResetInstance(s, docker, proxyMgr))

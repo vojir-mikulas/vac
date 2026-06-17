@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { ExternalLink } from 'lucide-react'
 
 import { SectionHeader } from '@/components/common/section-header'
 import { Badge } from '@/components/ui/badge'
@@ -12,9 +13,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { CopyButton } from '@/components/common/copy-button'
 import { cn } from '@/lib/utils'
-import { useInstanceInfo } from '@/lib/api/instance'
+import { useInstanceInfo, useUpdateCheck } from '@/lib/api/instance'
 import { SUPPORTED_LANGUAGES } from '@/i18n'
+
+import { MaintenanceSection } from './maintenance-section'
 
 const CHANNELS = ['stable', 'beta', 'edge'] as const
 
@@ -44,6 +48,8 @@ export function InstanceSection() {
             )}
           </Row>
 
+          <UpdateRow />
+
           <Row label={t('instance.channel.label')} hint={t('instance.channel.hint')}>
             <div className="inline-flex items-center gap-0.5 rounded-md border bg-surface-1 p-0.5 opacity-60">
               {CHANNELS.map((c) => (
@@ -71,8 +77,79 @@ export function InstanceSection() {
         </Card>
       </div>
 
+      <MaintenanceSection />
+
       <LanguageSection />
     </section>
+  )
+}
+
+// UpdateRow shows whether a newer release exists. When one does, it expands with
+// the `vac upgrade` command to run on the host (upgrades happen out-of-band — the
+// API can't recreate its own container mid-request) plus a release-notes link.
+function UpdateRow() {
+  const { t } = useTranslation('settings')
+  const { data, isLoading } = useUpdateCheck()
+
+  if (isLoading) {
+    return (
+      <Row label={t('instance.update.label')}>
+        <span className="text-xs text-muted-foreground">{t('instance.update.checking')}</span>
+      </Row>
+    )
+  }
+
+  // A failed upstream check (no data or an error with no version) degrades to a
+  // muted "couldn't check" rather than an alarming state.
+  if (!data || (data.error && !data.latest)) {
+    return (
+      <Row label={t('instance.update.label')}>
+        <span className="text-xs text-muted-foreground">{t('instance.update.failed')}</span>
+      </Row>
+    )
+  }
+
+  if (!data.update_available) {
+    return (
+      <Row
+        label={t('instance.update.label')}
+        hint={data.latest ? t('instance.update.latest', { version: data.latest }) : undefined}
+      >
+        <Badge variant="success">{t('instance.update.upToDate')}</Badge>
+      </Row>
+    )
+  }
+
+  const command = `vac upgrade ${data.latest}`
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-warn-bg bg-warn-bg/30 p-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            {t('instance.update.available')}
+            <Badge variant="warn">{data.latest}</Badge>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{t('instance.update.instructions')}</p>
+        </div>
+        {data.release_url ? (
+          <a
+            href={data.release_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-info-foreground hover:underline"
+          >
+            {t('instance.update.releaseNotes')}
+            <ExternalLink className="size-3" />
+          </a>
+        ) : null}
+      </div>
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 truncate rounded bg-surface-1 px-2.5 py-1.5 font-mono text-xs">
+          {command}
+        </code>
+        <CopyButton value={command} label={t('instance.update.copyCommand')} />
+      </div>
+    </div>
   )
 }
 
