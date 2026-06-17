@@ -130,7 +130,7 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
   const remove = useDeleteBackup(appId)
 
   return (
-    <Card className="gap-0 p-0">
+    <Card className="gap-0 overflow-hidden p-0">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3.5">
         <div className="flex items-center gap-2.5">
           <span className="font-mono text-sm font-semibold">{config.service_name}</span>

@@ -103,7 +103,12 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - vac_repos:/var/lib/vac/repos
-      - vac_caddy_logs:/var/log/caddy:ro
+      # Caddy's JSON access log (read-only) — tailed for request metrics. A host
+      # bind mount (not a named volume, unlike dev compose.yaml) so the path is
+      # stable and host tools can read it: the install docs point fail2ban at
+      # /var/log/vac/caddy/access.log to auto-ban request floods. The directory
+      # is created by the installer / `docker compose up`.
+      - /var/log/vac/caddy:/var/log/caddy:ro
       # Host security snapshot — a host bind mount (not a named volume) so the
       # host-side vac-security-agent can write it; vac-api only reads it.
       - /var/lib/vac/security:/var/lib/vac/security:ro
@@ -138,7 +143,9 @@ services:
     volumes:
       - caddy_data:/data
       - caddy_config:/config
-      - vac_caddy_logs:/var/log/caddy
+      # Stable host path for the access log (see vac-api above) — fail2ban and
+      # other host-side tooling read it directly at /var/log/vac/caddy.
+      - /var/log/vac/caddy:/var/log/caddy
     # Liveness probe against the admin API (busybox wget — caddy:2-alpine has no
     # curl). If Caddy crashes or wedges, all ingress is down while vac-api still
     # looks up; this makes that visible instead of silent. Admin binds
@@ -160,6 +167,8 @@ networks:
 volumes:
   vac_db_data:
   vac_repos:
-  vac_caddy_logs:
+  # vac_caddy_logs is intentionally absent in prod — the Caddy access log is a
+  # host bind mount (/var/log/vac/caddy) so fail2ban can read it directly. Dev
+  # compose.yaml still uses the named volume.
   caddy_data:
   caddy_config:
