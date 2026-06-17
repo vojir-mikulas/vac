@@ -298,6 +298,24 @@ func (d *Dispatcher) BackupFailed(appName, appID, service, errMsg string) {
 	})
 }
 
+// RestoreFinished fires the backup-restore-finished event. Unlike a backup
+// (where only failure warrants a push), a restore is an operator-initiated,
+// destructive action, so both outcomes are surfaced — success confirms the
+// overwrite landed; failure means the database may be partially overwritten.
+func (d *Dispatcher) RestoreFinished(appName, appID, service string, ok bool) {
+	title := "Restore complete: " + appName + "/" + service
+	msg := "Backup restored into " + service + "."
+	if !ok {
+		title = "Restore failed: " + appName + "/" + service
+		msg = "Restore of " + service + " failed; its data may be partially overwritten."
+	}
+	d.dispatch(Event{
+		Type: EventRestoreFinished, OK: ok,
+		Title:   title,
+		AppName: appName, AppID: appID, Service: service, Message: msg,
+	})
+}
+
 // CertExpiring fires the TLS-certificate-expiring event (plan 03). daysLeft is
 // the whole days until notAfter; a non-positive value means already expired.
 func (d *Dispatcher) CertExpiring(host string, daysLeft int, notAfter time.Time) {

@@ -74,7 +74,7 @@ func (e *Engine) RunOnce(ctx context.Context, cfg store.BackupConfig) error {
 		return fmt.Errorf("backup: open run: %w", err)
 	}
 
-	containerID, err := e.resolveContainer(ctx, cfg)
+	containerID, err := resolveContainer(ctx, e.store, cfg)
 	if err != nil {
 		return e.fail(ctx, run.ID, app, cfg, err)
 	}
@@ -122,13 +122,19 @@ func (e *Engine) RunOnce(ctx context.Context, cfg store.BackupConfig) error {
 	return nil
 }
 
-// resolveContainer finds the container to exec the dump in. A normal app backup
-// resolves the service row to its container_id. A managed-database backup (D2)
-// targets a shared engine container (e.g. vac-db) that isn't an app service row,
-// so a service-not-found falls back to treating ServiceName as a literal
+// serviceGetter is the one store method resolveContainer needs — shared by the
+// dump Engine and the Restorer.
+type serviceGetter interface {
+	GetService(ctx context.Context, appID, name string) (store.Service, error)
+}
+
+// resolveContainer finds the container to exec the dump/restore in. A normal app
+// backup resolves the service row to its container_id. A managed-database backup
+// (D2) targets a shared engine container (e.g. vac-db) that isn't an app service
+// row, so a service-not-found falls back to treating ServiceName as a literal
 // container name — docker exec accepts names as well as IDs.
-func (e *Engine) resolveContainer(ctx context.Context, cfg store.BackupConfig) (string, error) {
-	svc, err := e.store.GetService(ctx, cfg.AppID, cfg.ServiceName)
+func resolveContainer(ctx context.Context, s serviceGetter, cfg store.BackupConfig) (string, error) {
+	svc, err := s.GetService(ctx, cfg.AppID, cfg.ServiceName)
 	if err == nil {
 		if svc.ContainerID == nil || *svc.ContainerID == "" {
 			return "", fmt.Errorf("service %s has no running container", cfg.ServiceName)

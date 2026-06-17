@@ -22,6 +22,13 @@ type BackupRunner interface {
 	RunOnce(ctx context.Context, cfg store.BackupConfig) error
 }
 
+// BackupRestorer replays a recorded run back into its target container off the
+// request path. Satisfied by *backup.Restorer.
+type BackupRestorer interface {
+	Restore(ctx context.Context, cfg store.BackupConfig, sourceRunID string) error
+	CanRestore(cfg store.BackupConfig) bool
+}
+
 type backupConfigDTO struct {
 	ID          string        `json:"id"`
 	AppID       string        `json:"app_id"`
@@ -36,6 +43,33 @@ type backupConfigDTO struct {
 	CreatedAt   time.Time     `json:"created_at"`
 	UpdatedAt   time.Time     `json:"updated_at"`
 	LastRun     *backupRunDTO `json:"last_run,omitempty"`
+	// Restorable is true when this config's command maps to a known restore
+	// command, so the UI can offer Restore (false → custom command, download +
+	// restore manually). Set by the handlers that hold a restorer.
+	Restorable bool `json:"restorable"`
+}
+
+// restoreRunDTO is one restore attempt for the progress view.
+type restoreRunDTO struct {
+	ID          string     `json:"id"`
+	ConfigID    string     `json:"config_id"`
+	SourceRunID string     `json:"source_run_id"`
+	StartedAt   time.Time  `json:"started_at"`
+	FinishedAt  *time.Time `json:"finished_at,omitempty"`
+	Status      string     `json:"status"`
+	Error       *string    `json:"error,omitempty"`
+}
+
+func toRestoreRunDTO(r store.BackupRestore) restoreRunDTO {
+	return restoreRunDTO{
+		ID:          r.ID,
+		ConfigID:    r.ConfigID,
+		SourceRunID: r.SourceRunID,
+		StartedAt:   r.StartedAt,
+		FinishedAt:  r.FinishedAt,
+		Status:      r.Status,
+		Error:       r.Error,
+	}
 }
 
 type backupRunDTO struct {
@@ -128,8 +162,9 @@ func (req *backupConfigReq) validate() string {
 }
 
 // ListBackups returns the per-service backup configs for an app, each with its
-// most recent run inlined for the UI status pill.
-func ListBackups(s *store.Store) http.HandlerFunc {
+// most recent run inlined for the UI status pill and a `restorable` flag so the
+// UI knows whether to offer Restore. restorer may be nil (restore disabled).
+func ListBackups(s *store.Store, restorer BackupRestorer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		appID := chi.URLParam(r, "id")
 		configs, err := s.ListBackupConfigsForApp(r.Context(), appID)
@@ -144,6 +179,7 @@ func ListBackups(s *store.Store) http.HandlerFunc {
 				rd := toBackupRunDTO(last)
 				dto.LastRun = &rd
 			}
+			dto.Restorable = restorer != nil && restorer.CanRestore(c)
 			out = append(out, dto)
 		}
 		WriteJSON(w, http.StatusOK, out)
@@ -432,6 +468,75 @@ func DownloadBackup(s *store.Store, box *crypto.Box, workDir string) http.Handle
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Disposition", `attachment; filename="`+filenameFromKey(*run.ArtifactKey)+`"`)
 		_, _ = io.Copy(w, rc)
+	}
+}
+
+// RestoreBackup replays a recorded success run back into its target container.
+// Destructive — fronted by RequireStepUp (fresh 2FA) at the router and a typed
+// confirmation in the UI. Returns 202; the restore runs detached with a 30-min
+// timeout like RunBackup. Refuses a custom-command config (422, decision #1) and
+// a concurrent restore (409, decision #5) up front.
+func RestoreBackup(s *store.Store, restorer BackupRestorer) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		appID := chi.URLParam(r, "id")
+		rid := chi.URLParam(r, "rid")
+		run, err := s.GetBackupRun(r.Context(), rid)
+		if err != nil {
+			WriteError(w, http.StatusNotFound, "backup run not found")
+			return
+		}
+		if run.Status != "success" || run.ArtifactKey == nil {
+			WriteError(w, http.StatusUnprocessableEntity, "this run has no restorable artifact")
+			return
+		}
+		cfg, err := s.GetBackupConfig(r.Context(), run.ConfigID)
+		if err != nil || cfg.AppID != appID {
+			WriteError(w, http.StatusNotFound, "backup not found")
+			return
+		}
+		if !restorer.CanRestore(cfg) {
+			WriteErrorCode(w, http.StatusUnprocessableEntity, "restore_unsupported",
+				"this backup uses a custom command VAC can't restore automatically — download the artifact and restore it manually")
+			return
+		}
+		// Reject a second concurrent restore before dispatching (decision #5); the
+		// Restorer re-checks under the run row, this just gives a clean 409.
+		if latest, err := s.LatestRestoreRun(r.Context(), cfg.ID); err == nil && latest.Status == "running" {
+			WriteError(w, http.StatusConflict, "a restore is already running for this backup")
+			return
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+			_ = restorer.Restore(ctx, cfg, rid)
+		}()
+		audit.SetTarget(r.Context(), "backup", cfg.ID)
+		audit.Describe(r.Context(), "restored "+cfg.ServiceName+" from backup run "+rid)
+		w.WriteHeader(http.StatusAccepted)
+	}
+}
+
+// ListBackupRestores returns a config's restore history, newest first — backs the
+// restore progress/status view.
+func ListBackupRestores(s *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		appID := chi.URLParam(r, "id")
+		cid := chi.URLParam(r, "cid")
+		cfg, err := s.GetBackupConfig(r.Context(), cid)
+		if err != nil || cfg.AppID != appID {
+			WriteError(w, http.StatusNotFound, "backup not found")
+			return
+		}
+		restores, err := s.ListRestoreRuns(r.Context(), cid, 50)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not list restores")
+			return
+		}
+		out := make([]restoreRunDTO, 0, len(restores))
+		for _, rr := range restores {
+			out = append(out, toRestoreRunDTO(rr))
+		}
+		WriteJSON(w, http.StatusOK, out)
 	}
 }
 

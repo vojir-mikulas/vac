@@ -369,3 +369,79 @@ func (s *Store) LatestBackupRun(ctx context.Context, configID string) (BackupRun
 	}
 	return r, err
 }
+
+// BackupRestore is one restore attempt: a recorded success run's artifact
+// replayed back into the target container. Mirrors BackupRun's lifecycle.
+type BackupRestore struct {
+	ID          string
+	ConfigID    string
+	SourceRunID string
+	StartedAt   time.Time
+	FinishedAt  *time.Time
+	Status      string // running | success | failed
+	Error       *string
+}
+
+// CreateRestoreRun opens a restore row in the `running` state; FinishRestoreRun
+// closes it. The pair mirrors CreateBackupRun/FinishBackupRun.
+func (s *Store) CreateRestoreRun(ctx context.Context, configID, sourceRunID string) (BackupRestore, error) {
+	var r BackupRestore
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO backup_restores (config_id, source_run_id, status) VALUES ($1, $2, 'running')
+		RETURNING id, config_id, source_run_id, started_at, finished_at, status, error
+	`, configID, sourceRunID).Scan(&r.ID, &r.ConfigID, &r.SourceRunID, &r.StartedAt, &r.FinishedAt, &r.Status, &r.Error)
+	return r, err
+}
+
+// FinishRestoreRun records the terminal state. errMsg is nil on success.
+func (s *Store) FinishRestoreRun(ctx context.Context, restoreID, status string, errMsg *string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE backup_restores SET status = $2, error = $3, finished_at = NOW() WHERE id = $1
+	`, restoreID, status, errMsg)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ListRestoreRuns returns a config's restore history, newest first.
+func (s *Store) ListRestoreRuns(ctx context.Context, configID string, limit int) ([]BackupRestore, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, config_id, source_run_id, started_at, finished_at, status, error
+		FROM backup_restores WHERE config_id = $1 ORDER BY started_at DESC LIMIT $2
+	`, configID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BackupRestore
+	for rows.Next() {
+		var r BackupRestore
+		if err := rows.Scan(&r.ID, &r.ConfigID, &r.SourceRunID, &r.StartedAt, &r.FinishedAt, &r.Status, &r.Error); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// LatestRestoreRun returns the newest restore for a config, or ErrNotFound if
+// none exists. Backs the "a restore is already running" concurrency guard
+// (decision #5).
+func (s *Store) LatestRestoreRun(ctx context.Context, configID string) (BackupRestore, error) {
+	var r BackupRestore
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, config_id, source_run_id, started_at, finished_at, status, error
+		FROM backup_restores WHERE config_id = $1 ORDER BY started_at DESC LIMIT 1
+	`, configID).Scan(&r.ID, &r.ConfigID, &r.SourceRunID, &r.StartedAt, &r.FinishedAt, &r.Status, &r.Error)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return BackupRestore{}, ErrNotFound
+	}
+	return r, err
+}

@@ -50,6 +50,36 @@ func TestExec_CapturesStdout(t *testing.T) {
 	}
 }
 
+func TestExecStdin_StreamsStdinIn(t *testing.T) {
+	id := startAlpine(t)
+	c := dockercli.New("")
+	// `cat > /tmp/x` consumes stdin; read it back with Exec to prove the bytes
+	// arrived — the round-trip the restore path relies on.
+	in := strings.NewReader("dump-bytes-123")
+	if err := c.ExecStdin(context.Background(), id, []string{"cat > /tmp/restore-test"}, in); err != nil {
+		t.Fatalf("ExecStdin: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := c.Exec(context.Background(), id, []string{"cat /tmp/restore-test"}, &buf); err != nil {
+		t.Fatalf("Exec readback: %v", err)
+	}
+	if got := buf.String(); got != "dump-bytes-123" {
+		t.Errorf("stdin round-trip = %q, want dump-bytes-123", got)
+	}
+}
+
+func TestExecStdin_NonZeroExitIsError(t *testing.T) {
+	id := startAlpine(t)
+	c := dockercli.New("")
+	err := c.ExecStdin(context.Background(), id, []string{"echo boom 1>&2; exit 5"}, strings.NewReader(""))
+	if err == nil {
+		t.Fatal("ExecStdin: expected error on non-zero exit")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Errorf("error should surface stderr, got: %v", err)
+	}
+}
+
 func TestExec_NonZeroExitIsError(t *testing.T) {
 	id := startAlpine(t)
 	var buf bytes.Buffer

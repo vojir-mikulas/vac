@@ -232,6 +232,35 @@ func (c *Compose) Exec(ctx context.Context, containerID string, cmd []string, ou
 	return nil
 }
 
+// ExecStdin runs `docker exec -i {containerID} sh -c {cmd}` with `stdin` wired
+// to the child's stdin — the mirror of Exec, which streams stdout out. It is the
+// restore primitive: the dump artifact is piped *into* the engine CLI
+// (psql/mariadb) reading SQL from stdin. No PTY is allocated (unlike
+// ExecInteractive) — this is a one-shot non-interactive byte pipe. stderr is
+// captured and surfaced in the error on a non-zero exit.
+func (c *Compose) ExecStdin(ctx context.Context, containerID string, cmd []string, stdin io.Reader) error {
+	if containerID == "" {
+		return errors.New("dockercli: exec needs a container id")
+	}
+	if len(cmd) == 0 {
+		return errors.New("dockercli: exec needs a command")
+	}
+	// `sh -c` so the command can use pipes/redirection/$VARS exactly as it would
+	// inside the container. `-i` keeps stdin open so the pipe reaches the child.
+	shell := strings.Join(cmd, " ")
+	command := c.command(ctx, "", "exec", "-i", containerID, "sh", "-c", shell)
+	command.Stdin = stdin
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	if err := command.Run(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return ErrDockerMissing
+		}
+		return mapCmdError(err, stderr.Bytes())
+	}
+	return nil
+}
+
 // command builds an *exec.Cmd with a minimal explicit env. We never inherit
 // os.Environ — that would leak VAC_MASTER_KEY into the child.
 func (c *Compose) command(ctx context.Context, wd string, args ...string) *exec.Cmd {

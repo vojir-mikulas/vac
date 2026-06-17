@@ -36,7 +36,7 @@ import (
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost) (*http.Server, error) {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost) (*http.Server, error) {
 	// Gate X-Forwarded-Proto trust (cookie Secure decision) on config — the
 	// bundled vac-proxy sets the header; a raw-HTTP box can disable trusting it.
 	handler.SetTrustForwardedProto(cfg.TrustProxyHeaders)
@@ -342,7 +342,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				// the surface stays closed until the operator opts in; the UI hides
 				// the tab on the same flag (instance info → managed_services).
 				if cfg.ManagedServices {
-					r.Get("/{id}/backups", handler.ListBackups(s))
+					r.Get("/{id}/backups", handler.ListBackups(s, backupRestorer))
 					r.Post("/{id}/backups", handler.CreateBackup(s, box))
 					r.Put("/{id}/backups/{cid}", handler.UpdateBackup(s, box))
 					r.Delete("/{id}/backups/{cid}", handler.DeleteBackup(s))
@@ -350,6 +350,14 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Get("/{id}/backups/runs/{rid}/download", handler.DownloadBackup(s, box, cfg.WorkDir))
 					if backupEngine != nil {
 						r.Post("/{id}/backups/{cid}/run", handler.RunBackup(s, backupEngine))
+					}
+					// Restore is destructive (overwrites live data, no rollback), so it
+					// is fronted by RequireStepUp (fresh 2FA) like delete-app and
+					// reset-instance, plus a typed confirmation in the UI.
+					if backupRestorer != nil {
+						r.Get("/{id}/backups/{cid}/restores", handler.ListBackupRestores(s))
+						r.With(middleware.RequireStepUp).
+							Post("/{id}/backups/runs/{rid}/restore", handler.RestoreBackup(s, backupRestorer))
 					}
 				}
 

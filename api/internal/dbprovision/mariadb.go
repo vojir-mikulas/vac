@@ -177,6 +177,25 @@ func (e *MariaDBEngine) DefaultBackupCommand(dbName string) string {
 	return fmt.Sprintf("mariadb-dump %s", dbName)
 }
 
+// MatchBackupCommand recognizes the `mariadb-dump <db>` shape this engine emits
+// and extracts the database name; any other command returns ok=false so restore
+// is refused (decision #1).
+func (e *MariaDBEngine) MatchBackupCommand(cmd string) (string, bool) {
+	db, ok := strings.CutPrefix(strings.TrimSpace(cmd), "mariadb-dump ")
+	if !ok || !safeIdentRe.MatchString(db) {
+		return "", false
+	}
+	return db, true
+}
+
+// RestoreCommand replays a mariadb-dump from stdin. mariadb-dump emits
+// `DROP TABLE IF EXISTS` before each table by default, so a plain replay through
+// the client overwrites existing data. Reads root creds from /root/.my.cnf
+// (written at EnsureRunning), like the dump — no password on the CLI.
+func (e *MariaDBEngine) RestoreCommand(dbName string) string {
+	return fmt.Sprintf("mariadb %s", dbName)
+}
+
 func (e *MariaDBEngine) BackupContainer() string { return mariadbContainer }
 func (e *MariaDBEngine) EnvVarName() string      { return "DATABASE_URL" }
 func (e *MariaDBEngine) FootprintMB() int        { return 150 }

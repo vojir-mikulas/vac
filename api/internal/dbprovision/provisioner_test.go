@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
@@ -44,10 +45,14 @@ func (e *fakeEngine) ConnString(db, role, pw string) string {
 	return "proto://" + role + ":" + pw + "@host/" + db
 }
 func (e *fakeEngine) DefaultBackupCommand(db string) string { return "dump " + db }
-func (e *fakeEngine) BackupContainer() string               { return "vac-" + e.name }
-func (e *fakeEngine) EnvVarName() string                    { return "DATABASE_URL" }
-func (e *fakeEngine) FootprintMB() int                      { return 0 }
-func (e *fakeEngine) Shared() bool                          { return false }
+func (e *fakeEngine) MatchBackupCommand(cmd string) (string, bool) {
+	return strings.CutPrefix(cmd, "dump ")
+}
+func (e *fakeEngine) RestoreCommand(db string) string { return "restore " + db }
+func (e *fakeEngine) BackupContainer() string         { return "vac-" + e.name }
+func (e *fakeEngine) EnvVarName() string              { return "DATABASE_URL" }
+func (e *fakeEngine) FootprintMB() int                { return 0 }
+func (e *fakeEngine) Shared() bool                    { return false }
 
 type fakeProvStore struct {
 	app           store.App

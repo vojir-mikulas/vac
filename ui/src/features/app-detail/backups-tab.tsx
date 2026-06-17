@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { Database, Download, Pencil, Play, Plus, Trash2 } from 'lucide-react'
+import { Trans, useTranslation } from 'react-i18next'
+import { Database, Download, Pencil, Play, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
@@ -25,6 +25,17 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -47,10 +58,12 @@ import {
   useRunBackup,
   useUpdateBackup,
   useBackupRuns,
+  useBackupRestores,
+  useRestoreBackup,
 } from '@/lib/api/backups'
 import { useServices } from '@/lib/api/services'
 import { formatBackupSize, scheduleSummary, type ScheduleLabels } from '@/lib/backups'
-import type { BackupConfig, BackupConfigInput, BackupFrequency } from '@/types/api'
+import type { BackupConfig, BackupConfigInput, BackupFrequency, BackupRun } from '@/types/api'
 
 type AppDetailT = ReturnType<typeof useTranslation<'app-detail'>>['t']
 
@@ -226,6 +239,8 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
 function RunHistory({ appId, config }: { appId: string; config: BackupConfig }) {
   const { t } = useTranslation('app-detail')
   const { data: runs, isLoading } = useBackupRuns(appId, config.id)
+  const { data: restores } = useBackupRestores(appId, config.id)
+  const lastRestore = restores?.[0]
 
   if (isLoading) return <Skeleton className="mt-3 h-24 w-full rounded-lg" />
   if (!runs || runs.length === 0) {
@@ -235,46 +250,160 @@ function RunHistory({ appId, config }: { appId: string; config: BackupConfig }) 
   }
 
   return (
-    <Table className="mt-3">
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t('backups.runStarted')}</TableHead>
-          <TableHead>{t('backups.runStatus')}</TableHead>
-          <TableHead>{t('backups.runSize')}</TableHead>
-          <TableHead className="text-right">{t('backups.runArtifact')}</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {runs.map((r) => (
-          <TableRow key={r.id}>
-            <TableCell className="text-xs">{new Date(r.started_at).toLocaleString()}</TableCell>
-            <TableCell>
-              <StatusPill status={r.status} size="sm" />
-              {r.error ? (
-                <span className="ml-2 text-xs text-err-foreground" title={r.error}>
-                  {r.error.length > 48 ? r.error.slice(0, 48) + '…' : r.error}
-                </span>
-              ) : null}
-            </TableCell>
-            <TableCell className="text-xs">{formatBackupSize(r.size_bytes)}</TableCell>
-            <TableCell className="text-right">
-              {r.status === 'success' ? (
-                <a
-                  className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
-                  href={backupsApi.downloadUrl(appId, r.id)}
-                  download
-                >
-                  <Download className="size-3.5" />
-                  {t('backups.download')}
-                </a>
-              ) : (
-                <span className="text-xs text-muted-foreground">—</span>
-              )}
-            </TableCell>
+    <div className="mt-3 flex flex-col gap-2">
+      {lastRestore ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>{t('backups.restore.lastRestore')}</span>
+          <StatusPill status={lastRestore.status} size="sm" />
+          <span>{new Date(lastRestore.started_at).toLocaleString()}</span>
+          {lastRestore.error ? (
+            <span className="text-err-foreground" title={lastRestore.error}>
+              {lastRestore.error.length > 48
+                ? lastRestore.error.slice(0, 48) + '…'
+                : lastRestore.error}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('backups.runStarted')}</TableHead>
+            <TableHead>{t('backups.runStatus')}</TableHead>
+            <TableHead>{t('backups.runSize')}</TableHead>
+            <TableHead className="text-right">{t('backups.runArtifact')}</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {runs.map((r) => (
+            <TableRow key={r.id}>
+              <TableCell className="text-xs">{new Date(r.started_at).toLocaleString()}</TableCell>
+              <TableCell>
+                <StatusPill status={r.status} size="sm" />
+                {r.error ? (
+                  <span className="ml-2 text-xs text-err-foreground" title={r.error}>
+                    {r.error.length > 48 ? r.error.slice(0, 48) + '…' : r.error}
+                  </span>
+                ) : null}
+              </TableCell>
+              <TableCell className="text-xs">{formatBackupSize(r.size_bytes)}</TableCell>
+              <TableCell className="text-right">
+                {r.status === 'success' ? (
+                  <div className="inline-flex items-center gap-3">
+                    <a
+                      className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+                      href={backupsApi.downloadUrl(appId, r.id)}
+                      download
+                    >
+                      <Download className="size-3.5" />
+                      {t('backups.download')}
+                    </a>
+                    <RestoreAction appId={appId} config={config} run={r} />
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+// RestoreAction is the per-run Restore affordance. For a config VAC can't restore
+// (custom backup command) it renders a disabled hint pointing at manual download;
+// otherwise it opens a typed-confirmation dialog. The destructive POST is fronted
+// by step-up 2FA server-side, handled transparently by the global StepUpProvider.
+function RestoreAction({
+  appId,
+  config,
+  run,
+}: {
+  appId: string
+  config: BackupConfig
+  run: BackupRun
+}) {
+  const { t } = useTranslation('app-detail')
+  const [open, setOpen] = useState(false)
+  const [phrase, setPhrase] = useState('')
+  const restore = useRestoreBackup(appId, config.id)
+
+  if (!config.restorable) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex cursor-help items-center gap-1 text-xs text-muted-foreground">
+            <RotateCcw className="size-3.5" />
+            {t('backups.restore.action')}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{t('backups.restore.unsupported')}</TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (!o) setPhrase('')
+      }}
+    >
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 text-xs font-medium text-err-foreground hover:underline"
+        onClick={() => setOpen(true)}
+      >
+        <RotateCcw className="size-3.5" />
+        {t('backups.restore.action')}
+      </button>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('backups.restore.confirmTitle')}</AlertDialogTitle>
+          <AlertDialogDescription>
+            <Trans
+              t={t}
+              i18nKey="backups.restore.confirmDescription"
+              values={{ service: config.service_name }}
+              components={[<span className="font-mono font-semibold" />]}
+            />
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <Input
+          value={phrase}
+          onChange={(e) => setPhrase(e.target.value)}
+          placeholder={config.service_name}
+          className="font-mono"
+          autoFocus
+        />
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={phrase !== config.service_name || restore.isPending}
+            onClick={(e) => {
+              e.preventDefault()
+              if (phrase !== config.service_name) return
+              restore.mutate(run.id, {
+                onSuccess: () => {
+                  toast.success(t('backups.restore.started'))
+                  setOpen(false)
+                  setPhrase('')
+                },
+                onError: (err) => toast.error(err.message),
+              })
+            }}
+          >
+            {restore.isPending
+              ? t('backups.restore.restoring')
+              : t('backups.restore.confirmAction')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 

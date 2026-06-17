@@ -47,7 +47,7 @@ Each package owns one concern.
 | `deploy` | the deploy pipeline (`Pipeline`) + worker pool/queue (`Worker`) + reaper; status enums (`status.go`); build-log writer (`LogWriter`) |
 | `adapter` | normalizes a build source (compose / Dockerfile / framework / static) to one compose file via `adapter.For` + `Prepare` |
 | `compose` | shallow compose parse, `Detect` build type, `Wrap` a Dockerfile, `Preflight` lint, `WriteResourceOverride` (per-app RAM cap + box-wide CPU cap), `ServicesWithVolumes` (which services are stateful → backup nudge) |
-| `dockercli` | thin wrappers over `docker`/`docker compose` (`Compose.Build/Up/Down/Ps/Exec`, `Events`, `BuildCachePrune`) |
+| `dockercli` | thin wrappers over `docker`/`docker compose` (`Compose.Build/Up/Down/Ps/Exec`, `ExecStdin` (the stdin-piping mirror of `Exec`, used by backup restore), `Events`, `BuildCachePrune`) |
 | `dockerevents` | single `docker events` stream fanned out to subscribers (`Bus`) with reconnect |
 | `gitcli` | git `LsRemote`/`Clone` (shallow)/`Pull`/`HeadCommit`/`FetchCommit` via the deploy SSH key |
 | `sshkey` | generate/store/decrypt ED25519 deploy keys (`Manager`, `Generate` → `KeyPair`) |
@@ -63,7 +63,7 @@ Each package owns one concern.
 | `webhook` | turns inbound Git webhooks into deploy decisions (per-app secret auth, `ParseRef` vs `deploy_triggers`) |
 | `dbprovision` | provisions/deprovisions managed databases (`Engine` + per-engine recipes), yields connection strings |
 | `addon` | `Registry`/`Installer` materializes catalog templates into an app (env defaults, `@random` secrets, DB provisioning, enqueue deploy); `ServiceHealthPaths` exposes per-service Caddy health-check paths the deploy pipeline applies post-up |
-| `backup` | `Engine` runs a backup end-to-end: exec in container → stream to destination → record run → prune → notify |
+| `backup` | `Engine` runs a backup end-to-end: exec in container → stream to destination → record run → prune → notify. `Restorer` is the inverse: read a recorded run's artifact back → resolve the engine restore command → stream it into the container over `docker exec -i` (destructive; gated by step-up 2FA) |
 | `revert` | `Reverter` applies the inverse of revertable audit entries (env replace, base-domain, app-config) from before-snapshots |
 | `audit` | per-request mutable `Record` carried in context, enriched by handlers, persisted by middleware |
 | `auditdiff` | computes normalized before→current diffs for curated audit entries (`FieldStatus`, secret masking) |
@@ -112,7 +112,7 @@ Schema lives in goose migrations under `api/internal/db/migrations/` (embedded a
 - **Config:** `instance_settings` (singleton: base domain, `max_concurrent_deploys`),
   `notification_settings`.
 - **Managed services:** `managed_databases` (app-owned DBs on shared engines),
-  `backup_configs` + `backup_runs`, `addon_installs`.
+  `backup_configs` + `backup_runs` + `backup_restores` (one row per restore attempt), `addon_installs`.
 - **Audit:** `audit_log` (every mutating action: actor, target, summary, metadata, status).
 
 Encrypted-at-rest columns (sealed with `crypto.Box`, need `VAC_MASTER_KEY`): `env_vars`

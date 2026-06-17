@@ -343,6 +343,7 @@ func main() {
 	// (decision #8). New configs added later are picked up on the next restart.
 	backupEngine := backup.NewEngine(st, docker, box, cfg.WorkDir, notifier, slog.Default())
 	var dbProvisioner *dbprovision.Provisioner
+	var backupRestorer *backup.Restorer
 	if cfg.ManagedServices {
 		if n, err := st.CountBackupConfigs(ctx); err != nil {
 			slog.Warn("backup: could not count configs; scheduler not started", "err", err)
@@ -362,6 +363,11 @@ func main() {
 		if cfg.ManagedDBIsolated {
 			slog.Warn("VAC_MANAGED_DB_ISOLATED is set, but isolated managed Postgres is not yet implemented; using shared vac-db (see docs/deviations.md)")
 		}
+
+		// Backup restore (plan: docs/plans/backup-restore.md): the inverse of the
+		// dump engine. The provisioner doubles as the restore-command resolver
+		// (it owns the engine recipes), so it must be built first.
+		backupRestorer = backup.NewRestorer(st, docker, box, cfg.WorkDir, dbProvisioner, notifier, slog.Default())
 	}
 
 	// Add-on installer (D3) — only when the gate is open and the registry loaded.
@@ -388,7 +394,7 @@ func main() {
 	proxyMgr.SetStatusEngine(statusEngine)
 	go statusEngine.Run(ctx)
 
-	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost)
+	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost)
 	if err != nil {
 		slog.Error("server init failed", "err", err)
 		os.Exit(1)

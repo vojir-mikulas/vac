@@ -2,7 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
-import type { BackupConfig, BackupConfigInput, BackupRun, FleetBackups } from '@/types/api'
+import type {
+  BackupConfig,
+  BackupConfigInput,
+  BackupRun,
+  FleetBackups,
+  RestoreRun,
+} from '@/types/api'
 
 export const backupsApi = {
   list: (appId: string) => api.get<BackupConfig[]>(`apps/${appId}/backups`),
@@ -17,6 +23,13 @@ export const backupsApi = {
   runs: (appId: string, cid: string) => api.get<BackupRun[]>(`apps/${appId}/backups/${cid}/runs`),
   // Artifact download is a plain authenticated GET — used as an anchor href.
   downloadUrl: (appId: string, rid: string) => `/api/apps/${appId}/backups/runs/${rid}/download`,
+  // Restore replays a recorded run back into its container. Destructive — the
+  // server fronts it with step-up 2FA (a 403 step_up_required is handled
+  // transparently by the global StepUpProvider in lib/api/client.ts).
+  restore: (appId: string, rid: string) =>
+    api.post<void>(`apps/${appId}/backups/runs/${rid}/restore`),
+  restores: (appId: string, cid: string) =>
+    api.get<RestoreRun[]>(`apps/${appId}/backups/${cid}/restores`),
 }
 
 export function useBackups(appId: string, enabled = true) {
@@ -107,5 +120,33 @@ export function useBackupRuns(appId: string, cid: string, enabled = true) {
     queryKey: queryKeys.apps.backupRuns(appId, cid),
     queryFn: () => backupsApi.runs(appId, cid),
     enabled,
+  })
+}
+
+// useBackupRestores polls restore history while a restore is running so the
+// status pill flips from running → success/failed without a reload.
+export function useBackupRestores(appId: string, cid: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.apps.backupRestores(appId, cid),
+    queryFn: () => backupsApi.restores(appId, cid),
+    enabled,
+    refetchInterval: (q) =>
+      (q.state.data ?? []).some((r) => r.status === 'running') ? 2_000 : false,
+  })
+}
+
+export function useRestoreBackup(appId: string, cid: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (runId: string) => backupsApi.restore(appId, runId),
+    // The restore is detached server-side; refetch the restore history so the
+    // running pill appears, then again shortly after to catch the terminal state.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.apps.backupRestores(appId, cid) })
+      setTimeout(
+        () => qc.invalidateQueries({ queryKey: queryKeys.apps.backupRestores(appId, cid) }),
+        2_000,
+      )
+    },
   })
 }

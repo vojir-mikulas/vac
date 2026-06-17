@@ -350,6 +350,17 @@ export interface BackupRun {
   error?: string | null
 }
 
+// One restore attempt: a recorded success run replayed back into its container.
+export interface RestoreRun {
+  id: string
+  config_id: string
+  source_run_id: string
+  started_at: string
+  finished_at?: string | null
+  status: BackupRunStatus
+  error?: string | null
+}
+
 export interface BackupConfig {
   id: string
   app_id: string
@@ -364,6 +375,9 @@ export interface BackupConfig {
   created_at: string
   updated_at: string
   last_run?: BackupRun | null
+  // True when the command maps to a known restore command (else: download +
+  // restore manually). Drives whether the UI offers a Restore action.
+  restorable: boolean
 }
 
 // Box-wide Backups overview (GET /api/backups). A config augmented with its

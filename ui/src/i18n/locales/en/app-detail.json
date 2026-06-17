@@ -69,6 +69,16 @@
     "runSize": "Size",
     "runArtifact": "Artifact",
     "download": "Download",
+    "restore": {
+      "action": "Restore",
+      "lastRestore": "Last restore:",
+      "unsupported": "This backup uses a custom command — download the artifact and restore it manually.",
+      "started": "Restore started",
+      "restoring": "Restoring…",
+      "confirmTitle": "Restore this backup?",
+      "confirmDescription": "This overwrites the current data in <0>{{service}}</0> with the contents of this backup. It cannot be undone. Type the service name to confirm.",
+      "confirmAction": "Restore"
+    },
     "dialog": {
       "editTitle": "Edit backup · {{service}}",
       "newTitle": "Schedule a backup",

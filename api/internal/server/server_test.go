@@ -11,7 +11,7 @@ import (
 
 func newTestServer(t *testing.T) http.Handler {
 	t.Helper()
-	srv, err := New(t.Context(), config.Default(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	srv, err := New(t.Context(), config.Default(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

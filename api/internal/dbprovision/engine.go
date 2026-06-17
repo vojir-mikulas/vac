@@ -48,6 +48,14 @@ type Engine interface {
 	// DefaultBackupCommand is the dump command D1 runs (inside BackupContainer)
 	// to back this engine up with no manual config.
 	DefaultBackupCommand(dbName string) string
+	// MatchBackupCommand recognizes this engine's own DefaultBackupCommand output
+	// and extracts the database name, returning ok=false for any other command —
+	// a hand-authored backup command VAC can't invert (backup-restore decision #1).
+	MatchBackupCommand(cmd string) (dbName string, ok bool)
+	// RestoreCommand is the inverse of DefaultBackupCommand: it replays a stored
+	// plain-SQL dump read from stdin into dbName, overwriting existing data. Runs
+	// inside BackupContainer, like the dump.
+	RestoreCommand(dbName string) string
 	// BackupContainer is the container the D1 backup engine `docker exec`s into
 	// to run DefaultBackupCommand (the shared instance, not an app service).
 	BackupContainer() string

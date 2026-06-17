@@ -121,6 +121,23 @@ func (p *Provisioner) EngineInfoFor(name string) (EngineInfo, bool) {
 	return EngineInfo{Name: e.Name(), FootprintMB: e.FootprintMB(), Shared: e.Shared()}, true
 }
 
+// RestoreCommandFor maps a stored backup command to the command that replays its
+// artifact, or ("", false) when no registered engine recognizes it as one of its
+// defaults (backup-restore decision #1 — VAC only restores what it knows how to
+// invert). Satisfies the backup package's RestoreCommandResolver.
+func (p *Provisioner) RestoreCommandFor(backupCommand string) (string, bool) {
+	for _, name := range p.order {
+		eng, ok := p.engines[name]
+		if !ok {
+			continue
+		}
+		if db, ok := eng.MatchBackupCommand(backupCommand); ok {
+			return eng.RestoreCommand(db), true
+		}
+	}
+	return "", false
+}
+
 // Add creates a managed DB row in the `provisioning` state and runs the actual
 // provisioning in the background (cold-starting a shared daemon can take tens of
 // seconds). The caller polls the row's status.

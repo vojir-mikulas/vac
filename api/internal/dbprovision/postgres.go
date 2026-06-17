@@ -124,6 +124,33 @@ func (e *PostgresEngine) DefaultBackupCommand(dbName string) string {
 	return fmt.Sprintf("pg_dump -U %s %s", e.adminUser, dbName)
 }
 
+// MatchBackupCommand recognizes the `pg_dump -U <admin> <db>` shape this engine
+// emits and extracts the database name. A custom command (different flags, env
+// vars, -Fc, …) returns ok=false so restore is refused (decision #1). The db
+// name must be a safe generated identifier — it's interpolated into a shell
+// command in RestoreCommand.
+func (e *PostgresEngine) MatchBackupCommand(cmd string) (string, bool) {
+	prefix := fmt.Sprintf("pg_dump -U %s ", e.adminUser)
+	db, ok := strings.CutPrefix(strings.TrimSpace(cmd), prefix)
+	if !ok || !safeIdentRe.MatchString(db) {
+		return "", false
+	}
+	return db, true
+}
+
+// RestoreCommand replays a plain pg_dump from stdin. pg_dump's default output
+// carries no DROP statements, so restoring into a populated database would
+// collide on existing objects; reset the public schema first (as the superuser
+// the dump ran as), then replay. ON_ERROR_STOP makes a mid-stream failure a
+// non-zero exit so the restore run is recorded as failed, not silently partial.
+func (e *PostgresEngine) RestoreCommand(dbName string) string {
+	reset := fmt.Sprintf(
+		"psql -U %s -d %s -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'",
+		e.adminUser, dbName)
+	apply := fmt.Sprintf("psql -U %s -d %s -v ON_ERROR_STOP=1", e.adminUser, dbName)
+	return reset + " && " + apply
+}
+
 func (e *PostgresEngine) BackupContainer() string { return e.host }
 func (e *PostgresEngine) EnvVarName() string      { return "DATABASE_URL" }
 func (e *PostgresEngine) FootprintMB() int        { return 0 }

@@ -55,6 +55,7 @@ export const queryKeys = {
     // Track D — managed services.
     backups: (id: string) => ['apps', id, 'backups'] as const,
     backupRuns: (id: string, cid: string) => ['apps', id, 'backups', cid, 'runs'] as const,
+    backupRestores: (id: string, cid: string) => ['apps', id, 'backups', cid, 'restores'] as const,
     databases: (id: string) => ['apps', id, 'databases'] as const,
   },
   addons: {
