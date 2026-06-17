@@ -1,0 +1,33 @@
+{
+  "page": {
+    "title": "Storage",
+    "description": "What's using disk on this host — across every app and the Docker layer."
+  },
+  "host": {
+    "heading": "Host disk",
+    "images": "Images",
+    "containers": "Containers",
+    "volumes": "Volumes",
+    "buildCache": "Build cache",
+    "reclaimable": "{{size}} reclaimable",
+    "reclaim": "Reclaim space",
+    "reclaiming": "Reclaiming…",
+    "reclaimed": "Reclaimed {{size}}",
+    "reclaimedNothing": "Nothing to reclaim",
+    "nothingToReclaim": "Nothing to reclaim",
+    "note": "Removes dangling images and unused build cache. Live and rollback images are never touched."
+  },
+  "apps": {
+    "heading": "Apps by storage",
+    "app": "App",
+    "volumes": "Volumes",
+    "used": "Used",
+    "unmeasured": "+{{n}} not measured",
+    "noLimit": "No limit"
+  },
+  "empty": {
+    "title": "No volume usage yet",
+    "description": "Once apps with volumes are deployed and sampled, their disk usage shows up here."
+  },
+  "loadError": "Couldn't read storage usage."
+}

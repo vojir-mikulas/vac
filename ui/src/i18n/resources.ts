@@ -10,6 +10,7 @@ import backups from './locales/en/backups.json'
 import database from './locales/en/database.json'
 import activity from './locales/en/activity.json'
 import onboarding from './locales/en/onboarding.json'
+import storage from './locales/en/storage.json'
 
 export const defaultNS = 'common'
 
@@ -32,6 +33,7 @@ export const enResources = {
   database,
   activity,
   onboarding,
+  storage,
 } as const
 
 export const namespaces = Object.keys(enResources)

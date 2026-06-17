@@ -45,6 +45,22 @@ export interface PruneResult {
   total_reclaimed_bytes: number
 }
 
+/** One app's aggregated volume usage on the fleet-wide Storage page. */
+export interface AppStorage {
+  id: string
+  slug: string
+  name: string
+  used_bytes: number // sum of measured mounts only
+  volume_count: number
+  unmeasured_count: number // mounts with no sample (skipped bind-mount walks)
+  limit_bytes: number | null // soft disk budget in bytes; null = no limit
+}
+
+export interface InstanceStorage {
+  apps: AppStorage[] // sorted by used_bytes desc
+  host: DiskUsage
+}
+
 export interface BaseDomainInfo {
   base_domain: string // the runtime override ("" = unset, using config)
   effective: string // override or config fallback
@@ -74,6 +90,7 @@ export const instanceApi = {
   info: () => api.get<InstanceInfo>('instance/info'),
   updateCheck: () => api.get<UpdateInfo>('instance/update-check'),
   diskUsage: () => api.get<DiskUsage>('instance/disk'),
+  storage: () => api.get<InstanceStorage>('instance/storage'),
   pruneDisk: () => api.post<PruneResult>('instance/prune'),
   getBaseDomain: () => api.get<BaseDomainInfo>('instance/base-domain'),
   setBaseDomain: (baseDomain: string) =>
@@ -113,6 +130,16 @@ export function useDiskUsage() {
   return useQuery({
     queryKey: queryKeys.instance.disk,
     queryFn: () => instanceApi.diskUsage(),
+    staleTime: 60_000,
+  })
+}
+
+export function useInstanceStorage() {
+  return useQuery({
+    queryKey: queryKeys.instance.storage,
+    queryFn: () => instanceApi.storage(),
+    // Volume samples are collected on the order of minutes; a 60s window matches
+    // useDiskUsage and keeps the page cheap.
     staleTime: 60_000,
   })
 }

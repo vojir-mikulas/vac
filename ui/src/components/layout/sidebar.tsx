@@ -7,6 +7,7 @@ import {
   Blocks,
   Boxes,
   Database,
+  HardDrive,
   Rocket,
   Server,
   Settings,
@@ -29,6 +30,7 @@ const NAV = [
   { to: '/activity', label: 'Activity', icon: Activity },
   { to: '/security', label: 'Security', icon: ShieldCheck },
   { to: '/database', label: 'Database', icon: Database },
+  { to: '/storage', label: 'Storage', icon: HardDrive },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const
 

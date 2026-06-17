@@ -249,6 +249,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					// removes a service's live or rollback image.
 					r.Get("/disk", handler.DiskUsage(docker))
 					r.Post("/prune", handler.PruneDisk(docker))
+					// Fleet-wide storage: per-app volume totals (aggregated from the
+					// collector's samples) + the host disk breakdown, one request.
+					r.Get("/storage", handler.InstanceStorage(s, docker))
 					// Irreversible box-wide wipe — gate on fresh 2FA (on top of
 					// the typed "RESET" confirmation the handler enforces).
 					r.With(middleware.RequireStepUp).Post("/reset", handler.ResetInstance(s, docker, proxyMgr))

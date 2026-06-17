@@ -33,6 +33,7 @@ export const queryKeys = {
     info: ['instance', 'info'] as const,
     updateCheck: ['instance', 'update-check'] as const,
     disk: ['instance', 'disk'] as const,
+    storage: ['instance', 'storage'] as const,
     baseDomain: ['instance', 'base-domain'] as const,
     deployConcurrency: ['instance', 'deploy-concurrency'] as const,
     dnsCheck: (host: string) => ['instance', 'dns-check', host] as const,
