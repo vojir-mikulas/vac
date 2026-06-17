@@ -60,7 +60,7 @@ func TestInstaller_Install_Integration(t *testing.T) {
 	worker := &fakeWorker{}
 	in := addon.NewInstaller(st, box, reg, worker, nil, nil)
 
-	res, err := in.Install(ctx, "grafana", "My Grafana", "my-grafana")
+	res, err := in.Install(ctx, "grafana", "My Grafana", "my-grafana", nil)
 	if err != nil {
 		t.Fatalf("Install: %v", err)
 	}

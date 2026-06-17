@@ -38,11 +38,12 @@ func (f *fakeCatalog) Get(id string) (addon.Template, bool) {
 
 type fakeInstaller struct {
 	gotTemplate, gotName, gotSlug string
+	gotEnv                        map[string]string
 	result                        addon.InstallResult
 }
 
-func (f *fakeInstaller) Install(_ context.Context, templateID, name, slug string) (addon.InstallResult, error) {
-	f.gotTemplate, f.gotName, f.gotSlug = templateID, name, slug
+func (f *fakeInstaller) Install(_ context.Context, templateID, name, slug string, envOverrides map[string]string) (addon.InstallResult, error) {
+	f.gotTemplate, f.gotName, f.gotSlug, f.gotEnv = templateID, name, slug, envOverrides
 	return f.result, nil
 }
 

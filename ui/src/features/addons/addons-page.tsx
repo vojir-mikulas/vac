@@ -324,10 +324,22 @@ function AddToAppDialog({ addon, apps }: { addon: Addon; apps: App[] }) {
   )
 }
 
+// RANDOM_SENTINEL marks a template env value the backend auto-generates (e.g. an
+// admin password). In the install form these become editable credential fields:
+// the operator can supply their own, or leave blank to let VAC generate one.
+const RANDOM_SENTINEL = '@random'
+
 function InstallDialog({ addon }: { addon: Addon }) {
   const { t } = useTranslation('addons')
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(addon.name)
+  // Credential fields seeded from the template's default env: a @random default
+  // starts blank (blank → auto-generate); a literal default is prefilled and
+  // editable.
+  const credentialKeys = Object.entries(addon.default_env ?? {})
+  const [env, setEnv] = useState<Record<string, string>>(() =>
+    Object.fromEntries(credentialKeys.map(([k, v]) => [k, v === RANDOM_SENTINEL ? '' : v])),
+  )
   // Generated secrets are sealed at rest and surfaced exactly once. Hold them
   // locally so the operator can copy each before moving on, rather than racing a
   // toast's lifetime. `appId` is the app to open once they're done.
@@ -353,7 +365,11 @@ function InstallDialog({ addon }: { addon: Addon }) {
 
   const submit = () => {
     install.mutate(
-      { id: addon.id, name: name.trim() || undefined },
+      {
+        id: addon.id,
+        name: name.trim() || undefined,
+        env: credentialKeys.length > 0 ? env : undefined,
+      },
       {
         onSuccess: (res) => {
           const generated = Object.entries(res.generated_secrets ?? {})
@@ -420,6 +436,22 @@ function InstallDialog({ addon }: { addon: Addon }) {
                 <span className="text-xs font-medium">{t('install.appName')}</span>
                 <Input value={name} onChange={(e) => setName(e.target.value)} />
               </div>
+
+              {credentialKeys.map(([key, defaultValue]) => {
+                const isSecret = defaultValue === RANDOM_SENTINEL
+                return (
+                  <div key={key} className="flex flex-col gap-1.5">
+                    <span className="font-mono text-2xs text-muted-foreground">{key}</span>
+                    <Input
+                      type={isSecret ? 'password' : 'text'}
+                      autoComplete="off"
+                      value={env[key] ?? ''}
+                      placeholder={isSecret ? t('install.credAutoGen') : undefined}
+                      onChange={(e) => setEnv((prev) => ({ ...prev, [key]: e.target.value }))}
+                    />
+                  </div>
+                )
+              })}
 
               <div className="flex items-start gap-2 rounded-lg border border-warn-border bg-warn-bg px-3 py-2 text-xs text-warn-foreground">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />

@@ -30,7 +30,7 @@ type AddonEngineSource interface {
 // AddonInstaller installs a catalog template as an app. *addon.Installer
 // satisfies it.
 type AddonInstaller interface {
-	Install(ctx context.Context, templateID, name, slug string) (addon.InstallResult, error)
+	Install(ctx context.Context, templateID, name, slug string, envOverrides map[string]string) (addon.InstallResult, error)
 }
 
 // addonDTO is one catalog entry. kind="template" entries deploy as a normal app
@@ -134,6 +134,10 @@ func GetAddon(cat AddonCatalog) http.HandlerFunc {
 
 type installAddonReq struct {
 	Name string `json:"name"`
+	// Env lets the operator supply their own values for the template's default
+	// env (e.g. an admin user/password). Unknown keys are ignored; blank values
+	// fall back to the template default or a generated secret.
+	Env map[string]string `json:"env,omitempty"`
 }
 
 type installResultDTO struct {
@@ -170,7 +174,7 @@ func InstallAddon(cat AddonCatalog, installer AddonInstaller) http.HandlerFunc {
 			slug = id
 		}
 
-		res, err := installer.Install(r.Context(), id, name, slug)
+		res, err := installer.Install(r.Context(), id, name, slug, req.Env)
 		if err != nil {
 			switch {
 			case errors.Is(err, addon.ErrUnknownTemplate):

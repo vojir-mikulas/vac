@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/store"
@@ -66,7 +67,14 @@ type InstallResult struct {
 
 // Install provisions and enqueues a template install. slug must be a
 // pre-validated, unique app slug (the handler derives it).
-func (in *Installer) Install(ctx context.Context, templateID, name, slug string) (InstallResult, error) {
+//
+// envOverrides lets the operator supply their own values for the template's
+// default env (e.g. an admin user/password) instead of accepting the defaults.
+// Only keys the template declares are honored; blank overrides fall back to the
+// default (and a blank override for a @random field still gets a generated
+// secret). Operator-supplied values are NOT returned in GeneratedSecrets — only
+// the ones VAC generated are surfaced once.
+func (in *Installer) Install(ctx context.Context, templateID, name, slug string, envOverrides map[string]string) (InstallResult, error) {
 	tmpl, ok := in.registry.Get(templateID)
 	if !ok {
 		return InstallResult{}, ErrUnknownTemplate
@@ -82,7 +90,11 @@ func (in *Installer) Install(ctx context.Context, templateID, name, slug string)
 
 	generated := map[string]string{}
 	for k, v := range tmpl.DefaultEnv {
-		if v == randomSentinel {
+		if override, ok := envOverrides[k]; ok && strings.TrimSpace(override) != "" {
+			// Operator chose their own value — use it verbatim, don't surface it
+			// back (they already know it).
+			v = override
+		} else if v == randomSentinel {
 			pw, gerr := randomPassword()
 			if gerr != nil {
 				return InstallResult{}, gerr

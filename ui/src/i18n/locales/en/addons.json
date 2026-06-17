@@ -41,6 +41,7 @@
     "trigger": "Install",
     "title": "Install {{name}}",
     "appName": "App name",
+    "credAutoGen": "Leave blank to auto-generate",
     "warning": "Runs on this box and uses roughly {{mb}} MB of RAM.",
     "warningWithDb": "Runs on this box and uses roughly {{mb}} MB of RAM, plus a managed {{engine}} database.",
     "cancel": "Cancel",

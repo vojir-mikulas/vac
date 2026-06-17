@@ -7,8 +7,8 @@ import type { Addon, AddonInstallResult } from '@/types/api'
 export const addonsApi = {
   list: () => api.get<Addon[]>('addons'),
   get: (id: string) => api.get<Addon>(`addons/${id}`),
-  install: (id: string, name?: string) =>
-    api.post<AddonInstallResult>(`addons/${id}/install`, { name }),
+  install: (id: string, name?: string, env?: Record<string, string>) =>
+    api.post<AddonInstallResult>(`addons/${id}/install`, { name, env }),
 }
 
 export function useAddons(enabled = true) {
@@ -23,7 +23,8 @@ export function useAddons(enabled = true) {
 export function useInstallAddon() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, name }: { id: string; name?: string }) => addonsApi.install(id, name),
+    mutationFn: ({ id, name, env }: { id: string; name?: string; env?: Record<string, string> }) =>
+      addonsApi.install(id, name, env),
     onSuccess: () => {
       // A new install is a new app.
       qc.invalidateQueries({ queryKey: queryKeys.apps.all })
