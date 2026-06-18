@@ -5,7 +5,7 @@ import { AlertTriangle, X } from 'lucide-react'
 import { transition } from '@/lib/motion'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Topbar } from '@/components/layout/topbar'
-import { CommandMenu, useCommandMenu } from '@/components/layout/command-menu'
+import { CommandMenu, useCommandMenu } from '@/components/command/command-menu'
 import { useActiveDeploymentsStream } from '@/lib/api/deployments'
 
 export function AppShell({ children }: { children: React.ReactNode }) {

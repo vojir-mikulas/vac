@@ -103,6 +103,74 @@
     "empty": "No results found.",
     "navigate": "Navigate",
     "apps": "Apps",
-    "newApp": "New app"
+    "actions": "Actions",
+    "app": "App: {{name}}",
+    "newApp": "New app",
+    "cancel": "Cancel",
+    "toggleTheme": "Toggle theme",
+    "restartControlPlane": "Restart control plane",
+    "stopAllApps": "Stop all apps",
+    "deployNow": "Deploy now",
+    "restartStack": "Restart app",
+    "stopStack": "Stop app",
+    "startStack": "Start app",
+    "settings": {
+      "appearance": "Appearance settings",
+      "account": "Account settings",
+      "apiTokens": "API tokens",
+      "notifications": "Notification settings",
+      "instance": "Instance settings",
+      "domains": "Domain settings",
+      "deployments": "Deployment settings",
+      "danger": "Danger zone"
+    },
+    "tabs": {
+      "overview": "Overview",
+      "services": "Services",
+      "deploys": "Deploys",
+      "previews": "Previews",
+      "logs": "Logs",
+      "jobs": "Jobs",
+      "environment": "Environment",
+      "backups": "Backups",
+      "databases": "Databases",
+      "settings": "App settings"
+    },
+    "confirm": {
+      "restartControlPlane": {
+        "title": "Restart control plane?",
+        "description": "The dashboard API briefly goes offline and reconnects. Running apps keep serving.",
+        "action": "Restart"
+      },
+      "stopAllApps": {
+        "title": "Stop all apps?",
+        "description": "Every app on this host stops serving until you start it again.",
+        "action": "Stop all"
+      },
+      "deployNow": {
+        "title": "Deploy {{name}}?",
+        "description": "Builds and deploys the latest commit on the tracked branch.",
+        "action": "Deploy"
+      },
+      "restartStack": {
+        "title": "Restart {{name}}?",
+        "description": "Restarts every service in this app. A brief interruption is expected.",
+        "action": "Restart"
+      },
+      "stopStack": {
+        "title": "Stop {{name}}?",
+        "description": "Stops every service in this app until you start it again.",
+        "action": "Stop"
+      }
+    },
+    "toast": {
+      "deployTriggered": "Deploy triggered",
+      "start": "Starting app…",
+      "stop": "Stopping app…",
+      "restart": "Restarting app…",
+      "restartControlPlane": "Restarting control plane…",
+      "stoppedAll": "Stopped {{count}} app",
+      "stoppedAll_other": "Stopped {{count}} apps"
+    }
   }
 }

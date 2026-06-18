@@ -2,22 +2,11 @@ import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { m } from 'motion/react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import {
-  Activity,
-  Archive,
-  Blocks,
-  Boxes,
-  Database,
-  HardDrive,
-  Rocket,
-  ScrollText,
-  Server,
-  Settings,
-  ShieldCheck,
-} from 'lucide-react'
+import { Server } from 'lucide-react'
 
 import { Meter } from '@/components/common/meter'
 import { transition } from '@/lib/motion'
+import { useNavItems } from '@/lib/navigation'
 import { useBackupAttention } from '@/lib/api/backups'
 import { useActiveDeployments } from '@/lib/api/deployments'
 import { useHostStats } from '@/lib/api/metrics'
@@ -25,22 +14,6 @@ import { useInstanceInfo } from '@/lib/api/instance'
 import { useSecurityAttention } from '@/lib/api/security'
 import { formatBytes, formatPercent } from '@/lib/format'
 import { cn } from '@/lib/utils'
-
-// `key` indexes into the `nav.*` i18n catalog; the label is resolved at render.
-const NAV = [
-  { to: '/apps', key: 'apps', icon: Boxes },
-  { to: '/deployments', key: 'deployments', icon: Rocket },
-  { to: '/activity', key: 'activity', icon: Activity },
-  { to: '/logs', key: 'logs', icon: ScrollText },
-  { to: '/security', key: 'security', icon: ShieldCheck },
-  { to: '/database', key: 'database', icon: Database },
-  { to: '/storage', key: 'storage', icon: HardDrive },
-  { to: '/settings', key: 'settings', icon: Settings },
-] as const
-
-// Shown only when the managed-services gate (Track D) is open.
-const ADDONS_NAV = { to: '/addons', key: 'addons', icon: Blocks } as const
-const BACKUPS_NAV = { to: '/backups', key: 'backups', icon: Archive } as const
 
 export function Sidebar() {
   return (
@@ -111,11 +84,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     return null
   }
 
-  // Slot the managed-services surfaces (Add-ons, Backups) in around Database when
-  // the gate is open: … Security, Add-ons, Database, Backups, Settings.
-  const nav = managed
-    ? [...NAV.slice(0, 4), ADDONS_NAV, ...NAV.slice(4, 5), BACKUPS_NAV, ...NAV.slice(5)]
-    : NAV
+  const nav = useNavItems()
   return (
     <>
       <div className="border-b px-4.5 pb-3 pt-4.5">
