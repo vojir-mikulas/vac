@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/vojir-mikulas/vac/api/internal/security"
@@ -19,12 +20,20 @@ type fakeTraffic struct{ snap security.Snapshot }
 func (f fakeTraffic) Snapshot(int) security.Snapshot { return f.snap }
 
 type fakeSecHost struct {
-	f2b security.Fail2banState
-	fw  security.FirewallState
+	f2b      security.Fail2banState
+	fw       security.FirewallState
+	banJail  string
+	banIP    string
+	banErr   error
+	banQueue bool
 }
 
 func (f fakeSecHost) Fail2ban(context.Context) security.Fail2banState { return f.f2b }
 func (f fakeSecHost) Firewall(context.Context) security.FirewallState { return f.fw }
+func (f *fakeSecHost) Ban(_ context.Context, jail, ip string) (bool, error) {
+	f.banJail, f.banIP = jail, ip
+	return f.banQueue, f.banErr
+}
 
 func TestSecurityPostureHandler(t *testing.T) {
 	h := SecurityPostureHandler(fakePosture{findings: []security.PostureFinding{
@@ -76,7 +85,7 @@ func TestSecurityTrafficHandler_NilMonitor(t *testing.T) {
 }
 
 func TestSecurityHostHandlers(t *testing.T) {
-	host := fakeSecHost{
+	host := &fakeSecHost{
 		f2b: security.Fail2banState{Detected: true, Jails: []security.Fail2banJail{{Name: "sshd", CurrentlyBanned: 1}}},
 		fw:  security.FirewallState{Detected: true, Backend: "ufw", Active: true},
 	}
@@ -92,5 +101,34 @@ func TestSecurityHostHandlers(t *testing.T) {
 	var fw security.FirewallState
 	if err := json.Unmarshal(rr.Body.Bytes(), &fw); err != nil || fw.Backend != "ufw" {
 		t.Fatalf("firewall response wrong: %+v err=%v", fw, err)
+	}
+}
+
+func TestSecurityBanHandler(t *testing.T) {
+	host := &fakeSecHost{banQueue: true}
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/security/fail2ban/ban",
+		strings.NewReader(`{"jail":"sshd","ip":"1.2.3.4"}`))
+	SecurityBanHandler(host).ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rr.Code, rr.Body.String())
+	}
+	if host.banJail != "sshd" || host.banIP != "1.2.3.4" {
+		t.Errorf("handler forwarded jail=%q ip=%q", host.banJail, host.banIP)
+	}
+	var resp map[string]bool
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil || !resp["queued"] {
+		t.Errorf("response = %s err=%v", rr.Body.String(), err)
+	}
+}
+
+func TestSecurityBanHandler_InvalidInput(t *testing.T) {
+	host := &fakeSecHost{banErr: security.ErrInvalidBan}
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/security/fail2ban/ban",
+		strings.NewReader(`{"jail":"sshd","ip":"nope"}`))
+	SecurityBanHandler(host).ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rr.Code)
 	}
 }

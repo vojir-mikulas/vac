@@ -131,6 +131,31 @@ type Handler struct {
 	// uses handler "headers" to carry the original host and URI to vac-api (via
 	// Caddy placeholders) so the waker can resolve the app and redirect back.
 	Request *HeaderOps `json:"request,omitempty"`
+	// RateLimits is the caddy-ratelimit handler's zone map (handler
+	// "rate_limit"). Per-app edge rate limiting prepends this handler ahead of
+	// reverse_proxy so excess requests get a 429 before reaching the upstream.
+	// The plugin is baked into the vac-proxy image (proxy/Dockerfile).
+	RateLimits map[string]*RateLimit `json:"rate_limits,omitempty"`
+}
+
+// RateLimit is one caddy-ratelimit zone: a sliding window of MaxEvents requests
+// per Window, bucketed by Key (a Caddy placeholder, e.g. the client IP).
+type RateLimit struct {
+	Key       string `json:"key,omitempty"`
+	Window    string `json:"window,omitempty"`
+	MaxEvents int    `json:"max_events"`
+}
+
+// RateLimitHandler builds a per-IP rate-limit handler allowing rpm requests per
+// minute. The zone name must be unique per route so each app/host keeps its own
+// counter rather than sharing one global bucket.
+func RateLimitHandler(zone string, rpm int) Handler {
+	return Handler{
+		Handler: "rate_limit",
+		RateLimits: map[string]*RateLimit{
+			zone: {Key: "{http.request.remote_host}", Window: "1m", MaxEvents: rpm},
+		},
+	}
 }
 
 // HeaderOps is the subset of Caddy's headers-handler ops VAC uses: setting

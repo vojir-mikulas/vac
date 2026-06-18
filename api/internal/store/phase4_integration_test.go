@@ -96,6 +96,53 @@ func TestRuntimeLogsRingBufferTrim(t *testing.T) {
 	}
 }
 
+func TestSearchRuntimeLogs(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	a := testApp(t, s, "search-app")
+
+	rows := []store.RuntimeLogRow{
+		{ServiceName: "web", Stream: store.RuntimeLogStreamStdout, Message: "GET /health 200"},
+		{ServiceName: "web", Stream: store.RuntimeLogStreamStderr, Message: "connection refused: error"},
+		{ServiceName: "worker", Stream: store.RuntimeLogStreamStdout, Message: "processed 50% of queue"},
+	}
+	for _, r := range rows {
+		if _, err := s.AppendRuntimeLogs(ctx, a.ID, []store.RuntimeLogRow{r}); err != nil {
+			t.Fatalf("AppendRuntimeLogs: %v", err)
+		}
+	}
+
+	// Free-text substring (case-insensitive).
+	got, err := s.SearchRuntimeLogs(ctx, store.RuntimeLogQuery{Query: "REFUSED"})
+	if err != nil {
+		t.Fatalf("SearchRuntimeLogs: %v", err)
+	}
+	if len(got) != 1 || got[0].Message != "connection refused: error" {
+		t.Errorf("query=refused got %+v", got)
+	}
+
+	// Service + stream filters compose.
+	got, err = s.SearchRuntimeLogs(ctx, store.RuntimeLogQuery{
+		AppID: a.ID, ServiceName: "web", Stream: store.RuntimeLogStreamStdout,
+	})
+	if err != nil {
+		t.Fatalf("SearchRuntimeLogs: %v", err)
+	}
+	if len(got) != 1 || got[0].Message != "GET /health 200" {
+		t.Errorf("web/stdout got %+v", got)
+	}
+
+	// A literal % must not act as a wildcard: it matches only the worker line,
+	// not every row.
+	got, err = s.SearchRuntimeLogs(ctx, store.RuntimeLogQuery{Query: "50%"})
+	if err != nil {
+		t.Fatalf("SearchRuntimeLogs: %v", err)
+	}
+	if len(got) != 1 || got[0].ServiceName != "worker" {
+		t.Errorf("query=50%% got %+v", got)
+	}
+}
+
 func TestAppendRuntimeLogsReturnsIDs(t *testing.T) {
 	s := setup(t)
 	ctx := context.Background()

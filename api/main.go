@@ -390,6 +390,7 @@ func main() {
 	backupEngine := backup.NewEngine(st, docker, box, cfg.WorkDir, notifier, slog.Default())
 	var dbProvisioner *dbprovision.Provisioner
 	var backupRestorer *backup.Restorer
+	var backupVerifier *backup.Verifier
 	if cfg.ManagedServices {
 		if n, err := st.CountBackupConfigs(ctx); err != nil {
 			slog.Warn("backup: could not count configs; scheduler not started", "err", err)
@@ -414,6 +415,15 @@ func main() {
 		// dump engine. The provisioner doubles as the restore-command resolver
 		// (it owns the engine recipes), so it must be built first.
 		backupRestorer = backup.NewRestorer(st, docker, box, cfg.WorkDir, dbProvisioner, notifier, slog.Default())
+
+		// Backup verification (restorability check): replays the latest dump into a
+		// throwaway scratch DB. The provisioner owns the per-engine verify commands.
+		// The sweeper re-verifies stale configs weekly; like the backup scheduler it
+		// only starts when ≥1 config exists, so idle footprint stays zero.
+		backupVerifier = backup.NewVerifier(st, docker, box, cfg.WorkDir, dbProvisioner, notifier, slog.Default())
+		if n, err := st.CountBackupConfigs(ctx); err == nil && n > 0 {
+			go backup.NewVerifyScheduler(st, backupVerifier, slog.Default()).Run(ctx)
+		}
 	}
 
 	// Scheduled jobs (plan: scheduled-jobs.md). A core feature, not gated by
@@ -469,7 +479,7 @@ func main() {
 	proxyMgr.SetStatusEngine(statusEngine)
 	go statusEngine.Run(ctx)
 
-	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, jobsEngine, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost, previewSvc, waker)
+	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, backupVerifier, jobsEngine, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost, previewSvc, waker)
 	if err != nil {
 		slog.Error("server init failed", "err", err)
 		os.Exit(1)

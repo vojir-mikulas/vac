@@ -38,7 +38,7 @@ import (
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, jobsEngine handler.JobRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost, previewSvc *preview.Service, waker handler.Waker) (*http.Server, error) {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, backupVerifier handler.BackupVerifier, jobsEngine handler.JobRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost, previewSvc *preview.Service, waker handler.Waker) (*http.Server, error) {
 	// Gate X-Forwarded-Proto trust (cookie Secure decision) on config — the
 	// bundled vac-proxy sets the header; a raw-HTTP box can disable trusting it.
 	handler.SetTrustForwardedProto(cfg.TrustProxyHeaders)
@@ -400,6 +400,11 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/{id}/idle-suspend", handler.GetIdleSuspend(s))
 				r.Put("/{id}/idle-suspend", handler.SetIdleSuspend(s))
 
+				// Per-app edge rate limit (requests/min/IP). Writing it re-syncs
+				// the proxy so Caddy adds/removes the rate_limit handler.
+				r.Get("/{id}/rate-limit", handler.GetRateLimit(s))
+				r.Put("/{id}/rate-limit", handler.SetRateLimit(s, proxyMgr))
+
 				r.Get("/{id}/webhook", handler.GetAppWebhookConfig(s))
 				r.Post("/{id}/webhook/regenerate", handler.RegenerateAppWebhookSecret(s, box))
 				r.Delete("/{id}/webhook", handler.DeleteAppWebhookSecret(s))
@@ -443,7 +448,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				// the surface stays closed until the operator opts in; the UI hides
 				// the tab on the same flag (instance info → managed_services).
 				if cfg.ManagedServices {
-					r.Get("/{id}/backups", handler.ListBackups(s, backupRestorer))
+					r.Get("/{id}/backups", handler.ListBackups(s, backupRestorer, backupVerifier))
 					r.Post("/{id}/backups", handler.CreateBackup(s, box))
 					r.Put("/{id}/backups/{cid}", handler.UpdateBackup(s, box))
 					// Deleting a backup config discards its run history and artifacts —
@@ -461,6 +466,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 						r.Get("/{id}/backups/{cid}/restores", handler.ListBackupRestores(s))
 						r.With(middleware.RequireStepUp).
 							Post("/{id}/backups/runs/{rid}/restore", handler.RestoreBackup(s, backupRestorer))
+					}
+					// Backup verification (restorability check) — non-destructive, so
+					// no step-up gate. It restores into a throwaway scratch DB.
+					if backupVerifier != nil {
+						r.Get("/{id}/backups/{cid}/verifications", handler.ListBackupVerifications(s))
+						r.Post("/{id}/backups/{cid}/verify", handler.VerifyBackup(s, backupVerifier))
 					}
 				}
 
@@ -550,6 +561,11 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			// traffic sparkline. Downsampled server-side to a few dozen points.
 			r.Get("/host/metrics", handler.HostMetrics(s))
 
+			// Log Explorer: free-text search across the runtime-log ring buffer
+			// (all apps). Historical search is a plain paginated GET; live
+			// tailing stays on the per-app WS streams.
+			r.Get("/logs/search", handler.SearchRuntimeLogsHandler(s))
+
 			// Security dashboard (plan 15 / E2). Read-only: posture checklist,
 			// live traffic snapshot, and capability-detected fail2ban/firewall
 			// state. No mutation paths, so the audit middleware logs the GETs and
@@ -565,6 +581,8 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			if secHost != nil {
 				r.Get("/security/fail2ban", handler.SecurityFail2banHandler(secHost))
 				r.Get("/security/firewall", handler.SecurityFirewallHandler(secHost))
+				// Manual ban override: destructive-ish, so gate on fresh 2FA.
+				r.With(middleware.RequireStepUp).Post("/security/fail2ban/ban", handler.SecurityBanHandler(secHost))
 			}
 		})
 

@@ -1,7 +1,7 @@
 {
   "actions": {
     "import": "Import",
-    "newApp": "New App",
+    "newApp": "New app",
     "cancel": "Cancel",
     "back": "Back",
     "continue": "Continue"
@@ -72,7 +72,7 @@
       "description": "Connect a repository to deploy your first app, or import an existing vac.app.yaml spec."
     },
     "budget": {
-      "heading": "Container budget",
+      "heading": "Container Budget",
       "hostRam": "Host RAM",
       "disk": "Disk",
       "allocatedRam": "Allocated RAM",
@@ -84,7 +84,7 @@
     },
     "capacity": {
       "view": "Per-app breakdown",
-      "title": "RAM capacity",
+      "title": "RAM Capacity",
       "description": "Committed cap vs live usage per app. Committed RAM includes stopped apps; apps without a limit aren't budgeted.",
       "stopped": "Stopped",
       "unbudgeted": "No limit",
@@ -101,12 +101,12 @@
       "deploy": "Deploy"
     },
     "backToApps": "Back to apps",
-    "title": "New application",
+    "title": "New Application",
     "subtitle": "Connect a Git repository — VAC handles build, deploy, HTTPS and routing.",
     "createOnly": "Create app",
     "createAndDeploy": "Create & deploy",
     "source": {
-      "title": "Connect a repository",
+      "title": "Connect a Repository",
       "subtitle": "Paste a Git URL. VAC creates a read-only deploy key for private repos.",
       "repoUrl": "Repository URL",
       "repoHint": "HTTPS for public repos, or SSH (git@…) for private repos with a deploy key.",
@@ -122,7 +122,7 @@
       "slugPreview": "Deploys as <0>{{slug}}</0>",
       "slugTaken": "An app named <0>{{slug}}</0> already exists. Pick a different name.",
       "slugInvalid": "Use letters, numbers, and hyphens — at least one letter or number.",
-      "imageTitle": "Deploy a prebuilt image",
+      "imageTitle": "Deploy a Prebuilt Image",
       "imageSubtitle": "Point VAC at a published image. It pulls and runs it — no repo, no build.",
       "imageRef": "Image reference",
       "imageRefHint": "e.g. ghcr.io/me/app:1.4.2 or nginx:alpine. A moved tag re-pulls on deploy; a @sha256 digest is pinned.",
@@ -138,7 +138,7 @@
       }
     },
     "build": {
-      "title": "Build configuration",
+      "title": "Build Configuration",
       "subtitle": "Choose how VAC builds this repo, or let it auto-detect.",
       "imageNote": "Prebuilt image — no build step. VAC pulls the image and runs it."
     },
@@ -148,7 +148,7 @@
       "note": "Point a <0>CNAME</0> (or A record) at this VPS, then add the domain from the app's <1>Domains</1> tab after the first deploy — certificates are issued on the first request. Until then, your app is reachable at its generated URL."
     },
     "env": {
-      "title": "Environment variables",
+      "title": "Environment Variables",
       "subtitle": "Optional. Set what your app needs before its first deploy — load the repo's .env.example, paste a .env, or add them by hand.",
       "loadExample": "Load from .env.example",
       "paste": "Paste .env",
@@ -182,7 +182,7 @@
       "pasteImport_other": "Add {{count}} variables"
     },
     "review": {
-      "title": "Review & deploy",
+      "title": "Review & Deploy",
       "subtitle": "Create the app, verify access, then run the first deploy — all here.",
       "name": "Name",
       "source": "Source",
@@ -283,7 +283,7 @@
     "spaFallbackHint": "Serve index.html for unknown paths (client-side routing)."
   },
   "import": {
-    "title": "Import app",
+    "title": "Import App",
     "description": "Paste a <0>vac.app.yaml</0> spec (or upload one) to create or update an app. Re-importing the same slug updates it in place. Sensitive env values aren't carried — you re-enter them afterwards.",
     "spec": "Spec",
     "upload": "Upload file…",

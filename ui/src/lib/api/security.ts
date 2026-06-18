@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
@@ -16,6 +16,21 @@ export const securityApi = {
   attempts: (limit = 200) => api.get<SecurityAttempt[]>(`security/attempts?limit=${limit}`),
   fail2ban: () => api.get<Fail2banState>('security/fail2ban'),
   firewall: () => api.get<FirewallState>('security/firewall'),
+  ban: (jail: string, ip: string) =>
+    api.post<{ queued: boolean }>('security/fail2ban/ban', { jail, ip }),
+}
+
+// useBanIp triggers fail2ban's manual override. The request may prompt for fresh
+// 2FA (handled transparently by the API client's step-up handler). On success it
+// refreshes the fail2ban panel so a newly-banned IP shows up.
+export function useBanIp() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ jail, ip }: { jail: string; ip: string }) => securityApi.ban(jail, ip),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.security.fail2ban })
+    },
+  })
 }
 
 // useUnauthorizedAttempts reads the diverted unauthenticated attempts (failed

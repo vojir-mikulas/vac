@@ -4,7 +4,7 @@
     "description": "What's using disk on this host — across every app and the Docker layer."
   },
   "host": {
-    "heading": "Host disk",
+    "heading": "Host Disk",
     "images": "Images",
     "containers": "Containers",
     "volumes": "Volumes",
@@ -20,7 +20,7 @@
     "note": "Removes dangling images and unused build cache. Live and rollback images are never touched."
   },
   "apps": {
-    "heading": "Apps by storage",
+    "heading": "Apps by Storage",
     "app": "App",
     "volumes": "Volumes",
     "used": "Used",

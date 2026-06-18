@@ -38,6 +38,43 @@ func TestMariaDBEngine_MatchAndRestore(t *testing.T) {
 	}
 }
 
+func TestEngines_VerifyRestoreCommand(t *testing.T) {
+	pg := NewPostgresEngine(nil, nil, Config{}).VerifyRestoreCommand("vac_verify_abc")
+	// Creates the scratch DB, replays into it, and always drops it preserving rc.
+	for _, want := range []string{
+		"CREATE DATABASE vac_verify_abc",
+		"psql -U vac -d vac_verify_abc -v ON_ERROR_STOP=1",
+		"DROP DATABASE IF EXISTS vac_verify_abc",
+		"exit $rc",
+	} {
+		if !strings.Contains(pg, want) {
+			t.Errorf("postgres verify cmd missing %q: %s", want, pg)
+		}
+	}
+	// Critically, it must NOT touch the real database — only the scratch name.
+	if strings.Contains(pg, "DROP SCHEMA") {
+		t.Errorf("verify must not reset a live schema: %s", pg)
+	}
+
+	maria := NewMariaDBEngine(nil, Config{MasterKey: []byte("k")}).VerifyRestoreCommand("vac_verify_xy")
+	for _, want := range []string{"CREATE DATABASE vac_verify_xy", "mariadb vac_verify_xy", "DROP DATABASE IF EXISTS vac_verify_xy", "exit $rc"} {
+		if !strings.Contains(maria, want) {
+			t.Errorf("mariadb verify cmd missing %q: %s", want, maria)
+		}
+	}
+}
+
+func TestProvisioner_VerifyCommandFor(t *testing.T) {
+	p := New(nil, nil, nil, nil, Config{MasterKey: []byte("k")}, slog.Default())
+	if cmd, ok := p.VerifyCommandFor("pg_dump -U vac blog_abc", "vac_verify_z"); !ok ||
+		!strings.Contains(cmd, "CREATE DATABASE vac_verify_z") {
+		t.Errorf("postgres verify = %q,%v", cmd, ok)
+	}
+	if _, ok := p.VerifyCommandFor("pg_dump -U $POSTGRES_USER $POSTGRES_DB", "vac_verify_z"); ok {
+		t.Error("custom command should be refused for verification")
+	}
+}
+
 func TestProvisioner_RestoreCommandFor(t *testing.T) {
 	p := New(nil, nil, nil, nil, Config{MasterKey: []byte("k")}, slog.Default())
 	// Postgres default → recognized.

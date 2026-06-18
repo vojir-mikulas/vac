@@ -3,8 +3,12 @@ package security
 import (
 	"bufio"
 	"context"
+	"fmt"
+	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -64,7 +68,12 @@ type Host struct {
 	// snapshotPath is the host-agent snapshot file. Empty disables the snapshot
 	// path and forces direct exec (used by tests / pure host installs).
 	snapshotPath string
-	now          func() time.Time
+	// cmdDir is the write-back queue the control plane drops ban requests into
+	// for the host agent to drain (the control plane can't run fail2ban-client
+	// itself). It sits beside the snapshot, mounted read-write while the snapshot
+	// stays read-only so a compromised control plane still can't forge state.
+	cmdDir string
+	now    func() time.Time
 	// run executes argv and returns combined stdout (and an error on non-zero
 	// exit / missing binary). Defaults to a real, env-stripped exec.
 	run func(ctx context.Context, name string, args ...string) (string, error)
@@ -75,8 +84,13 @@ type Host struct {
 // NewHost returns a Host that prefers the host-agent snapshot at snapshotPath and
 // falls back to direct read-only exec when it's absent.
 func NewHost(snapshotPath string) *Host {
+	cmdDir := ""
+	if snapshotPath != "" {
+		cmdDir = filepath.Join(filepath.Dir(snapshotPath), "commands")
+	}
 	return &Host{
 		snapshotPath: snapshotPath,
+		cmdDir:       cmdDir,
 		now:          time.Now,
 		run:          runReadOnly,
 		look:         binaryPresent,
@@ -136,6 +150,61 @@ func (h *Host) fail2banExec(ctx context.Context) Fail2banState {
 		state.Jails = append(state.Jails, parseFail2banJail(name, jailOut))
 	}
 	return state
+}
+
+// jailNamePattern bounds a fail2ban jail name to safe characters before it ever
+// reaches a shell — defence in depth alongside the host agent's own re-check.
+var jailNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
+// ErrInvalidBan is returned when the jail name or IP fails validation.
+var ErrInvalidBan = fmt.Errorf("security: invalid jail or IP")
+
+// Ban asks fail2ban to ban ip in jail. fail2ban already auto-bans; this is the
+// operator's manual override. In production (host-agent mode, snapshot present)
+// it enqueues a request the host agent drains on its next tick — so the ban
+// applies within the agent interval, not instantly — and reports queued=true.
+// When VAC runs directly on the host (no snapshot) it execs fail2ban-client and
+// reports queued=false. Both paths validate jail/ip first.
+func (h *Host) Ban(ctx context.Context, jail, ip string) (queued bool, err error) {
+	if !jailNamePattern.MatchString(jail) || net.ParseIP(ip) == nil {
+		return false, ErrInvalidBan
+	}
+	if _, ok := h.readSnapshot(); ok && h.cmdDir != "" {
+		return true, h.enqueueBan(jail, ip)
+	}
+	return false, h.banExec(ctx, jail, ip)
+}
+
+// enqueueBan writes one ban request into the host-agent command queue. It writes
+// to a temp file then renames so the agent never reads a half-written request;
+// the line format is "ban <jail> <ip>".
+func (h *Host) enqueueBan(jail, ip string) error {
+	if err := os.MkdirAll(h.cmdDir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(h.cmdDir, "ban-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer func() { _ = os.Remove(tmp) }() // no-op once the rename succeeds
+	if _, err := fmt.Fprintf(f, "ban %s %s\n", jail, ip); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, strings.TrimSuffix(tmp, ".tmp")+".cmd")
+}
+
+// banExec is the direct-exec ban used when VAC runs on the host (no agent).
+func (h *Host) banExec(ctx context.Context, jail, ip string) error {
+	if !h.look("fail2ban-client") {
+		return fmt.Errorf("security: fail2ban-client not available")
+	}
+	_, err := h.run(ctx, "fail2ban-client", "set", jail, "banip", ip)
+	return err
 }
 
 // parseFail2banJailList extracts jail names from `fail2ban-client status`, whose

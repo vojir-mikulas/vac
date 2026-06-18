@@ -45,6 +45,7 @@
     "apps": "Apps",
     "deployments": "Deployments",
     "activity": "Activity",
+    "logs": "Logs",
     "security": "Security",
     "addons": "Add-ons",
     "database": "Database",
@@ -102,6 +103,6 @@
     "empty": "No results found.",
     "navigate": "Navigate",
     "apps": "Apps",
-    "newApp": "New App"
+    "newApp": "New app"
   }
 }

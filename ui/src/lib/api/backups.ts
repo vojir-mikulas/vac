@@ -8,6 +8,7 @@ import type {
   BackupRun,
   FleetBackups,
   RestoreRun,
+  VerificationRun,
 } from '@/types/api'
 
 export const backupsApi = {
@@ -30,6 +31,11 @@ export const backupsApi = {
     api.post<void>(`apps/${appId}/backups/runs/${rid}/restore`),
   restores: (appId: string, cid: string) =>
     api.get<RestoreRun[]>(`apps/${appId}/backups/${cid}/restores`),
+  // Verify runs a non-destructive restorability check (restore into a throwaway
+  // scratch DB). Safe — no step-up gate.
+  verify: (appId: string, cid: string) => api.post<void>(`apps/${appId}/backups/${cid}/verify`),
+  verifications: (appId: string, cid: string) =>
+    api.get<VerificationRun[]>(`apps/${appId}/backups/${cid}/verifications`),
 }
 
 export function useBackups(appId: string, enabled = true) {
@@ -132,6 +138,36 @@ export function useBackupRestores(appId: string, cid: string, enabled = true) {
     enabled,
     refetchInterval: (q) =>
       (q.state.data ?? []).some((r) => r.status === 'running') ? 2_000 : false,
+  })
+}
+
+// useBackupVerifications polls verification history while a check is running so
+// the status badge flips from running → success/failed without a reload.
+export function useBackupVerifications(appId: string, cid: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.apps.backupVerifications(appId, cid),
+    queryFn: () => backupsApi.verifications(appId, cid),
+    enabled,
+    refetchInterval: (q) =>
+      (q.state.data ?? []).some((v) => v.status === 'running') ? 2_000 : false,
+  })
+}
+
+// useVerifyBackup kicks off a restorability check (detached server-side). It
+// refreshes the verification history and the backups list (which carries the
+// last-verification badge) so the running state appears, then the terminal one.
+export function useVerifyBackup(appId: string, cid: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => backupsApi.verify(appId, cid),
+    onSuccess: () => {
+      const refresh = () => {
+        qc.invalidateQueries({ queryKey: queryKeys.apps.backupVerifications(appId, cid) })
+        qc.invalidateQueries({ queryKey: queryKeys.apps.backups(appId) })
+      }
+      refresh()
+      setTimeout(refresh, 2_000)
+    },
   })
 }
 

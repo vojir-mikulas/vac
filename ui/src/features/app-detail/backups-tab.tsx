@@ -1,6 +1,15 @@
 import { useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import { Database, Download, Pencil, Play, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import {
+  Database,
+  Download,
+  Pencil,
+  Play,
+  Plus,
+  RotateCcw,
+  ShieldCheck,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
@@ -61,10 +70,18 @@ import {
   useBackupRuns,
   useBackupRestores,
   useRestoreBackup,
+  useBackupVerifications,
+  useVerifyBackup,
 } from '@/lib/api/backups'
 import { useServices } from '@/lib/api/services'
 import { formatBackupSize, scheduleSummary, type ScheduleLabels } from '@/lib/backups'
-import type { BackupConfig, BackupConfigInput, BackupFrequency, BackupRun } from '@/types/api'
+import type {
+  BackupConfig,
+  BackupConfigInput,
+  BackupFrequency,
+  BackupRun,
+  VerificationRun,
+} from '@/types/api'
 
 type AppDetailT = ReturnType<typeof useTranslation<'app-detail'>>['t']
 
@@ -174,6 +191,7 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
             <Play className="size-3.5" />
             {t('backups.backupNow')}
           </Button>
+          {config.verifiable ? <VerifyControl appId={appId} config={config} /> : null}
           <BackupDialog appId={appId} config={config} />
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -250,6 +268,64 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
         {showRuns ? <RunHistory appId={appId} config={config} /> : null}
       </div>
     </Card>
+  )
+}
+
+// VerifyControl is the per-config restorability check: a status badge for the
+// latest verification plus a button to run one now. Non-destructive (it restores
+// into a throwaway scratch DB), so no confirmation gate. Polls while a check runs
+// so the badge flips running → verified/failed without a reload.
+function VerifyControl({ appId, config }: { appId: string; config: BackupConfig }) {
+  const { t } = useTranslation('app-detail')
+  const { data: history } = useBackupVerifications(appId, config.id, config.verifiable)
+  const verify = useVerifyBackup(appId, config.id)
+  const latest = history?.[0] ?? config.last_verification ?? null
+  const running = latest?.status === 'running'
+  return (
+    <div className="flex items-center gap-2">
+      {latest ? <VerifyBadge v={latest} /> : null}
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={verify.isPending || running}
+        onClick={() =>
+          verify.mutate(undefined, {
+            onSuccess: () => toast.success(t('backups.verify.started')),
+            onError: (e) => toast.error(e.message),
+          })
+        }
+      >
+        <ShieldCheck className="size-3.5" />
+        {t('backups.verify.action')}
+      </Button>
+    </div>
+  )
+}
+
+// VerifyBadge shows the latest restorability-check outcome, with the time (or the
+// failure reason) in a tooltip.
+function VerifyBadge({ v }: { v: VerificationRun }) {
+  const { t } = useTranslation('app-detail')
+  const label =
+    v.status === 'success'
+      ? t('backups.verify.verified')
+      : v.status === 'failed'
+        ? t('backups.verify.failed')
+        : t('backups.verify.checking')
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex cursor-help items-center gap-1.5 text-2xs text-muted-foreground">
+          <StatusPill status={v.status} size="sm" />
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        {v.error
+          ? v.error
+          : t('backups.verify.checkedAt', { when: new Date(v.started_at).toLocaleString() })}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 

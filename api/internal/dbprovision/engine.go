@@ -56,6 +56,12 @@ type Engine interface {
 	// plain-SQL dump read from stdin into dbName, overwriting existing data. Runs
 	// inside BackupContainer, like the dump.
 	RestoreCommand(dbName string) string
+	// VerifyRestoreCommand is the non-destructive restorability check: it creates
+	// the throwaway scratchDB, replays the dump from stdin into it, then always
+	// drops scratchDB — exiting with the replay's status so an unrestorable dump
+	// is reported as failed. scratchDB must be a safe generated identifier. Runs
+	// inside BackupContainer, like RestoreCommand.
+	VerifyRestoreCommand(scratchDB string) string
 	// BackupContainer is the container the D1 backup engine `docker exec`s into
 	// to run DefaultBackupCommand (the shared instance, not an app service).
 	BackupContainer() string

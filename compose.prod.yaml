@@ -112,6 +112,11 @@ services:
       # Host security snapshot — a host bind mount (not a named volume) so the
       # host-side vac-security-agent can write it; vac-api only reads it.
       - /var/lib/vac/security:/var/lib/vac/security:ro
+      # Manual-ban queue — a read-write subdir nested inside the read-only mount
+      # above (the more-specific mount wins). vac-api drops validated ban
+      # requests here; the host agent drains them. Keeping the snapshot itself
+      # read-only means a compromised control plane still can't forge state.
+      - /var/lib/vac/security/commands:/var/lib/vac/security/commands:rw
     group_add:
       - "${DOCKER_GID:-999}"
     # Hard memory wall for the control plane (excludes vac-db). 256 MiB leaves

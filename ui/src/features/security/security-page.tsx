@@ -1,7 +1,8 @@
-import { AlertTriangle, CheckCircle2, ChevronRight, ShieldAlert, XCircle } from 'lucide-react'
+import { AlertTriangle, Ban, CheckCircle2, ChevronRight, ShieldAlert, XCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { SectionHeader } from '@/components/common/section-header'
@@ -15,6 +16,24 @@ import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  useBanIp,
   useFail2ban,
   useFirewall,
   useSecurityPosture,
@@ -642,10 +661,97 @@ function Fail2banPanel() {
               </div>
             ))}
           </Card>
-          <HostSourceFooter source={data.source} generatedAt={data.generated_at} />
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <HostSourceFooter source={data.source} generatedAt={data.generated_at} />
+            <BanIpDialog jails={data.jails.map((j) => j.name)} />
+          </div>
         </>
       )}
     </div>
+  )
+}
+
+// BanIpDialog is the manual fail2ban override: fail2ban already auto-bans, but an
+// operator can ban an IP outright here. It's gated server-side by fresh 2FA
+// (the API client prompts transparently). In host-agent mode the ban is queued
+// for the agent (~60s); on a host install it applies immediately.
+function BanIpDialog({ jails }: { jails: string[] }) {
+  const { t } = useTranslation('security')
+  const [open, setOpen] = useState(false)
+  const [ip, setIp] = useState('')
+  const [jail, setJail] = useState(jails[0] ?? '')
+  const ban = useBanIp()
+
+  const submit = () => {
+    const trimmed = ip.trim()
+    if (!trimmed) {
+      toast.error(t('fail2ban.ban.invalid'))
+      return
+    }
+    ban.mutate(
+      { jail, ip: trimmed },
+      {
+        onSuccess: (res) => {
+          toast.success(
+            res.queued
+              ? t('fail2ban.ban.successQueued')
+              : t('fail2ban.ban.success', { ip: trimmed, jail }),
+          )
+          setOpen(false)
+          setIp('')
+        },
+        onError: (e) => toast.error(e.message),
+      },
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="shrink-0">
+          <Ban className="size-3.5" />
+          {t('fail2ban.ban.button')}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t('fail2ban.ban.title')}</DialogTitle>
+          <DialogDescription>{t('fail2ban.ban.description')}</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 py-2">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium">{t('fail2ban.ban.ipLabel')}</span>
+            <Input
+              value={ip}
+              onChange={(e) => setIp(e.target.value)}
+              placeholder={t('fail2ban.ban.ipPlaceholder')}
+              className="font-mono text-xs"
+              autoFocus
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium">{t('fail2ban.ban.jailLabel')}</span>
+            <Select value={jail} onValueChange={setJail}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {jails.map((j) => (
+                  <SelectItem key={j} value={j}>
+                    {j}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="destructive" onClick={submit} disabled={ban.isPending}>
+            {ban.isPending ? t('fail2ban.ban.submitting') : t('fail2ban.ban.submit')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

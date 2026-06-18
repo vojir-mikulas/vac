@@ -196,6 +196,17 @@ func (e *MariaDBEngine) RestoreCommand(dbName string) string {
 	return fmt.Sprintf("mariadb %s", dbName)
 }
 
+// VerifyRestoreCommand creates a fresh scratch database, replays the dump into
+// it, then always drops it — preserving the replay's exit status so an
+// unrestorable dump is reported as failed. mariadb-dump of a single DB carries
+// no CREATE DATABASE/USE, so the replay lands in the scratch DB we connect to.
+func (e *MariaDBEngine) VerifyRestoreCommand(scratchDB string) string {
+	create := fmt.Sprintf("mariadb -e 'CREATE DATABASE %s'", scratchDB)
+	apply := fmt.Sprintf("mariadb %s", scratchDB)
+	drop := fmt.Sprintf("mariadb -e 'DROP DATABASE IF EXISTS %s'", scratchDB)
+	return fmt.Sprintf("%s && { %s; rc=$?; %s >/dev/null 2>&1; exit $rc; }", create, apply, drop)
+}
+
 func (e *MariaDBEngine) BackupContainer() string { return mariadbContainer }
 func (e *MariaDBEngine) EnvVarName() string      { return "DATABASE_URL" }
 func (e *MariaDBEngine) FootprintMB() int        { return 150 }

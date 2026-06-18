@@ -48,11 +48,12 @@ func (e *fakeEngine) DefaultBackupCommand(db string) string { return "dump " + d
 func (e *fakeEngine) MatchBackupCommand(cmd string) (string, bool) {
 	return strings.CutPrefix(cmd, "dump ")
 }
-func (e *fakeEngine) RestoreCommand(db string) string { return "restore " + db }
-func (e *fakeEngine) BackupContainer() string         { return "vac-" + e.name }
-func (e *fakeEngine) EnvVarName() string              { return "DATABASE_URL" }
-func (e *fakeEngine) FootprintMB() int                { return 0 }
-func (e *fakeEngine) Shared() bool                    { return false }
+func (e *fakeEngine) RestoreCommand(db string) string            { return "restore " + db }
+func (e *fakeEngine) VerifyRestoreCommand(scratch string) string { return "verify " + scratch }
+func (e *fakeEngine) BackupContainer() string                    { return "vac-" + e.name }
+func (e *fakeEngine) EnvVarName() string                         { return "DATABASE_URL" }
+func (e *fakeEngine) FootprintMB() int                           { return 0 }
+func (e *fakeEngine) Shared() bool                               { return false }
 
 type fakeProvStore struct {
 	app           store.App

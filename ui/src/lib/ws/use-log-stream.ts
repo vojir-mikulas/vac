@@ -16,7 +16,7 @@ export interface LogLine {
 
 const RING_BUFFER_LINES = 2000
 
-function levelFor(stream: string, message: string): LogLevel {
+export function levelFor(stream: string, message: string): LogLevel {
   if (stream === 'stderr') return 'error'
   const m = message.toLowerCase()
   if (m.includes('error') || m.includes('panic') || m.includes('fatal')) return 'error'

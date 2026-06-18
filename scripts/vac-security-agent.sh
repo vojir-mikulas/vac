@@ -8,7 +8,11 @@
 # into a file that vac-api bind-mounts read-only. The control plane never gains
 # privilege; the host pushes state in.
 #
-# It is strictly read-only: only `status` / list subcommands are ever invoked.
+# It is read-only for state collection (only `status` / list subcommands). The
+# one mutation it performs is draining the manual-ban queue ($DIR/commands): the
+# sandboxed control plane can't run fail2ban-client, so it drops validated
+# "ban <jail> <ip>" requests there and this agent applies them. Every field is
+# re-validated here before it reaches fail2ban-client.
 #
 # Output: $VAC_SECURITY_DIR/host.snapshot (default /var/lib/vac/security), written
 # atomically (temp + mv). Format is a "generated_at:" preamble line followed by
@@ -23,6 +27,26 @@ OUT="$DIR/host.snapshot"
 PATH="/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 mkdir -p "$DIR"
+
+# ── manual ban queue ───────────────────────────────────────────────────────
+# Apply operator-triggered bans the control plane dropped here. Each request is
+# a "ban <jail> <ip>" line; we re-validate jail + IP before they reach
+# fail2ban-client, then delete the request unconditionally (even on failure) so
+# a malformed entry can't wedge the queue. The directory is created by vac-api.
+CMDDIR="$DIR/commands"
+if [ -d "$CMDDIR" ] && command -v fail2ban-client >/dev/null 2>&1; then
+  for req in "$CMDDIR"/*.cmd; do
+    [ -e "$req" ] || continue
+    read -r action jail ip _ < "$req" || true
+    if [ "${action:-}" = "ban" ] \
+      && printf '%s' "$jail" | grep -qE '^[A-Za-z0-9._-]{1,64}$' \
+      && printf '%s' "$ip" | grep -qE '^[0-9a-fA-F:.]{2,45}$'; then
+      fail2ban-client set "$jail" banip "$ip" >/dev/null 2>&1 || true
+    fi
+    rm -f "$req"
+  done
+fi
+
 TMP="$(mktemp "$DIR/.host.snapshot.XXXXXX")"
 # Best-effort cleanup if we exit before the atomic rename.
 trap 'rm -f "$TMP"' EXIT

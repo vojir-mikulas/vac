@@ -151,6 +151,17 @@ func (e *PostgresEngine) RestoreCommand(dbName string) string {
 	return reset + " && " + apply
 }
 
+// VerifyRestoreCommand creates a fresh scratch database, replays the dump into
+// it (ON_ERROR_STOP so any SQL error is a non-zero exit), then drops it — always,
+// even on failure — preserving the replay's exit status. The scratch DB is empty,
+// so no schema reset is needed before the replay.
+func (e *PostgresEngine) VerifyRestoreCommand(scratchDB string) string {
+	create := fmt.Sprintf("psql -U %s -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE %s'", e.adminUser, scratchDB)
+	apply := fmt.Sprintf("psql -U %s -d %s -v ON_ERROR_STOP=1", e.adminUser, scratchDB)
+	drop := fmt.Sprintf("psql -U %s -d postgres -c 'DROP DATABASE IF EXISTS %s'", e.adminUser, scratchDB)
+	return fmt.Sprintf("%s && { %s; rc=$?; %s >/dev/null 2>&1; exit $rc; }", create, apply, drop)
+}
+
 func (e *PostgresEngine) BackupContainer() string { return e.host }
 func (e *PostgresEngine) EnvVarName() string      { return "DATABASE_URL" }
 func (e *PostgresEngine) FootprintMB() int        { return 0 }

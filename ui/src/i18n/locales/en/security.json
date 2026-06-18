@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Security",
-    "description": "Read-only posture and traffic signals. VAC shows and alerts — it never mutates host state."
+    "description": "Posture and traffic signals, with a manual fail2ban override."
   },
   "posture": {
     "heading": "Posture",
@@ -40,7 +40,7 @@
       "thisProcess": "this process"
     },
     "topTalkers": {
-      "heading": "Top talkers",
+      "heading": "Top Talkers",
       "sourceIp": "Source IP",
       "reqs": "Reqs",
       "errors": "Errors",
@@ -50,14 +50,14 @@
       }
     },
     "anomalies": {
-      "heading": "Recent anomalies",
+      "heading": "Recent Anomalies",
       "empty": {
         "title": "No anomalies",
         "description": "No traffic anomalies detected."
       }
     },
     "recentRequests": {
-      "heading": "Recent requests",
+      "heading": "Recent Requests",
       "status": "Status",
       "method": "Method",
       "hostPath": "Host / path",
@@ -87,10 +87,23 @@
       "title": "No jails",
       "description": "fail2ban is running but reports no jails."
     },
-    "banned": "{{currentlyBanned}} banned · {{totalBanned}} total"
+    "banned": "{{currentlyBanned}} banned · {{totalBanned}} total",
+    "ban": {
+      "button": "Ban IP",
+      "title": "Ban an IP address",
+      "description": "fail2ban already auto-bans offenders. This is a manual override — ban an IP immediately in the chosen jail.",
+      "ipLabel": "IP address",
+      "ipPlaceholder": "e.g. 203.0.113.42",
+      "jailLabel": "Jail",
+      "submit": "Ban IP",
+      "submitting": "Banning…",
+      "successQueued": "Ban queued — applies within ~60s.",
+      "success": "{{ip}} banned in {{jail}}.",
+      "invalid": "Enter a valid IP address."
+    }
   },
   "monitoringOff": {
-    "title": "Monitoring off",
+    "title": "Monitoring Off",
     "description": "The read-only host security agent isn't enabled, so VAC can't see host state. Turn it on with `vac security-agent on`."
   },
   "hostSource": {

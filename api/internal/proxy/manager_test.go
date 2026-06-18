@@ -136,7 +136,7 @@ func TestRouteFor(t *testing.T) {
 	d := store.Domain{ID: "d1", Hostname: "blog.vac.example.com", ServiceName: "web"}
 	svc := store.Service{ServiceName: "web", ContainerID: strp("c1"), InternalPort: intp(3000)}
 
-	r := m.routeFor(d, svc, "blog")
+	r := m.routeFor(d, svc, "blog", nil)
 	if r.ID != "vac-route-d1" {
 		t.Errorf("route id = %q", r.ID)
 	}
@@ -158,9 +158,33 @@ func TestRouteFor_CustomHealthPath(t *testing.T) {
 	m := newManagerWith(&fakeStore{}, newFakeCaddy(), newFakeNet())
 	d := store.Domain{ID: "d1", Hostname: "h", ServiceName: "web"}
 	svc := store.Service{ServiceName: "web", InternalPort: intp(8080), HealthPath: strp("/healthz")}
-	r := m.routeFor(d, svc, "app")
+	r := m.routeFor(d, svc, "app", nil)
 	if r.Handle[0].HealthChecks.Active.Path != "/healthz" {
 		t.Errorf("health path = %q", r.Handle[0].HealthChecks.Active.Path)
+	}
+}
+
+func TestRouteFor_RateLimit(t *testing.T) {
+	m := newManagerWith(&fakeStore{}, newFakeCaddy(), newFakeNet())
+	d := store.Domain{ID: "d1", Hostname: "h", ServiceName: "web"}
+	svc := store.Service{ServiceName: "web", InternalPort: intp(8080)}
+
+	// No limit → a single reverse_proxy handler.
+	if r := m.routeFor(d, svc, "app", nil); len(r.Handle) != 1 || r.Handle[0].Handler != "reverse_proxy" {
+		t.Fatalf("no-limit handlers = %+v", r.Handle)
+	}
+	if r := m.routeFor(d, svc, "app", intp(0)); len(r.Handle) != 1 {
+		t.Errorf("zero rpm should not add a rate_limit handler: %+v", r.Handle)
+	}
+
+	// A positive limit prepends rate_limit before reverse_proxy.
+	r := m.routeFor(d, svc, "app", intp(120))
+	if len(r.Handle) != 2 || r.Handle[0].Handler != "rate_limit" || r.Handle[1].Handler != "reverse_proxy" {
+		t.Fatalf("rate-limited chain = %+v", r.Handle)
+	}
+	zone, ok := r.Handle[0].RateLimits["vac-route-d1"]
+	if !ok || zone.MaxEvents != 120 || zone.Window != "1m" {
+		t.Errorf("rate_limit zone = %+v (ok=%v)", zone, ok)
 	}
 }
 

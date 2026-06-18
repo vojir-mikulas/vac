@@ -543,16 +543,37 @@ case "$cmd" in
       on|true|1)
         [ "$(id -u)" -eq 0 ] || { echo "vac security-agent on must run as root (sudo)" >&2; exit 1; }
         mkdir -p /var/lib/vac/security /usr/local/lib/vac
+        # Manual-ban queue: vac-api (container uid 1000) drops validated ban
+        # requests here; this root agent drains them. Owned by 1000 so the
+        # non-root control plane can write, while the snapshot stays root-owned
+        # and read-only to the container.
+        mkdir -p /var/lib/vac/security/commands
+        chown 1000:1000 /var/lib/vac/security/commands
         cat > /usr/local/lib/vac/vac-security-agent.sh <<'AGENTEOF'
 #!/bin/sh
-# vac-security-agent — host-side, read-only security collector for VAC. Writes
+# vac-security-agent — host-side security collector for VAC. Writes
 # $VAC_SECURITY_DIR/host.snapshot (fail2ban + firewall) for the sandboxed vac-api,
-# which can't read host state directly. Strictly read-only (status/list only).
+# which can't read host state directly. Read-only except for draining the
+# manual-ban queue ($DIR/commands), whose fields it re-validates before use.
 set -eu
 DIR="${VAC_SECURITY_DIR:-/var/lib/vac/security}"
 OUT="$DIR/host.snapshot"
 PATH="/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 mkdir -p "$DIR"
+# Drain operator-triggered bans the control plane queued (re-validate each).
+CMDDIR="$DIR/commands"
+if [ -d "$CMDDIR" ] && command -v fail2ban-client >/dev/null 2>&1; then
+  for req in "$CMDDIR"/*.cmd; do
+    [ -e "$req" ] || continue
+    read -r action jail ip _ < "$req" || true
+    if [ "${action:-}" = "ban" ] \
+      && printf '%s' "$jail" | grep -qE '^[A-Za-z0-9._-]{1,64}$' \
+      && printf '%s' "$ip" | grep -qE '^[0-9a-fA-F:.]{2,45}$'; then
+      fail2ban-client set "$jail" banip "$ip" >/dev/null 2>&1 || true
+    fi
+    rm -f "$req"
+  done
+fi
 TMP="$(mktemp "$DIR/.host.snapshot.XXXXXX")"
 trap 'rm -f "$TMP"' EXIT
 printf 'generated_at: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$TMP"

@@ -22,5 +22,28 @@
     "exportText": "Plain text",
     "exportJson": "JSON",
     "viewerLabel": "Runtime logs"
+  },
+  "explorer": {
+    "title": "Log Explorer",
+    "description": "Search runtime logs across every app.",
+    "allApps": "All apps",
+    "allServices": "All services",
+    "searchPlaceholder": "Search messages…",
+    "searchAria": "Search runtime log messages",
+    "streams": {
+      "all": "All streams",
+      "stdout": "stdout",
+      "stderr": "stderr",
+      "system": "system"
+    },
+    "loadOlder": "Load older",
+    "loadingOlder": "Loading…",
+    "noMore": "Beginning of retained logs",
+    "matchCount_one": "{{count}} line",
+    "matchCount_other": "{{count}} lines",
+    "empty": "No matching log lines.",
+    "emptyHint": "Try a broader search or a different app.",
+    "viewerLabel": "Log search results",
+    "error": "Could not search logs."
   }
 }

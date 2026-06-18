@@ -478,30 +478,37 @@ func (m *Manager) wakeRoute(id, hostname string) caddy.Route {
 // route builds the Caddy route for one hostname → service. The upstream dials
 // the service's vac-edge alias on its container port; an active health check
 // lets Caddy (and, via the upstreams endpoint, WaitHealthy) track liveness.
-func (m *Manager) route(id, hostname string, svc store.Service, slug string) caddy.Route {
+func (m *Manager) route(id, hostname string, svc store.Service, slug string, rateLimitRPM *int) caddy.Route {
 	path := "/"
 	if svc.HealthPath != nil && *svc.HealthPath != "" {
 		path = *svc.HealthPath
 	}
-	return caddy.Route{
-		ID:    id,
-		Match: []caddy.Match{{Host: []string{hostname}}},
-		Handle: []caddy.Handler{{
-			Handler:   "reverse_proxy",
-			Upstreams: []caddy.Upstream{{Dial: m.dial(slug, svc)}},
-			HealthChecks: &caddy.HealthChecks{Active: &caddy.ActiveHealthCheck{
-				Path:     path,
-				Interval: m.cfg.HealthInterval.String(),
-				Timeout:  m.cfg.HealthTimeout.String(),
-			}},
+	handlers := make([]caddy.Handler, 0, 2)
+	// A per-app limit gates the request before it reaches the upstream, so the
+	// rate_limit handler must precede reverse_proxy in the chain.
+	if rateLimitRPM != nil && *rateLimitRPM > 0 {
+		handlers = append(handlers, caddy.RateLimitHandler(id, *rateLimitRPM))
+	}
+	handlers = append(handlers, caddy.Handler{
+		Handler:   "reverse_proxy",
+		Upstreams: []caddy.Upstream{{Dial: m.dial(slug, svc)}},
+		HealthChecks: &caddy.HealthChecks{Active: &caddy.ActiveHealthCheck{
+			Path:     path,
+			Interval: m.cfg.HealthInterval.String(),
+			Timeout:  m.cfg.HealthTimeout.String(),
 		}},
+	})
+	return caddy.Route{
+		ID:     id,
+		Match:  []caddy.Match{{Host: []string{hostname}}},
+		Handle: handlers,
 	}
 }
 
 // routeFor builds the Caddy route for one custom domain (thin wrapper over
 // route, kept for the domain-centric call sites).
-func (m *Manager) routeFor(d store.Domain, svc store.Service, slug string) caddy.Route {
-	return m.route(routeID(d.ID), d.Hostname, svc, slug)
+func (m *Manager) routeFor(d store.Domain, svc store.Service, slug string, rateLimitRPM *int) caddy.Route {
+	return m.route(routeID(d.ID), d.Hostname, svc, slug, rateLimitRPM)
 }
 
 func (m *Manager) dial(slug string, svc store.Service) string {
@@ -659,7 +666,7 @@ func (m *Manager) applyApp(ctx context.Context, appID string) error {
 			}
 			attached[*svc.ContainerID] = true
 		}
-		if err := m.caddy.PutRoute(ctx, spec.id, m.route(spec.id, spec.hostname, svc, app.Slug)); err != nil {
+		if err := m.caddy.PutRoute(ctx, spec.id, m.route(spec.id, spec.hostname, svc, app.Slug, app.RateLimitRPM)); err != nil {
 			errs = append(errs, fmt.Errorf("route %s: %w", spec.hostname, err))
 			if m.engine != nil {
 				m.engine.SetError(spec.hostname, err.Error())

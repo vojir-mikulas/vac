@@ -29,7 +29,7 @@
     "sectionsAria": "App sections"
   },
   "traffic": {
-    "title": "Request traffic",
+    "title": "Request Traffic",
     "empty": "No traffic recorded in this range.",
     "caption": "Request traffic over the selected range",
     "time": "Time",
@@ -37,7 +37,7 @@
     "errors": "Errors"
   },
   "autoDeploy": {
-    "title": "Auto-deploy",
+    "title": "Auto-Deploy",
     "intro": "Deploy automatically when your Git host posts to the webhook below and the pushed ref matches one of these rules. With no rules, pushes are received but never deploy.",
     "triggerRules": "Trigger rules",
     "noRules": "No rules yet.",
@@ -88,7 +88,7 @@
     "pageTooLarge": "Maintenance page exceeds the 64 KB limit"
   },
   "deployWindow": {
-    "title": "Deploy window",
+    "title": "Deploy Window",
     "intro": "Restrict push-to-deploy to specific time windows. A push outside every window is parked and released automatically when a window opens.",
     "alwaysAllowed": "No windows configured — deploys are allowed at any time.",
     "everyDay": "Every day",
@@ -110,15 +110,26 @@
     }
   },
   "approvals": {
-    "title": "Pending approval",
+    "title": "Pending Approval",
     "pendingFallback": "Deploy awaiting approval",
     "approve": "Approve",
     "reject": "Reject",
     "approved": "Deployment approved",
     "rejected": "Deployment rejected"
   },
+  "rateLimit": {
+    "title": "Rate Limit",
+    "intro": "Cap how many requests a single client IP can make per minute. Excess requests get a 429 at the proxy before reaching your app — a simple guard against floods and abusive clients.",
+    "label": "Requests per minute (per IP)",
+    "placeholder": "e.g. 600",
+    "hint": "Leave blank for no limit. Applies to every domain of this app.",
+    "save": "Save",
+    "updated": "Rate limit updated.",
+    "cleared": "Rate limit removed.",
+    "invalid": "Enter a whole number greater than 0, or leave blank to clear."
+  },
   "idleSuspend": {
-    "title": "Idle suspend",
+    "title": "Idle Suspend",
     "intro": "Stop this app's containers after a period with no inbound traffic, and start them again on the next request. Reclaims RAM for apps that sit idle.",
     "enable": "Suspend when idle",
     "enableHint": "The first request after suspend shows a brief \"waking…\" page while the stack starts.",
@@ -130,7 +141,7 @@
     "save": "Save"
   },
   "backups": {
-    "title": "Scheduled backups",
+    "title": "Scheduled Backups",
     "emptyTitle": "No backups configured",
     "emptyDescription": "Schedule a dump command for a stateful service — VAC runs it in the container and ships the output to your chosen destination.",
     "weeklySummary": "Weekly on {{day}} at {{at}} UTC",
@@ -167,6 +178,15 @@
       "confirmTitle": "Restore this backup?",
       "confirmDescription": "This overwrites the current data in <0>{{service}}</0> with the contents of this backup. It cannot be undone. Type the service name to confirm.",
       "confirmAction": "Restore"
+    },
+    "verify": {
+      "action": "Verify",
+      "started": "Verification started — restoring into a throwaway database to confirm it's restorable.",
+      "verified": "Restorable",
+      "failed": "Unverified",
+      "checking": "Checking…",
+      "checkedAt": "Last verified {{when}} (restored into a scratch database)",
+      "unverified": "Not yet verified"
     },
     "dialog": {
       "editTitle": "Edit backup · {{service}}",
@@ -210,7 +230,7 @@
     }
   },
   "jobs": {
-    "title": "Scheduled jobs",
+    "title": "Scheduled Jobs",
     "emptyTitle": "No scheduled jobs",
     "emptyDescription": "Run a command on a schedule inside one of this app's running service containers — DB cleanup, report generation, a nightly webhook ping. VAC records each run with its output and alerts you on failure.",
     "intervalSummary": "Every {{minutes}} min",
@@ -266,7 +286,7 @@
     }
   },
   "databases": {
-    "title": "Managed databases",
+    "title": "Managed Databases",
     "emptyTitle": "No managed databases",
     "emptyDescription": "Add a database and VAC provisions it, injects the connection string as an env var, and schedules a nightly backup — no manual config.",
     "confirmRemove": "Remove the {{engine}} database \"{{name}}\"? This drops the data.",
@@ -295,7 +315,7 @@
     }
   },
   "deployKey": {
-    "title": "Deploy key",
+    "title": "Deploy Key",
     "copyKey": "Copy key",
     "description": "Add this public key as a read-only deploy key on your Git host so VAC can clone over SSH.",
     "noKey": "No key generated yet.",
@@ -521,9 +541,9 @@
     "exportSpec": "Export app spec",
     "exportSpecNote": "Download this app as a portable <0>vac.app.yaml</0> — build config, services, domains, triggers, and env keys. Nothing here is proprietary: re-import it on another VAC, or keep it in version control for disaster recovery. Sensitive secret values are omitted — you re-enter them on the far side.",
     "exportSpecButton": "Export spec",
-    "dangerZone": "Danger zone",
-    "uninstallTitle": "Uninstall this add-on",
-    "deleteTitle": "Delete this app",
+    "dangerZone": "Danger Zone",
+    "uninstallTitle": "Uninstall This Add-on",
+    "deleteTitle": "Delete This App",
     "dangerNote": "Stops all services and permanently removes the app, its containers, and data volumes.",
     "uninstall": "Uninstall",
     "deleteApp": "Delete app",
@@ -550,7 +570,7 @@
     "restartBanner": "Changes saved — restart required to take effect.",
     "restartNow": "Restart now",
     "restarting": "Restarting to apply changes",
-    "title": "Environment variables",
+    "title": "Environment Variables",
     "importEnv": "Import .env",
     "addVariable": "Add variable",
     "emptyState": "No variables yet. Use <0>Add variable</0> or <1>Import .env</1>.",

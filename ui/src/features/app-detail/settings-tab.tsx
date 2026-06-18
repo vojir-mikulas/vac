@@ -28,6 +28,7 @@ import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
 import { AppDomainsSection } from '@/features/app-detail/domains-section'
 import { IdleSuspendSection } from '@/features/app-detail/idle-suspend-section'
 import { MaintenanceSection } from '@/features/app-detail/maintenance-section'
+import { RateLimitSection } from '@/features/app-detail/rate-limit-section'
 import { BuildSourcePicker, type BuildSourceValue } from '@/features/apps/build-source'
 import { useApp, useDeleteApp, useUpdateApp } from '@/lib/api/apps'
 import { useInstanceInfo } from '@/lib/api/instance'
@@ -331,6 +332,8 @@ function SettingsForm({ app }: { app: App }) {
           </div>
         </Card>
       </section>
+
+      <RateLimitSection appId={appId} />
 
       <MaintenanceSection appId={appId} />
 

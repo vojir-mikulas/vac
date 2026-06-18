@@ -3,7 +3,7 @@
     "title": "Activity",
     "description": "Who changed what on this box. Safely-invertible changes can be reverted."
   },
-  "sectionHeader": "Recent activity",
+  "sectionHeader": "Recent Activity",
   "empty": {
     "title": "No activity yet",
     "description": "Changes to apps, env vars, domains, and settings will appear here."
@@ -30,7 +30,7 @@
     "success": "Reverted"
   },
   "attempts": {
-    "heading": "Unauthorized attempts",
+    "heading": "Unauthorized Attempts",
     "summary_one": "{{count}} blocked attempt from {{sources}}",
     "summary_other": "{{count}} blocked attempts from {{sources}}",
     "sources_one": "{{count}} source",
@@ -44,7 +44,7 @@
     }
   },
   "diff": {
-    "title": "Change preview",
+    "title": "Change Preview",
     "descriptionFallback": "What this change did.",
     "loadError": "Could not load preview.",
     "noChanges": "No changes recorded.",

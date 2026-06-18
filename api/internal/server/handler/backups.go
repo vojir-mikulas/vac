@@ -29,6 +29,13 @@ type BackupRestorer interface {
 	CanRestore(cfg store.BackupConfig) bool
 }
 
+// BackupVerifier runs a non-destructive restorability check off the request
+// path. Satisfied by *backup.Verifier.
+type BackupVerifier interface {
+	VerifyOnce(ctx context.Context, cfg store.BackupConfig) error
+	CanVerify(cfg store.BackupConfig) bool
+}
+
 type backupConfigDTO struct {
 	ID          string        `json:"id"`
 	AppID       string        `json:"app_id"`
@@ -47,6 +54,34 @@ type backupConfigDTO struct {
 	// command, so the UI can offer Restore (false → custom command, download +
 	// restore manually). Set by the handlers that hold a restorer.
 	Restorable bool `json:"restorable"`
+	// Verifiable mirrors Restorable for the restorability check; LastVerification
+	// is the most recent check's outcome (nil if never run). Set by handlers that
+	// hold a verifier.
+	Verifiable       bool             `json:"verifiable"`
+	LastVerification *verificationDTO `json:"last_verification,omitempty"`
+}
+
+// verificationDTO is one restorability-check attempt for the UI badge/history.
+type verificationDTO struct {
+	ID          string     `json:"id"`
+	ConfigID    string     `json:"config_id"`
+	SourceRunID string     `json:"source_run_id"`
+	StartedAt   time.Time  `json:"started_at"`
+	FinishedAt  *time.Time `json:"finished_at,omitempty"`
+	Status      string     `json:"status"`
+	Error       *string    `json:"error,omitempty"`
+}
+
+func toVerificationDTO(v store.BackupVerification) verificationDTO {
+	return verificationDTO{
+		ID:          v.ID,
+		ConfigID:    v.ConfigID,
+		SourceRunID: v.SourceRunID,
+		StartedAt:   v.StartedAt,
+		FinishedAt:  v.FinishedAt,
+		Status:      v.Status,
+		Error:       v.Error,
+	}
 }
 
 // restoreRunDTO is one restore attempt for the progress view.
@@ -164,7 +199,7 @@ func (req *backupConfigReq) validate() string {
 // ListBackups returns the per-service backup configs for an app, each with its
 // most recent run inlined for the UI status pill and a `restorable` flag so the
 // UI knows whether to offer Restore. restorer may be nil (restore disabled).
-func ListBackups(s *store.Store, restorer BackupRestorer) http.HandlerFunc {
+func ListBackups(s *store.Store, restorer BackupRestorer, verifier BackupVerifier) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		appID := chi.URLParam(r, "id")
 		configs, err := s.ListBackupConfigsForApp(r.Context(), appID)
@@ -180,7 +215,70 @@ func ListBackups(s *store.Store, restorer BackupRestorer) http.HandlerFunc {
 				dto.LastRun = &rd
 			}
 			dto.Restorable = restorer != nil && restorer.CanRestore(c)
+			dto.Verifiable = verifier != nil && verifier.CanVerify(c)
+			if dto.Verifiable {
+				if lv, err := s.LatestVerification(r.Context(), c.ID); err == nil {
+					vd := toVerificationDTO(lv)
+					dto.LastVerification = &vd
+				}
+			}
 			out = append(out, dto)
+		}
+		WriteJSON(w, http.StatusOK, out)
+	}
+}
+
+// VerifyBackup triggers a non-destructive restorability check for a config's
+// latest successful backup, off the request path (202, detached with a 30-min
+// timeout like RunBackup). Refuses a custom-command config (422) and a
+// concurrent verification (409) up front.
+func VerifyBackup(s *store.Store, verifier BackupVerifier) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		appID := chi.URLParam(r, "id")
+		cid := chi.URLParam(r, "cid")
+		cfg, err := s.GetBackupConfig(r.Context(), cid)
+		if err != nil || cfg.AppID != appID {
+			WriteError(w, http.StatusNotFound, "backup not found")
+			return
+		}
+		if !verifier.CanVerify(cfg) {
+			WriteErrorCode(w, http.StatusUnprocessableEntity, "verify_unsupported",
+				"this backup uses a custom command VAC can't verify automatically")
+			return
+		}
+		if latest, err := s.LatestVerification(r.Context(), cfg.ID); err == nil && latest.Status == "running" {
+			WriteError(w, http.StatusConflict, "a verification is already running for this backup")
+			return
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+			_ = verifier.VerifyOnce(ctx, cfg)
+		}()
+		audit.SetTarget(r.Context(), "backup", cfg.ID)
+		audit.Describe(r.Context(), "verified backup of "+cfg.ServiceName)
+		w.WriteHeader(http.StatusAccepted)
+	}
+}
+
+// ListBackupVerifications returns a config's verification history, newest first.
+func ListBackupVerifications(s *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		appID := chi.URLParam(r, "id")
+		cid := chi.URLParam(r, "cid")
+		cfg, err := s.GetBackupConfig(r.Context(), cid)
+		if err != nil || cfg.AppID != appID {
+			WriteError(w, http.StatusNotFound, "backup not found")
+			return
+		}
+		rows, err := s.ListVerifications(r.Context(), cid, 50)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "could not list verifications")
+			return
+		}
+		out := make([]verificationDTO, 0, len(rows))
+		for _, v := range rows {
+			out = append(out, toVerificationDTO(v))
 		}
 		WriteJSON(w, http.StatusOK, out)
 	}

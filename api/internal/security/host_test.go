@@ -70,6 +70,81 @@ func TestFail2ban_ParsesFixture(t *testing.T) {
 	}
 }
 
+func TestBan_RejectsInvalidInput(t *testing.T) {
+	h := &Host{
+		run: func(context.Context, string, ...string) (string, error) {
+			t.Fatal("run should not be called for invalid input")
+			return "", nil
+		},
+	}
+	for _, tc := range []struct{ jail, ip string }{
+		{"sshd", "not-an-ip"},
+		{"bad jail", "1.2.3.4"},
+		{"sshd; rm -rf", "1.2.3.4"},
+		{"sshd", "1.2.3.4; reboot"},
+		{"", "1.2.3.4"},
+	} {
+		if _, err := h.Ban(context.Background(), tc.jail, tc.ip); !errors.Is(err, ErrInvalidBan) {
+			t.Errorf("Ban(%q,%q) err = %v, want ErrInvalidBan", tc.jail, tc.ip, err)
+		}
+	}
+}
+
+func TestBan_DirectExecWhenNoSnapshot(t *testing.T) {
+	var gotArgs []string
+	h := &Host{
+		look: func(string) bool { return true },
+		run: func(_ context.Context, _ string, args ...string) (string, error) {
+			gotArgs = args
+			return "", nil
+		},
+	}
+	queued, err := h.Ban(context.Background(), "sshd", "1.2.3.4")
+	if err != nil {
+		t.Fatalf("Ban: %v", err)
+	}
+	if queued {
+		t.Error("queued should be false in direct-exec mode")
+	}
+	want := []string{"set", "sshd", "banip", "1.2.3.4"}
+	if len(gotArgs) != 4 || gotArgs[1] != want[1] || gotArgs[3] != want[3] {
+		t.Errorf("exec args = %v, want %v", gotArgs, want)
+	}
+}
+
+func TestBan_EnqueuesWhenSnapshotPresent(t *testing.T) {
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	dir := t.TempDir()
+	snap := filepath.Join(dir, "host.snapshot")
+	if err := os.WriteFile(snap, []byte("generated_at: "+now.Format(time.RFC3339)+"\n@@@ fail2ban-status\nStatus\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := &Host{
+		snapshotPath: snap,
+		cmdDir:       filepath.Join(dir, "commands"),
+		now:          func() time.Time { return now },
+		run: func(context.Context, string, ...string) (string, error) {
+			t.Fatal("run should not be called in queue mode")
+			return "", nil
+		},
+	}
+	queued, err := h.Ban(context.Background(), "sshd", "1.2.3.4")
+	if err != nil {
+		t.Fatalf("Ban: %v", err)
+	}
+	if !queued {
+		t.Error("queued should be true when snapshot present")
+	}
+	entries, err := filepath.Glob(filepath.Join(dir, "commands", "*.cmd"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("want 1 queued .cmd file, got %v (err %v)", entries, err)
+	}
+	body, _ := os.ReadFile(entries[0])
+	if string(body) != "ban sshd 1.2.3.4\n" {
+		t.Errorf("queued body = %q", body)
+	}
+}
+
 func TestSnapshot_ParsesAndFresh(t *testing.T) {
 	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
 	content := "generated_at: " + now.Add(-30*time.Second).Format(time.RFC3339) + "\n" +

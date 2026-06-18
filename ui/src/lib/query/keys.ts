@@ -19,6 +19,12 @@ export const queryKeys = {
   dnsSettings: ['settings', 'dns'] as const,
   activity: ['activity'] as const,
   domains: ['domains'] as const,
+  // Log Explorer: free-text search across the runtime-log ring buffer. The key
+  // includes the filter set so each distinct query caches independently.
+  logs: {
+    search: (filters: { app: string; service: string; stream: string; q: string }) =>
+      ['logs', 'search', filters] as const,
+  },
   // Box-wide database inventory (plan 20).
   databases: {
     inventory: ['databases', 'inventory'] as const,
@@ -57,6 +63,7 @@ export const queryKeys = {
     deployWindow: (id: string) => ['apps', id, 'deploy-window'] as const,
     pendingApprovals: (id: string) => ['apps', id, 'deployments', 'pending'] as const,
     idleSuspend: (id: string) => ['apps', id, 'idle-suspend'] as const,
+    rateLimit: (id: string) => ['apps', id, 'rate-limit'] as const,
     metrics: (id: string, since: string) => ['apps', id, 'metrics', since] as const,
     volumes: (id: string) => ['apps', id, 'volumes'] as const,
     previews: (id: string) => ['apps', id, 'previews'] as const,
@@ -65,6 +72,8 @@ export const queryKeys = {
     backups: (id: string) => ['apps', id, 'backups'] as const,
     backupRuns: (id: string, cid: string) => ['apps', id, 'backups', cid, 'runs'] as const,
     backupRestores: (id: string, cid: string) => ['apps', id, 'backups', cid, 'restores'] as const,
+    backupVerifications: (id: string, cid: string) =>
+      ['apps', id, 'backups', cid, 'verifications'] as const,
     databases: (id: string) => ['apps', id, 'databases'] as const,
     // Scheduled jobs (plan: scheduled-jobs.md) — a core feature, app-scoped.
     jobs: (id: string) => ['apps', id, 'jobs'] as const,

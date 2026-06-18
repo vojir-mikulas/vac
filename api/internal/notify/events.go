@@ -24,11 +24,12 @@ const (
 	EventMemOverCommitted  EventType = "mem_over_committed"
 	EventPreviewCapReached EventType = "preview_cap_reached"
 	EventJobFailed         EventType = "job_failed"
+	EventBackupUnverified  EventType = "backup_unverified"
 )
 
 // AllEvents is the set of implemented events, used to default a missing toggle
 // to "on".
-var AllEvents = []EventType{EventDeploySucceeded, EventDeployFailed, EventCrashLoop, EventOOMKilled, EventVACRestarted, EventCertExpiring, EventBackupFailed, EventRestoreFinished, EventTrafficAnomaly, EventDiskUsageHigh, EventMemOverCommitted, EventPreviewCapReached, EventJobFailed}
+var AllEvents = []EventType{EventDeploySucceeded, EventDeployFailed, EventCrashLoop, EventOOMKilled, EventVACRestarted, EventCertExpiring, EventBackupFailed, EventRestoreFinished, EventTrafficAnomaly, EventDiskUsageHigh, EventMemOverCommitted, EventPreviewCapReached, EventJobFailed, EventBackupUnverified}
 
 // Event is a render-neutral notification. Channels turn it into their own
 // payload shape.

@@ -2,10 +2,15 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/vojir-mikulas/vac/api/internal/audit"
 	"github.com/vojir-mikulas/vac/api/internal/security"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
@@ -22,11 +27,12 @@ type SecurityTraffic interface {
 	Snapshot(topN int) security.Snapshot
 }
 
-// SecurityHost provides read-only fail2ban / firewall state. *security.Host
-// satisfies it.
+// SecurityHost provides read-only fail2ban / firewall state plus the manual
+// ban override. *security.Host satisfies it.
 type SecurityHost interface {
 	Fail2ban(ctx context.Context) security.Fail2banState
 	Firewall(ctx context.Context) security.FirewallState
+	Ban(ctx context.Context, jail, ip string) (queued bool, err error)
 }
 
 // SecurityPostureHandler serves GET /api/security/posture.
@@ -136,5 +142,40 @@ func SecurityFail2banHandler(h SecurityHost) http.HandlerFunc {
 func SecurityFirewallHandler(h SecurityHost) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusOK, h.Firewall(r.Context()))
+	}
+}
+
+// banRequest is the POST body for a manual ban: which jail to ban in and the IP.
+type banRequest struct {
+	Jail string `json:"jail"`
+	IP   string `json:"ip"`
+}
+
+// SecurityBanHandler serves POST /api/security/fail2ban/ban — the operator's
+// manual fail2ban override. Gated by fresh 2FA (step-up) at the route. In
+// host-agent mode the ban is enqueued for the agent to apply (queued=true);
+// running directly on the host it execs immediately (queued=false).
+func SecurityBanHandler(h SecurityHost) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req banRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			WriteError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		req.Jail = strings.TrimSpace(req.Jail)
+		req.IP = strings.TrimSpace(req.IP)
+		queued, err := h.Ban(r.Context(), req.Jail, req.IP)
+		if err != nil {
+			if errors.Is(err, security.ErrInvalidBan) {
+				WriteError(w, http.StatusBadRequest, "invalid jail or IP address")
+				return
+			}
+			WriteError(w, http.StatusInternalServerError, "could not ban IP")
+			return
+		}
+		audit.SetTarget(r.Context(), "ip", req.IP)
+		audit.Describe(r.Context(), fmt.Sprintf("banned %s in jail %s", req.IP, req.Jail))
+		audit.SetMetadata(r.Context(), map[string]any{"jail": req.Jail, "ip": req.IP, "queued": queued})
+		WriteJSON(w, http.StatusOK, map[string]bool{"queued": queued})
 	}
 }

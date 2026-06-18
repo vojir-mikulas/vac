@@ -372,6 +372,22 @@ func (d *Dispatcher) BackupFailed(appName, appID, service, errMsg string) {
 	})
 }
 
+// BackupUnverified fires when a backup-restorability check fails: the recorded
+// dump could not be replayed into a throwaway database, so the backup may not be
+// restorable. Only failure warrants a push — a passing verification is in-UI
+// only, like a successful backup.
+func (d *Dispatcher) BackupUnverified(appName, appID, service, errMsg string) {
+	msg := fmt.Sprintf("Backup of %s failed verification — it may not be restorable", service)
+	if errMsg != "" {
+		msg += ": " + errMsg
+	}
+	d.dispatch(Event{
+		Type: EventBackupUnverified, OK: false,
+		Title:   "Backup unverified: " + appName + "/" + service,
+		AppName: appName, AppID: appID, Service: service, Message: msg,
+	})
+}
+
 // JobFailed fires the scheduled-job-failed event (plan: scheduled-jobs.md). Like
 // a backup, only failure warrants a push — a successful job run is surfaced
 // in-UI only. jobName is the operator's label for the job (e.g. "cleanup").

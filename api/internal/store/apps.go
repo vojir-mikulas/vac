@@ -85,6 +85,9 @@ type App struct {
 	IdleTimeoutMinutes *int
 	Suspended          bool
 	LastTrafficAt      *time.Time
+	// RateLimitRPM caps requests per minute per client IP at the edge (Caddy).
+	// nil or 0 = no limit. Applied to every HTTP route of the app on Sync.
+	RateLimitRPM *int
 }
 
 // appColumns is the canonical SELECT/RETURNING list, kept in one place so the
@@ -93,7 +96,8 @@ const appColumns = `id, name, slug, git_url, git_branch, compose_file, build_kin
 	build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at,
 	source, template_id, is_preview, parent_app_id, last_preview_push_at,
 	maintenance_mode, maintenance_auto, maintenance_active, maintenance_html, deploy_window,
-	idle_suspend_enabled, idle_timeout_minutes, suspended, last_traffic_at`
+	idle_suspend_enabled, idle_timeout_minutes, suspended, last_traffic_at,
+	rate_limit_rpm`
 
 // scanApp scans one row in appColumns order. pgx.Rows satisfies pgx.Row, so the
 // same helper serves both single-row and iterating queries.
@@ -104,7 +108,21 @@ func scanApp(row pgx.Row, a *App) error {
 		&a.Source, &a.TemplateID, &a.IsPreview, &a.ParentAppID, &a.LastPreviewPushAt,
 		&a.MaintenanceMode, &a.MaintenanceAuto, &a.MaintenanceActive, &a.MaintenanceHTML, &a.DeployWindow,
 		&a.IdleSuspendEnabled, &a.IdleTimeoutMinutes, &a.Suspended, &a.LastTrafficAt,
+		&a.RateLimitRPM,
 	)
+}
+
+// SetAppRateLimit sets (or clears, when rpm is nil) the per-app edge rate limit.
+// The caller re-syncs the proxy so the new limit reaches Caddy.
+func (s *Store) SetAppRateLimit(ctx context.Context, id string, rpm *int) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE apps SET rate_limit_rpm = $2, updated_at = NOW() WHERE id = $1`, id, rpm)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) CreateApp(ctx context.Context, name, slug, gitURL, gitBranch, composeFile, buildKind string, buildConfig json.RawMessage) (App, error) {

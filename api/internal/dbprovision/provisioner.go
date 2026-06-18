@@ -138,6 +138,23 @@ func (p *Provisioner) RestoreCommandFor(backupCommand string) (string, bool) {
 	return "", false
 }
 
+// VerifyCommandFor maps a stored backup command to a non-destructive
+// restorability check that replays the dump into scratchDB, or ("", false) when
+// no registered engine recognizes the command. Satisfies the backup package's
+// VerifyCommandResolver.
+func (p *Provisioner) VerifyCommandFor(backupCommand, scratchDB string) (string, bool) {
+	for _, name := range p.order {
+		eng, ok := p.engines[name]
+		if !ok {
+			continue
+		}
+		if _, ok := eng.MatchBackupCommand(backupCommand); ok {
+			return eng.VerifyRestoreCommand(scratchDB), true
+		}
+	}
+	return "", false
+}
+
 // Add creates a managed DB row in the `provisioning` state and runs the actual
 // provisioning in the background (cold-starting a shared daemon can take tens of
 // seconds). The caller polls the row's status.

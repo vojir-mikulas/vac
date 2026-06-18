@@ -504,6 +504,21 @@ export interface BackupConfig {
   // True when the command maps to a known restore command (else: download +
   // restore manually). Drives whether the UI offers a Restore action.
   restorable: boolean
+  // True when VAC can run a non-destructive restorability check (managed-engine
+  // defaults only). last_verification is the most recent check's outcome.
+  verifiable: boolean
+  last_verification?: VerificationRun | null
+}
+
+// VerificationRun is one restorability-check attempt (same shape as RestoreRun).
+export interface VerificationRun {
+  id: string
+  config_id: string
+  source_run_id: string
+  started_at: string
+  finished_at?: string | null
+  status: BackupRunStatus
+  error?: string | null
 }
 
 // Box-wide Backups overview (GET /api/backups). A config augmented with its

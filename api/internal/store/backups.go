@@ -445,3 +445,78 @@ func (s *Store) LatestRestoreRun(ctx context.Context, configID string) (BackupRe
 	}
 	return r, err
 }
+
+// BackupVerification is one restorability check: a recorded backup run's artifact
+// is test-restored into a throwaway scratch database. Same lifecycle shape as
+// BackupRestore.
+type BackupVerification struct {
+	ID          string
+	ConfigID    string
+	SourceRunID string
+	StartedAt   time.Time
+	FinishedAt  *time.Time
+	Status      string // running | success | failed
+	Error       *string
+}
+
+// CreateVerification opens a verification row in the `running` state.
+func (s *Store) CreateVerification(ctx context.Context, configID, sourceRunID string) (BackupVerification, error) {
+	var v BackupVerification
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO backup_verifications (config_id, source_run_id, status) VALUES ($1, $2, 'running')
+		RETURNING id, config_id, source_run_id, started_at, finished_at, status, error
+	`, configID, sourceRunID).Scan(&v.ID, &v.ConfigID, &v.SourceRunID, &v.StartedAt, &v.FinishedAt, &v.Status, &v.Error)
+	return v, err
+}
+
+// FinishVerification records the terminal state. errMsg is nil on success.
+func (s *Store) FinishVerification(ctx context.Context, verificationID, status string, errMsg *string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE backup_verifications SET status = $2, error = $3, finished_at = NOW() WHERE id = $1
+	`, verificationID, status, errMsg)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ListVerifications returns a config's verification history, newest first.
+func (s *Store) ListVerifications(ctx context.Context, configID string, limit int) ([]BackupVerification, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, config_id, source_run_id, started_at, finished_at, status, error
+		FROM backup_verifications WHERE config_id = $1 ORDER BY started_at DESC LIMIT $2
+	`, configID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BackupVerification
+	for rows.Next() {
+		var v BackupVerification
+		if err := rows.Scan(&v.ID, &v.ConfigID, &v.SourceRunID, &v.StartedAt, &v.FinishedAt, &v.Status, &v.Error); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// LatestVerification returns the newest verification for a config, or ErrNotFound
+// if none exists. Backs the concurrency guard and the scheduler's staleness check.
+func (s *Store) LatestVerification(ctx context.Context, configID string) (BackupVerification, error) {
+	var v BackupVerification
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, config_id, source_run_id, started_at, finished_at, status, error
+		FROM backup_verifications WHERE config_id = $1 ORDER BY started_at DESC LIMIT 1
+	`, configID).Scan(&v.ID, &v.ConfigID, &v.SourceRunID, &v.StartedAt, &v.FinishedAt, &v.Status, &v.Error)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return BackupVerification{}, ErrNotFound
+	}
+	return v, err
+}

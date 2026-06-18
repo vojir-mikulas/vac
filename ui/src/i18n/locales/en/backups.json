@@ -14,7 +14,7 @@
     "localDiskSub": "stored on this box"
   },
   "table": {
-    "title": "Backup jobs",
+    "title": "Backup Jobs",
     "app": "App",
     "service": "Service",
     "schedule": "Schedule",
@@ -38,7 +38,7 @@
     "action": "Go to your apps"
   },
   "uncovered": {
-    "title": "Unprotected services",
+    "title": "Unprotected Services",
     "description": "These services have persistent volumes but no backup configured.",
     "configure": "Configure"
   },

@@ -121,6 +121,83 @@ func (s *Store) ListRuntimeLogs(ctx context.Context, appID, serviceName string, 
 	return out, rows.Err()
 }
 
+// RuntimeLogQuery is the filter set for the Log Explorer free-text search.
+// All fields are optional; the zero value returns the newest lines across
+// every app/service. `Query` is a case-insensitive substring match against the
+// message. `BeforeID` is the same descending-id cursor as ListRuntimeLogs.
+type RuntimeLogQuery struct {
+	AppID       string
+	ServiceName string
+	Query       string
+	Stream      string
+	BeforeID    int64
+	Limit       int
+}
+
+// SearchRuntimeLogs powers the Log Explorer: it returns runtime-log rows
+// newest-first across all apps (or a single app), optionally filtered by
+// service, stream, and a free-text substring of the message. Pagination uses
+// the same `BeforeID` descending cursor as ListRuntimeLogs (pass 0 to start
+// from the newest).
+func (s *Store) SearchRuntimeLogs(ctx context.Context, q RuntimeLogQuery) ([]RuntimeLog, error) {
+	limit := q.Limit
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	beforeID := q.BeforeID
+	if beforeID == 0 {
+		beforeID = int64(1<<63 - 1)
+	}
+
+	var b strings.Builder
+	b.WriteString(`SELECT id, app_id, service_name, stream, message, ts FROM runtime_logs WHERE id < $1`)
+	args := []any{beforeID}
+	// eq appends a simple "AND <col> = $N" predicate.
+	eq := func(col string, val any) {
+		args = append(args, val)
+		b.WriteString(" AND ")
+		b.WriteString(col)
+		b.WriteString(" = $")
+		b.WriteString(strconv.Itoa(len(args)))
+	}
+	if q.AppID != "" {
+		eq("app_id", q.AppID)
+	}
+	if q.ServiceName != "" {
+		eq("service_name", q.ServiceName)
+	}
+	if q.Stream != "" {
+		eq("stream", q.Stream)
+	}
+	if q.Query != "" {
+		// Escape LIKE wildcards in the user input so % and _ match literally;
+		// the surrounding %…% makes it a substring match.
+		esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q.Query)
+		args = append(args, esc)
+		b.WriteString(" AND message ILIKE '%' || $")
+		b.WriteString(strconv.Itoa(len(args)))
+		b.WriteString(` || '%' ESCAPE '\'`)
+	}
+	b.WriteString(" ORDER BY id DESC LIMIT $")
+	args = append(args, limit)
+	b.WriteString(strconv.Itoa(len(args)))
+
+	rows, err := s.pool.Query(ctx, b.String(), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RuntimeLog
+	for rows.Next() {
+		var l RuntimeLog
+		if err := rows.Scan(&l.ID, &l.AppID, &l.ServiceName, &l.Stream, &l.Message, &l.Timestamp); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
 // DeleteRuntimeLogsOlderThan is the prune call used by the retention
 // goroutine. Returns the number of rows deleted.
 func (s *Store) DeleteRuntimeLogsOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
