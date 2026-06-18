@@ -1,4 +1,4 @@
-<!-- generated from commit 7fd26c4 on 2026-06-18 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy,webhook,preview}/ changed, treat as possibly stale -->
+<!-- generated from commit 87ad2ea on 2026-06-18 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/{deploy,adapter,compose,dockercli,proxy,caddy,webhook,preview,maintenance}/ changed, treat as possibly stale -->
 
 # Deployment flow — git → build → run → route
 
@@ -9,12 +9,15 @@ deployment shows at each step is in **bold**.
 ## 0. Trigger → queue
 
 > **Wizard pre-flight (before any deploy).** The new-app wizard can pre-fill itself by probing
-> the repo: `POST /api/apps/detect-compose` (`handler.DetectCompose` → `gitcli.DetectCompose`)
-> finds a conventional compose file, and `POST /api/apps/env-example`
-> (`handler.EnvExample` → `gitcli.ReadEnvExample`) reads a `.env.example`. Both clone *without*
-> a deploy key (the app and its key don't exist yet), so public HTTPS repos resolve while
-> private SSH repos return `auth_failed` and the UI falls back to manual entry. Both always
-> answer `200` with the outcome in the body.
+> the repo. `POST /api/apps/detect-build` (`handler.DetectBuild` → `gitcli.CloneTemp` then
+> `compose.Detect` + `adapter.DetectFramework`) is the richest: from one keyless clone it
+> returns `{compose_path, has_dockerfile, framework}` so the wizard can pre-select a build kind
+> and badge the detected framework (the framework hint is surfaced only when the repo has
+> neither a compose file nor a Dockerfile — those win in auto-detect). `POST /api/apps/detect-compose`
+> (`gitcli.DetectCompose`) and `POST /api/apps/env-example` (`gitcli.ReadEnvExample`, reads a
+> `.env.example`) remain. All clone *without* a deploy key (the app and its key don't exist
+> yet), so public HTTPS repos resolve while private SSH repos return `auth_failed` and the UI
+> falls back to manual entry. All always answer `200` with the outcome in the body.
 
 
 - `POST /api/apps/{id}/deployments` → handler `TriggerDeployment` in
@@ -33,7 +36,16 @@ deployment shows at each step is in **bold**.
   (`is_preview`, `parent_app_id`, derived slug `{parent}-{branch}`) so it reuses this whole
   pipeline verbatim; new previews are refused past `VAC_MAX_PREVIEWS` and the `Service.RunExpirer`
   goroutine reaps any idle past `VAC_PREVIEW_TTL`.
-- **Per-app guard.** A partial unique index `one_active_deploy_per_app` (migration 00062)
+- **Deploy gates (webhook path).** Before enqueuing a webhook-triggered deploy the handler
+  applies two gates from the matched `deploy_triggers` rule / app config: if `require_approval`
+  is set, the deployment is created **pending-approval** (not enqueued) and waits for
+  `store.ApproveDeployment` (→ **queued** + enqueue) or `RejectDeployment` (→ **canceled**); if
+  the push falls outside the app's `deploy_window` (`webhook.ParseWindows` / `Allows`), it's
+  created **scheduled** and the `deploy/window_sweeper.go` goroutine releases it to **queued**
+  when the window opens. A window that fails to parse fails *open* (deploy proceeds). Manual
+  (API) triggers bypass these gates.
+- **Per-app guard.** A partial unique index `one_active_deploy_per_app` (migration 00062,
+  widened in 00076 to also count `scheduled` + `pending-approval`)
   allows at most one non-terminal deployment per app. `store.CreateDeployment` /
   `CreateRollbackDeployment` translate the unique violation to `ErrActiveDeploymentExists`.
   This makes coalescing atomic across every trigger path (closing the old check-then-insert
@@ -73,11 +85,19 @@ deployment shows at each step is in **bold**.
 ## 2. Resolve build → compose file
 
 - An **adapter** layer normalizes the build source to a single compose file: `adapter.For`
-  selects the right adapter (compose / Dockerfile / framework / static / image) and `Prepare`
-  generates or returns the compose file. The `image` adapter (`adapter/image.go`) writes a
-  generated `compose.yaml` with a single `app` service (`image:` ref, `restart: always`,
-  `env_file: .env`, and an `expose:` of the operator's port when set — no `build:`, no host
-  `ports:`), so vac-edge auto-detect routes it like any app and a port-less image is a worker.
+  selects the right adapter (compose / Dockerfile / framework / static / image; `auto` runs
+  `adapter.Detect` = compose → dockerfile → framework) and `Prepare` generates or returns the
+  compose file. The `framework` adapter (`adapter/framework*.go`) detects the framework
+  (`detectFramework`: package.json `next`→`astro`→`vite`→`react`, else generic `node`; Python
+  via `requirements.txt`/`pyproject.toml`/`Pipfile`/`manage.py`) and synthesizes a
+  `Dockerfile.vac` + a `compose.yaml` that `expose:`s one routable port: static SPA/MPA builds
+  (React, Vite, Astro-static, Next export) serve `dist`/`out` via nginx on **80**; Next.js
+  standalone/`next start` on **3000**; Astro SSR (`@astrojs/node`) on **4321**; generic Node on
+  **3000**; Python (Django/Flask via gunicorn, FastAPI via uvicorn) on **8000**. The `image`
+  adapter (`adapter/image.go`) writes a generated `compose.yaml` with a single `app` service
+  (`image:` ref, `restart: always`, `env_file: .env`, and an `expose:` of the operator's port
+  when set — no `build:`, no host `ports:`), so vac-edge auto-detect routes it like any app and
+  a port-less image is a worker.
 - `compose/detect.go` `Detect` looks, in order, for `compose.yaml` → `compose.yml` →
   `docker-compose.yml` → `docker-compose.yaml` → `Dockerfile`. No match ⇒
   `ErrNoComposeOrDockerfile`.
@@ -106,6 +126,11 @@ deployment shows at each step is in **bold**.
 
 ## 4. Up (**deploying**)
 
+- **Auto-maintenance wrap.** The pipeline wraps the up/health phase with
+  `enterAutoMaintenance` (a deferred clear): when the app has `maintenance_auto` enabled it
+  flips `maintenance_active` on (`proxy.Manager.MaintainOn` swaps Caddy to serve the 503
+  maintenance page) for the duration of the deploy and clears it on every exit — so a crash
+  mid-deploy can't strand the page (a manually-set `maintenance_mode` is left alone).
 - **Image-sourced apps pull first.** `build` is a no-op for an image app (no `build:`), so the
   pipeline runs `Pipeline.registryPull` between build and up: when `apps.registry_auth_enc` is
   set it opens the sealed `{registry, username, password}` and `dockercli.Compose.Login`
@@ -129,7 +154,10 @@ deployment shows at each step is in **bold**.
 - For each HTTP-exposing service the `proxy` package attaches the container to `vac-edge` with
   alias `{slug}--{service}` (`NetworkConnect`) and pushes a Caddy route via the `caddy` admin
   client (`PutRoute`): host-match on the domain, reverse-proxy upstream
-  `{slug}--{service}:{internal_port}`, with Caddy **active health checks** configured.
+  `{slug}--{service}:{internal_port}`, with Caddy **active health checks** configured. The
+  route handler chain is built by `proxy.Manager.route`, which prepends a rate-limit handler
+  (`caddy.RateLimitHandler`) ahead of the reverse-proxy when `apps.rate_limit_rpm > 0`, and
+  serves the maintenance page instead of the upstream while `maintenance_active` is set.
 - **Template health paths.** For template-sourced apps (add-ons), once the `services` rows
   exist the pipeline applies any per-service Caddy health-check path the manifest declares
   (`Templates.ServiceHealthPaths` → `applyTemplateHealthPaths`), but only where the operator
@@ -172,7 +200,10 @@ These run independently of any single deploy, fed by the shared `dockerevents` b
 ## Status vocabulary
 
 - Deployment: `queued → cloning → building → deploying → health-checking → running` (or
-  terminal `error` / `interrupted` / `canceled`). Defined in `deploy/status.go`.
+  terminal `error` / `interrupted` / `canceled`). Two non-terminal gate states precede the
+  queue on the webhook path: `scheduled` (parked by a deploy window) and `pending-approval`
+  (awaiting approval). `IsTerminalDeploymentStatus` counts only running/error/interrupted/
+  canceled. Defined in `deploy/status.go`.
 - Service: `running / deploying / degraded / crash-loop / stopped / error`, mapped from Docker
   state by `MapPsStateToServiceStatus`.
 - App: collapsed from its services by `DeriveAppStatus` (crash-loop > building > deploying >

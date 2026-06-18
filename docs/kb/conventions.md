@@ -1,4 +1,4 @@
-<!-- generated from commit 7fd26c4 on 2026-06-18 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
+<!-- generated from commit 87ad2ea on 2026-06-18 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
 
 # Conventions — how the code is organized & how to add a feature
 

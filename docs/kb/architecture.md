@@ -1,4 +1,4 @@
-<!-- generated from commit 7fd26c4 on 2026-06-18 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
+<!-- generated from commit 87ad2ea on 2026-06-18 — regenerate with /refresh-kb; if HEAD has moved past this commit and api/internal/ or ui/src/ layout changed, treat as possibly stale -->
 
 # Architecture — current state
 
@@ -45,14 +45,17 @@ Each package owns one concern.
 | `auth` | sessions (`SessionManager`, SHA-256-hashed tokens), TOTP pre-auth + replay/lockout, password, API-token auth, **step-up** (`StepUpTTL`, `MarkStepUp`, `StepUpFresh` for fresh-2FA gating of destructive actions) |
 | `crypto` | `crypto.Box` AES-256-GCM seal/open for secrets at rest |
 | `deploy` | the deploy pipeline (`Pipeline`) + worker pool/queue (`Worker`) + reaper; status enums (`status.go`); build-log writer (`LogWriter`) |
-| `adapter` | normalizes a build source (compose / Dockerfile / framework / static / image) to one compose file via `adapter.For` + `Prepare`; the `image` adapter generates a compose for a prebuilt image (no `build:`) |
+| `adapter` | normalizes a build source (compose / Dockerfile / framework / static / image) to one compose file via `adapter.For` + `Prepare`; the `framework` adapter detects (`DetectFramework`) and generates a `Dockerfile.vac` + compose for React/Vite/Next.js/Astro/Node/Python; the `image` adapter generates a compose for a prebuilt image (no `build:`) |
 | `compose` | shallow compose parse, `Detect` build type, `Wrap` a Dockerfile, `Preflight` lint, `WriteResourceOverride` (per-app RAM cap + box-wide CPU cap), `ServicesWithVolumes` (which services are stateful → backup nudge) |
 | `dockercli` | thin wrappers over `docker`/`docker compose` (`Compose.Build/Up/Down/Ps/Exec`, `ExecStdin` (the stdin-piping mirror of `Exec`, used by backup restore), `Events`, `BuildCachePrune`) |
 | `dockerevents` | single `docker events` stream fanned out to subscribers (`Bus`) with reconnect |
 | `gitcli` | git `LsRemote`/`Clone` (shallow)/`Pull`/`HeadCommit`/`FetchCommit` via the deploy SSH key |
 | `sshkey` | generate/store/decrypt ED25519 deploy keys (`Manager`, `Generate` → `KeyPair`) |
 | `caddy` | Caddy admin-API client + config schema (`Config`, `Route`, `UpstreamStatus`) |
-| `proxy` | `Manager` maps apps→Caddy routes; attaches containers to `vac-edge`; health gating |
+| `proxy` | `Manager` maps apps→Caddy routes; attaches containers to `vac-edge`; health gating; layers per-app edge directives (rate-limit handler from `apps.rate_limit_rpm`, maintenance-page swap via `MaintainOn`/`MaintainOff`) into the route handler chain |
+| `maintenance` | the maintenance-page concept: built-in default page (`DefaultHTML`), custom-page validation + size cap (`Validate`, `MaxHTMLBytes`=64 KB), `Render` (custom-or-default). The on/off *state* lives on `apps` and is applied by `proxy.Manager` |
+| `dnsprovider` | DNS automation: `Automator` auto-creates A records at a configured provider (Cloudflare v4 today) when a custom domain is added; `Provider` interface + SSRF-hardened HTTP via `netguard` |
+| `certupload` | validates + parses an uploaded TLS cert/key pair before sealing (checks pairing, hostname coverage, expiry); returns `Meta` (subject, DNS names, validity, issuer, self-signed) for the UI |
 | `crashloop` | `Monitor` watches `die` events, trips on N restarts in a window, stops the service |
 | `logstream` | `Supervisor` tails `docker logs --follow` per container into the `runtime_logs` ring buffer |
 | `stats` | per-app `docker stats` (`Manager`, subscriber-gated, live-only) + host stats (gopsutil) |
@@ -86,7 +89,8 @@ Each package owns one concern.
 ## Frontend map (`ui/src/`)
 
 - `features/` — one folder per dashboard area: `apps`, `app-detail`, `deployments`,
-  `database`, `addons`, `activity`, `security`, `logs`, `onboarding`, `settings`.
+  `database`, `addons`, `activity`, `security`, `logs`, `backups`, `storage`,
+  `onboarding`, `settings`.
 - `components/` — shared UI: `auth/` (auth shell), `layout/` (app-shell, sidebar, command
   menu), `theme/` (provider + toggle), `common/` (stat-tile, meter, status-pill, log-viewer,
   empty-state, …), `ui/` (the shadcn/Radix primitive kit).
@@ -110,28 +114,37 @@ Schema lives in goose migrations under `api/internal/db/migrations/` (embedded a
   `failed_auth_attempts` + `auth_locked_until` for per-account lockout), `sessions` (incl.
   `stepup_verified_at` for fresh-2FA step-up), `api_tokens`.
 - **Apps & services:** `apps` (includes `source` = `git`|`template`|`image`,
-  `webhook_secret_enc`, `registry_auth_enc` for image apps' private-registry creds, and
+  `webhook_secret_enc`, `registry_auth_enc` for image apps' private-registry creds,
   `is_preview` / `parent_app_id` (ON DELETE CASCADE) / `last_preview_push_at` for preview
-  environments, and `idle_suspend_enabled` / `idle_timeout_minutes` / `suspended` /
-  `last_traffic_at` for scale-to-zero),
+  environments, `idle_suspend_enabled` / `idle_timeout_minutes` / `suspended` /
+  `last_traffic_at` for scale-to-zero, `maintenance_mode` / `maintenance_auto` /
+  `maintenance_active` / `maintenance_html` for the maintenance page, `deploy_window` (JSONB
+  allowed-window rules), and `rate_limit_rpm` for the per-app edge rate limit),
   `services` (incl. `has_volumes`, set from the compose file each deploy to flag stateful
   services), `ssh_keys`, `env_vars`, `domains` (custom/auto hosts, cert expiry, redirects,
-  lifecycle).
-- **Deploy:** `deployments`, `deployment_logs`, `deploy_triggers` (push-to-deploy rules).
+  lifecycle, plus uploaded-cert columns `tls_cert_pem` / `tls_key_enc` / `tls_cert_source`
+  (`acme`|`uploaded`) / `tls_cert_uploaded_at`).
+- **Deploy:** `deployments`, `deployment_logs`, `deploy_triggers` (push-to-deploy rules, incl.
+  `require_approval` for the approval gate). Deployment status adds non-terminal `scheduled`
+  (parked by a deploy window) and `pending-approval` (awaiting approval).
 - **Observability:** `runtime_logs` (ring buffer), `request_metrics` (10s buckets),
   `volume_usage` (per-app volume sizes for the Storage view), `security_events` (recorded
   unauthenticated probes for the security monitor).
-- **Config:** `instance_settings` (singleton: base domain, `max_concurrent_deploys`),
+- **Config:** `instance_settings` (singleton: base domain, `max_concurrent_deploys`, plus
+  `dns_provider` / `dns_provider_token_enc` / `dns_zone` for DNS automation),
   `notification_settings`.
 - **Managed services:** `managed_databases` (app-owned DBs on shared engines),
-  `backup_configs` + `backup_runs` + `backup_restores` (one row per restore attempt), `scheduled_jobs` + `job_runs` (user cron config + history), `addon_installs`.
+  `backup_configs` + `backup_runs` + `backup_restores` (one row per restore attempt) +
+  `backup_verifications` (restorability checks, mirrors the restore lifecycle), `scheduled_jobs` + `job_runs` (user cron config + history), `addon_installs`.
 - **Audit:** `audit_log` (every mutating action: actor, target, summary, metadata, status).
 
 Encrypted-at-rest columns (sealed with `crypto.Box`, need `VAC_MASTER_KEY`): `env_vars`
 values, `ssh_keys.private_key`, `users.totp_secret`, `notification_settings` Discord/Slack
 URLs + SMTP password, `apps.webhook_secret_enc`, `apps.registry_auth_enc` (private-registry `{registry,
 username, password}` JSON for image-sourced apps), `managed_databases.secret_enc` (connection
-string + password), and `backup_configs.dest_config` (S3 credentials JSON).
+string + password), `backup_configs.dest_config` (S3 credentials JSON),
+`domains.tls_key_enc` (uploaded cert's private key), and
+`instance_settings.dns_provider_token_enc` (DNS provider API token).
 
 ## Invariants
 
