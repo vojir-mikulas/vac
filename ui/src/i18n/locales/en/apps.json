@@ -110,6 +110,12 @@
       "subtitle": "Paste a Git URL. VAC creates a read-only deploy key for private repos.",
       "repoUrl": "Repository URL",
       "repoHint": "HTTPS for public repos, or SSH (git@…) for private repos with a deploy key.",
+      "repoInvalid": "Enter a valid Git URL — HTTPS (https://…) or SSH (git@host:owner/repo).",
+      "portMissing": "No port set — this image won't be reachable over HTTP. Set the container's listening port to expose it; leave empty only for a non-HTTP worker.",
+      "needRepo": "Enter a repository URL",
+      "needImage": "Enter an image reference",
+      "needName": "Enter an app name",
+      "slugTakenTitle": "That name is already taken",
       "appName": "App name",
       "appNameFallback": "my-app",
       "branch": "Branch",
@@ -138,9 +144,8 @@
     },
     "domain": {
       "title": "Domain",
-      "subtitle": "Optional. HTTPS is automatic via Let's Encrypt once a domain points here.",
-      "label": "Custom domain",
-      "note": "Point a <0>CNAME</0> (or A record) at this VPS, then add the domain from the app's <1>Domains</1> tab after the first deploy — certificates are issued on the first request."
+      "subtitle": "Custom domains are added after the first deploy — here's how it works.",
+      "note": "Point a <0>CNAME</0> (or A record) at this VPS, then add the domain from the app's <1>Domains</1> tab after the first deploy — certificates are issued on the first request. Until then, your app is reachable at its generated URL."
     },
     "env": {
       "title": "Environment variables",

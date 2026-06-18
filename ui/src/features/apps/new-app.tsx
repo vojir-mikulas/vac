@@ -65,6 +65,18 @@ function isSshUrl(url: string): boolean {
   return url.trim().startsWith('git@') || url.trim().startsWith('ssh://')
 }
 
+// Catch malformed Git URLs up front so a typo surfaces here instead of as a
+// clone failure several steps later. Accepts scp-style SSH (git@host:owner/repo)
+// and explicit-scheme URLs (https/http/ssh/git://host/path). A bare
+// "github.com/me/repo" — no scheme, no git@ — is rejected.
+function isValidGitUrl(url: string): boolean {
+  const u = url.trim()
+  if (!u) return false
+  if (/^[\w.+-]+@[\w.-]+:.+/.test(u)) return true // scp-style: git@host:path
+  if (/^(https?|ssh|git):\/\/[^/]+\/.+/.test(u)) return true // scheme://host/path
+  return false
+}
+
 // Directional slide+fade for step transitions. `custom` carries the travel
 // direction (+1 forward, -1 back) so steps enter from the side you're heading.
 const stepVariants = {
@@ -102,7 +114,6 @@ function Wizard() {
   const [regHost, setRegHost] = useState('')
   const [regUser, setRegUser] = useState('')
   const [regPass, setRegPass] = useState('')
-  const [domain, setDomain] = useState('')
   const [build, setBuild] = useState<BuildSourceValue>({ build_kind: 'auto', build_config: {} })
   const [envRows, setEnvRows] = useState<WizardEnvRow[]>([])
   const [applyingEnv, setApplyingEnv] = useState(false)
@@ -129,8 +140,32 @@ function Wizard() {
   const slugInvalid = effectiveName !== '' && (slug === '' || slug.length > MAX_SLUG_LEN)
 
   const sourceFilled = isImage ? Boolean(imageRef.trim()) : Boolean(gitUrl.trim())
+  // Surface a malformed URL only once something's been typed (empty is handled
+  // by sourceFilled), so the field doesn't error on first paint.
+  const gitUrlInvalid = !isImage && Boolean(gitUrl.trim()) && !isValidGitUrl(gitUrl)
   const canContinue =
-    step === 0 ? sourceFilled && Boolean(effectiveName) && !slugTaken && !slugInvalid : true
+    step === 0
+      ? sourceFilled && !gitUrlInvalid && Boolean(effectiveName) && !slugTaken && !slugInvalid
+      : true
+
+  // Explain why "Continue" is disabled on the Source step (shown as a tooltip on
+  // the button), since the blocking condition isn't always next to the cursor.
+  const continueHint =
+    step !== 0 || canContinue
+      ? undefined
+      : !sourceFilled
+        ? isImage
+          ? t('new.source.needImage')
+          : t('new.source.needRepo')
+        : gitUrlInvalid
+          ? t('new.source.repoInvalid')
+          : !effectiveName
+            ? t('new.source.needName')
+            : slugTaken
+              ? t('new.source.slugTakenTitle')
+              : slugInvalid
+                ? t('new.source.slugInvalid')
+                : undefined
 
   // Once the operator reaches the build step we probe the repo (keyless clone)
   // for a compose file, so we can pre-fill the path and badge the compose card.
@@ -312,6 +347,7 @@ function Wizard() {
                 slug={slug}
                 slugTaken={slugTaken}
                 slugInvalid={slugInvalid}
+                gitUrlInvalid={gitUrlInvalid}
               />
             ) : null}
 
@@ -333,9 +369,7 @@ function Wizard() {
               </div>
             ) : null}
 
-            {step === 2 ? (
-              <DomainStep domain={domain} setDomain={setDomain} fallback={effectiveName} />
-            ) : null}
+            {step === 2 ? <DomainStep /> : null}
 
             {step === 3 ? (
               <EnvStep gitUrl={gitUrl} branch={branch} rows={envRows} setRows={setEnvRows} />
@@ -351,7 +385,6 @@ function Wizard() {
                 imageRef={imageRef}
                 port={port}
                 build={build}
-                domain={domain}
                 envCount={envInputs().length}
                 ssh={ssh}
                 connectionOk={connectionOk}
@@ -370,7 +403,12 @@ function Wizard() {
               >
                 {step > 0 ? t('actions.back') : t('actions.cancel')}
               </Button>
-              <Button variant="brand" disabled={!canContinue} onClick={() => goTo(step + 1)}>
+              <Button
+                variant="brand"
+                disabled={!canContinue}
+                title={continueHint}
+                onClick={() => goTo(step + 1)}
+              >
                 {t('actions.continue')}
                 <ArrowRight className="size-4" />
               </Button>
@@ -552,6 +590,7 @@ function SourceStep({
   slug,
   slugTaken,
   slugInvalid,
+  gitUrlInvalid,
 }: {
   sourceType: SourceType
   setSourceType: (v: SourceType) => void
@@ -576,6 +615,7 @@ function SourceStep({
   slug: string
   slugTaken: boolean
   slugInvalid: boolean
+  gitUrlInvalid: boolean
 }) {
   const { t } = useTranslation('apps')
   const isImage = sourceType === 'image'
@@ -623,9 +663,14 @@ function SourceStep({
               value={gitUrl}
               onChange={(e) => setGitUrl(e.target.value)}
               placeholder="git@github.com:user/repo.git"
-              className="font-mono text-xs"
+              aria-invalid={gitUrlInvalid}
+              className={cn('font-mono text-xs', gitUrlInvalid && 'border-err-border')}
             />
-            <p className="text-2xs text-muted-foreground">{t('new.source.repoHint')}</p>
+            {gitUrlInvalid ? (
+              <p className="text-2xs text-err-foreground">{t('new.source.repoInvalid')}</p>
+            ) : (
+              <p className="text-2xs text-muted-foreground">{t('new.source.repoHint')}</p>
+            )}
           </div>
         )}
 
@@ -676,7 +721,11 @@ function SourceStep({
                 placeholder="8080"
                 className="font-mono text-xs"
               />
-              <p className="text-2xs text-muted-foreground">{t('new.source.internalPortHint')}</p>
+              {port.trim() ? (
+                <p className="text-2xs text-muted-foreground">{t('new.source.internalPortHint')}</p>
+              ) : (
+                <p className="text-2xs text-warn-foreground">{t('new.source.portMissing')}</p>
+              )}
             </div>
           ) : (
             <div className="grid gap-2">
@@ -828,41 +877,24 @@ function RegistryDisclosure({
   )
 }
 
-function DomainStep({
-  domain,
-  setDomain,
-  fallback,
-}: {
-  domain: string
-  setDomain: (v: string) => void
-  fallback: string
-}) {
+// Informational step: a custom domain can't be attached until the app has a
+// running service to bind to, so this explains the post-deploy workflow rather
+// than offering an input that silently wouldn't be applied.
+function DomainStep() {
   const { t } = useTranslation('apps')
   return (
     <div>
       <StepHeading title={t('new.domain.title')} subtitle={t('new.domain.subtitle')} />
-      <div className="flex flex-col gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="domain">{t('new.domain.label')}</Label>
-          <Input
-            id="domain"
-            value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-            placeholder={`${fallback || t('new.source.appNameFallback')}.example.com`}
-            className="font-mono text-xs"
-          />
-        </div>
-        <p className="rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
-          <Trans
-            t={t}
-            i18nKey="new.domain.note"
-            components={[
-              <span className="font-mono text-foreground" />,
-              <span className="font-medium" />,
-            ]}
-          />
-        </p>
-      </div>
+      <p className="rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
+        <Trans
+          t={t}
+          i18nKey="new.domain.note"
+          components={[
+            <span className="font-mono text-foreground" />,
+            <span className="font-medium" />,
+          ]}
+        />
+      </p>
     </div>
   )
 }
@@ -1160,7 +1192,6 @@ function ReviewDeployStep({
   imageRef,
   port,
   build,
-  domain,
   envCount,
   ssh,
   connectionOk,
@@ -1174,7 +1205,6 @@ function ReviewDeployStep({
   imageRef: string
   port: string
   build: BuildSourceValue
-  domain: string
   envCount: number
   ssh: boolean
   connectionOk: boolean
@@ -1200,7 +1230,6 @@ function ReviewDeployStep({
             <ReviewLine k={t('new.review.build')} v={buildSummary(build, t)} />
           </>
         )}
-        {domain ? <ReviewLine k={t('new.review.domain')} v={domain} mono /> : null}
         {envCount > 0 ? (
           <ReviewLine k={t('new.review.env')} v={t('new.review.envCount', { count: envCount })} />
         ) : null}

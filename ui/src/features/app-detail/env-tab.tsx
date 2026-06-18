@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
+import { useBlocker } from '@tanstack/react-router'
 import { AlertTriangle, Lock, LockOpen, Plus, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -7,6 +8,16 @@ import { SectionHeader } from '@/components/common/section-header'
 import { SwapFade } from '@/components/common/swap-fade'
 import { ErrorState } from '@/components/common/error-state'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -78,6 +89,15 @@ export function EnvTab({ appId }: { appId: string }) {
     () => (rows ?? []).filter((r) => r.dirty || r.isNew).length + deletedKeys.size,
     [rows, deletedKeys],
   )
+
+  // Guard against losing typed values (especially secrets) on navigation away
+  // with unsaved edits. The resolver drives a styled confirm rather than the
+  // browser's native dialog.
+  const blocker = useBlocker({ shouldBlockFn: () => unsaved > 0, withResolver: true })
+
+  // Discard reverts the editor to the persisted server state by forcing a
+  // re-seed (clearing seededFor makes the seed effect run against `vars` again).
+  const discard = () => setSeededFor(null)
 
   const patch = (uid: number, next: Partial<Row>) =>
     setRows((rs) => (rs ?? []).map((r) => (r.uid === uid ? { ...r, ...next } : r)))
@@ -181,6 +201,33 @@ export function EnvTab({ appId }: { appId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      <AlertDialog
+        open={blocker.status === 'blocked'}
+        onOpenChange={(o) => {
+          if (!o && blocker.status === 'blocked') blocker.reset()
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('env.leaveTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('env.leaveDescription', { count: unsaved })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => blocker.status === 'blocked' && blocker.reset()}>
+              {t('env.leaveStay')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => blocker.status === 'blocked' && blocker.proceed()}
+              className="bg-err text-err-foreground hover:bg-err/90"
+            >
+              {t('env.leaveDiscard')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {restartPending ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warn-border bg-warn-bg px-4 py-3">
           <span className="flex items-center gap-2 text-sm text-warn-foreground">
@@ -266,9 +313,16 @@ export function EnvTab({ appId }: { appId: string }) {
                 t('env.noUnsaved')
               )}
             </span>
-            <Button variant="brand" disabled={replace.isPending || unsaved === 0} onClick={save}>
-              {t('env.saveVariables')}
-            </Button>
+            <div className="flex items-center gap-2">
+              {unsaved > 0 ? (
+                <Button variant="ghost" disabled={replace.isPending} onClick={discard}>
+                  {t('env.discard')}
+                </Button>
+              ) : null}
+              <Button variant="brand" disabled={replace.isPending || unsaved === 0} onClick={save}>
+                {t('env.saveVariables')}
+              </Button>
+            </div>
           </div>
         </div>
 

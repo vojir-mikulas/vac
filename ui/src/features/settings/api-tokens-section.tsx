@@ -33,6 +33,7 @@ import { CopyButton } from '@/components/common/copy-button'
 import { authApi, useApiTokens } from '@/lib/api/auth'
 import { queryKeys } from '@/lib/query/keys'
 import { relativeTime } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 export function ApiTokensSection() {
   const { t } = useTranslation('settings')
@@ -138,8 +139,14 @@ function CreateTokenDialog() {
   const [days, setDays] = useState('90')
   const [token, setToken] = useState<string | null>(null)
 
+  // Expiry must be a whole number of days in a sane range — previously any
+  // garbage silently became 90, so a typo'd token outlived what the user thought.
+  const daysNum = Number(days)
+  const daysValid =
+    days.trim() !== '' && Number.isInteger(daysNum) && daysNum >= 1 && daysNum <= 3650
+
   const create = useMutation({
-    mutationFn: () => authApi.createApiToken(name, Number(days) || 90),
+    mutationFn: () => authApi.createApiToken(name, daysNum),
     onSuccess: (t) => {
       setToken(t.token)
       qc.invalidateQueries({ queryKey: queryKeys.auth.apiTokens })
@@ -198,7 +205,14 @@ function CreateTokenDialog() {
                 inputMode="numeric"
                 value={days}
                 onChange={(e) => setDays(e.target.value)}
+                aria-invalid={days.trim() !== '' && !daysValid}
+                className={cn(days.trim() !== '' && !daysValid && 'border-err-border')}
               />
+              {days.trim() !== '' && !daysValid ? (
+                <p className="text-2xs text-err-foreground">
+                  {t('apiTokens.dialog.expiresInvalid')}
+                </p>
+              ) : null}
             </div>
           </div>
         )}
@@ -206,7 +220,7 @@ function CreateTokenDialog() {
           <DialogFooter>
             <Button
               variant="brand"
-              disabled={create.isPending || !name}
+              disabled={create.isPending || !name || !daysValid}
               onClick={() => create.mutate()}
             >
               {t('apiTokens.dialog.submit')}

@@ -25,6 +25,7 @@ import { DomainStatusBadge } from '@/features/settings/domain-status-badge'
 import { useCreateDomain, useDeleteDomain, useDomains } from '@/lib/api/domains'
 import { useServices } from '@/lib/api/services'
 import { cn } from '@/lib/utils'
+import { isValidHostname } from '@/lib/hostname'
 import type { Domain } from '@/types/api'
 
 const selectClass =
@@ -145,9 +146,10 @@ function AddAppDomain({ appId }: { appId: string }) {
   const [service, setService] = useState('')
 
   const trimmed = hostname.trim()
+  const hostnameValid = isValidHostname(trimmed)
   // The per-app endpoint requires a service binding (unlike the global hub's
   // optional/unassigned add).
-  const canSubmit = trimmed.includes('.') && service !== '' && !create.isPending
+  const canSubmit = hostnameValid && service !== '' && !create.isPending
 
   const onSubmit = () => {
     create.mutate(
@@ -171,8 +173,15 @@ function AddAppDomain({ appId }: { appId: string }) {
             value={hostname}
             onChange={(e) => setHostname(e.target.value)}
             placeholder={t('domains.hostnamePlaceholder')}
-            className="font-mono text-xs"
+            aria-invalid={trimmed !== '' && !hostnameValid}
+            className={cn(
+              'font-mono text-xs',
+              trimmed !== '' && !hostnameValid && 'border-err-border',
+            )}
           />
+          {trimmed !== '' && !hostnameValid ? (
+            <p className="text-2xs text-err-foreground">{t('domains.invalidHostname')}</p>
+          ) : null}
         </div>
         <div className="grid gap-2">
           <Label>{t('domains.service')}</Label>

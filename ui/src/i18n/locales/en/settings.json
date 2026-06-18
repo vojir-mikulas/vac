@@ -91,6 +91,7 @@
       "nameLabel": "Name",
       "namePlaceholder": "CI pipeline",
       "expiresLabel": "Expires in (days)",
+      "expiresInvalid": "Enter a whole number of days between 1 and 3650.",
       "submit": "Create token"
     }
   },
@@ -129,6 +130,7 @@
       "heading": "Email (SMTP)",
       "host": "SMTP host",
       "port": "Port",
+      "portInvalid": "Port must be between 1 and 65535.",
       "username": "Username",
       "usernamePlaceholder": "leave blank for an unauthenticated relay",
       "password": "Password",
@@ -144,6 +146,7 @@
     },
     "events": "Events",
     "sendTest": "Send test",
+    "testDirtyHint": "Save your changes first — the test uses your saved settings.",
     "save": "Save",
     "configuredPlaceholder": "Configured ({{hint}}) — leave blank to keep",
     "toast": {
@@ -284,6 +287,7 @@
       "heading": "Add a domain",
       "hint": "You can add a domain now and assign it to a service later — it’ll verify DNS either way.",
       "submit": "Add domain",
+      "invalidHostname": "Enter a valid domain, e.g. app.example.com.",
       "toast": {
         "added": "Domain added"
       }

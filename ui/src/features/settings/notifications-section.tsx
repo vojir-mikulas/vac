@@ -81,6 +81,29 @@ function NotificationsForm({ settings }: { settings: NotificationSettings }) {
     onError: (e) => toast.error(e.message),
   })
 
+  // Has anything been edited vs. the saved settings? Webhook + password inputs
+  // start blank (blank = "leave unchanged"), so any text in them counts as dirty.
+  // "Send test" hits the *saved* config, so we block it while dirty to avoid
+  // testing stale settings; Save is disabled when there's nothing to save.
+  // Port must be empty (channel off) or a valid TCP port — a number input still
+  // accepts out-of-range values, which would just fail opaquely at send time.
+  const smtpPortValid =
+    smtpPort.trim() === '' ||
+    (Number.isInteger(Number(smtpPort)) && Number(smtpPort) >= 1 && Number(smtpPort) <= 65535)
+
+  const eventsChanged = Object.keys(events).some((k) => events[k] !== settings.events[k])
+  const dirty =
+    discord.trim() !== '' ||
+    slack.trim() !== '' ||
+    smtpPassword.trim() !== '' ||
+    smtpHost !== settings.smtp_host ||
+    (smtpPort.trim() ? Number(smtpPort) : null) !== (settings.smtp_port ?? null) ||
+    smtpUsername !== settings.smtp_username ||
+    smtpFrom !== settings.smtp_from ||
+    smtpTo !== settings.smtp_to ||
+    smtpTlsMode !== (settings.smtp_tls_mode || 'starttls') ||
+    eventsChanged
+
   const save = () =>
     update.mutate(
       {
@@ -143,8 +166,12 @@ function NotificationsForm({ settings }: { settings: NotificationSettings }) {
               value={smtpPort}
               onChange={(e) => setSmtpPort(e.target.value)}
               placeholder="587"
+              aria-invalid={!smtpPortValid}
               className="font-mono text-xs"
             />
+            {!smtpPortValid ? (
+              <p className="text-2xs text-err-foreground">{t('notifications.email.portInvalid')}</p>
+            ) : null}
           </Field>
         </div>
         <Field label={t('notifications.email.username')}>
@@ -217,10 +244,21 @@ function NotificationsForm({ settings }: { settings: NotificationSettings }) {
       </div>
 
       <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" disabled={test.isPending} onClick={() => test.mutate()}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={test.isPending || dirty}
+          title={dirty ? t('notifications.testDirtyHint') : undefined}
+          onClick={() => test.mutate()}
+        >
           {t('notifications.sendTest')}
         </Button>
-        <Button variant="brand" size="sm" disabled={update.isPending} onClick={save}>
+        <Button
+          variant="brand"
+          size="sm"
+          disabled={update.isPending || !dirty || !smtpPortValid}
+          onClick={save}
+        >
           {t('notifications.save')}
         </Button>
       </div>

@@ -41,6 +41,7 @@ import {
 import { useServices } from '@/lib/api/services'
 import { useBaseDomain, useSetBaseDomain, type BaseDomainInfo } from '@/lib/api/instance'
 import { cn } from '@/lib/utils'
+import { isValidHostname } from '@/lib/hostname'
 import type { Domain } from '@/types/api'
 
 export function DomainsSection() {
@@ -237,9 +238,10 @@ function AddDomainCard() {
   const add = useAddDomain()
 
   const trimmed = hostname.trim()
+  const hostnameValid = isValidHostname(trimmed)
   // Either pick both app + service, or leave both blank (add unassigned).
   const assignmentValid = (appId === '') === (service === '')
-  const canSubmit = trimmed.includes('.') && assignmentValid && !add.isPending
+  const canSubmit = hostnameValid && assignmentValid && !add.isPending
 
   const onSubmit = () => {
     const assign: DomainAssignment | undefined =
@@ -270,8 +272,15 @@ function AddDomainCard() {
             value={hostname}
             onChange={(e) => setHostname(e.target.value)}
             placeholder="app.example.com"
-            className="font-mono text-xs"
+            aria-invalid={trimmed !== '' && !hostnameValid}
+            className={cn(
+              'font-mono text-xs',
+              trimmed !== '' && !hostnameValid && 'border-err-border',
+            )}
           />
+          {trimmed !== '' && !hostnameValid ? (
+            <p className="text-2xs text-err-foreground">{t('domains.add.invalidHostname')}</p>
+          ) : null}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-2">

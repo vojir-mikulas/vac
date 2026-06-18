@@ -16,6 +16,8 @@ import { Label } from '@/components/ui/label'
 import { useApps } from '@/lib/api/apps'
 import { useServices } from '@/lib/api/services'
 import { useUpdateDomain, type DomainAssignment } from '@/lib/api/domains'
+import { isValidHostname } from '@/lib/hostname'
+import { cn } from '@/lib/utils'
 import type { Domain } from '@/types/api'
 
 const selectClass =
@@ -35,12 +37,12 @@ export function DomainEditDialog({ domain, onClose }: { domain: Domain; onClose:
   const { data: services } = useServices(appId)
   const update = useUpdateDomain()
 
+  const hostnameValid = isValidHostname(hostname)
   const assignmentValid = (appId === '') === (service === '')
   // A redirect needs the domain assigned to an app and a different target.
   const redirectValid =
     !redirectTo.trim() || (appId !== '' && redirectTo.trim() !== hostname.trim())
-  const canSave =
-    hostname.trim().includes('.') && assignmentValid && redirectValid && !update.isPending
+  const canSave = hostnameValid && assignmentValid && redirectValid && !update.isPending
 
   const onSave = () => {
     const assign: DomainAssignment =
@@ -73,8 +75,15 @@ export function DomainEditDialog({ domain, onClose }: { domain: Domain; onClose:
             <Input
               value={hostname}
               onChange={(e) => setHostname(e.target.value)}
-              className="font-mono text-xs"
+              aria-invalid={hostname.trim() !== '' && !hostnameValid}
+              className={cn(
+                'font-mono text-xs',
+                hostname.trim() !== '' && !hostnameValid && 'border-err-border',
+              )}
             />
+            {hostname.trim() !== '' && !hostnameValid ? (
+              <p className="text-2xs text-err-foreground">{t('domains.add.invalidHostname')}</p>
+            ) : null}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-2">
