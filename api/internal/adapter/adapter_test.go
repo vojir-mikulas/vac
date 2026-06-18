@@ -57,6 +57,194 @@ func TestDetect_Order(t *testing.T) {
 	})
 }
 
+func TestDetectFramework_Keys(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{"next wins over react", map[string]string{"package.json": `{"dependencies":{"next":"15","react":"19"}}`}, adapter.KindFramework},
+		{"astro", map[string]string{"package.json": `{"dependencies":{"astro":"5"}}`}, adapter.KindFramework},
+		{"vite generic", map[string]string{"package.json": `{"devDependencies":{"vite":"5"}}`}, adapter.KindFramework},
+		{"bare node", map[string]string{"package.json": `{"scripts":{"start":"node ."}}`}, adapter.KindFramework},
+		{"python requirements", map[string]string{"requirements.txt": "flask\n"}, adapter.KindFramework},
+		{"python django", map[string]string{"manage.py": "import django\n"}, adapter.KindFramework},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			d := t.TempDir()
+			for n, b := range c.files {
+				write(t, d, n, b)
+			}
+			if got := adapter.Detect(d); got != c.want {
+				t.Errorf("Detect = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// prepareAndRead runs the framework adapter and returns the generated
+// Dockerfile.vac + compose.yaml contents.
+func prepareAndRead(t *testing.T, d string, cfg adapter.BuildConfig) (df, compose string) {
+	t.Helper()
+	ad, _ := adapter.For(adapter.KindFramework, d)
+	path, err := ad.Prepare(context.Background(), d, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dfB, err := os.ReadFile(filepath.Join(d, "Dockerfile.vac"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cB, _ := os.ReadFile(path)
+	return string(dfB), string(cB)
+}
+
+func TestFrameworkAdapter_Vite(t *testing.T) {
+	t.Parallel()
+	d := t.TempDir()
+	df, compose := prepareAndRead(t, d, adapter.BuildConfig{Framework: "vite"})
+	if !strings.Contains(df, "nginx:alpine") {
+		t.Errorf("vite should serve static via nginx:\n%s", df)
+	}
+	if !strings.Contains(compose, `- "80"`) {
+		t.Errorf("vite compose should expose 80:\n%s", compose)
+	}
+	conf, err := os.ReadFile(filepath.Join(d, "vac-nginx.conf"))
+	if err != nil || !strings.Contains(string(conf), "/index.html") {
+		t.Errorf("vite needs SPA fallback conf: %v\n%s", err, conf)
+	}
+}
+
+func TestFrameworkAdapter_Next_Modes(t *testing.T) {
+	t.Parallel()
+	t.Run("standalone", func(t *testing.T) {
+		t.Parallel()
+		d := t.TempDir()
+		write(t, d, "next.config.mjs", "export default { output: 'standalone' }\n")
+		df, compose := prepareAndRead(t, d, adapter.BuildConfig{Framework: "nextjs"})
+		if !strings.Contains(df, `CMD ["node", "server.js"]`) {
+			t.Errorf("standalone should run server.js:\n%s", df)
+		}
+		if !strings.Contains(compose, `- "3000"`) {
+			t.Errorf("next compose should expose 3000:\n%s", compose)
+		}
+	})
+	t.Run("export", func(t *testing.T) {
+		t.Parallel()
+		d := t.TempDir()
+		write(t, d, "next.config.js", "module.exports = { output: 'export' }\n")
+		df, compose := prepareAndRead(t, d, adapter.BuildConfig{Framework: "nextjs"})
+		if !strings.Contains(df, "nginx:alpine") || !strings.Contains(df, "/app/out") {
+			t.Errorf("export should serve out/ via nginx:\n%s", df)
+		}
+		if !strings.Contains(compose, `- "80"`) {
+			t.Errorf("next export should expose 80:\n%s", compose)
+		}
+	})
+	t.Run("default", func(t *testing.T) {
+		t.Parallel()
+		d := t.TempDir()
+		df, _ := prepareAndRead(t, d, adapter.BuildConfig{Framework: "nextjs"})
+		if !strings.Contains(df, "next") || !strings.Contains(df, "start") {
+			t.Errorf("default should run next start:\n%s", df)
+		}
+	})
+}
+
+func TestFrameworkAdapter_Astro(t *testing.T) {
+	t.Parallel()
+	t.Run("static MPA", func(t *testing.T) {
+		t.Parallel()
+		d := t.TempDir()
+		write(t, d, "package.json", `{"dependencies":{"astro":"5"}}`)
+		df, _ := prepareAndRead(t, d, adapter.BuildConfig{Framework: "astro"})
+		if !strings.Contains(df, "nginx:alpine") {
+			t.Errorf("astro static should use nginx:\n%s", df)
+		}
+		conf, _ := os.ReadFile(filepath.Join(d, "vac-nginx.conf"))
+		if strings.Contains(string(conf), "/index.html") {
+			t.Errorf("astro is MPA, must not SPA-fallback to index.html:\n%s", conf)
+		}
+	})
+	t.Run("ssr standalone", func(t *testing.T) {
+		t.Parallel()
+		d := t.TempDir()
+		write(t, d, "package.json", `{"dependencies":{"astro":"5","@astrojs/node":"9"}}`)
+		df, compose := prepareAndRead(t, d, adapter.BuildConfig{Framework: "astro"})
+		if !strings.Contains(df, "dist/server/entry.mjs") {
+			t.Errorf("astro ssr should run entry.mjs:\n%s", df)
+		}
+		if !strings.Contains(compose, `- "4321"`) {
+			t.Errorf("astro ssr should expose 4321:\n%s", compose)
+		}
+	})
+}
+
+func TestFrameworkAdapter_Node(t *testing.T) {
+	t.Parallel()
+	t.Run("start script", func(t *testing.T) {
+		t.Parallel()
+		d := t.TempDir()
+		write(t, d, "package.json", `{"scripts":{"start":"node ."}}`)
+		df, _ := prepareAndRead(t, d, adapter.BuildConfig{Framework: "node"})
+		if !strings.Contains(df, `CMD ["dumb-init", "npm", "start"]`) {
+			t.Errorf("node with start script should npm start:\n%s", df)
+		}
+	})
+	t.Run("entry file fallback", func(t *testing.T) {
+		t.Parallel()
+		d := t.TempDir()
+		write(t, d, "package.json", `{}`)
+		write(t, d, "index.js", "console.log(1)\n")
+		df, _ := prepareAndRead(t, d, adapter.BuildConfig{Framework: "node", Port: 8080})
+		if !strings.Contains(df, `CMD ["dumb-init", "node", "index.js"]`) {
+			t.Errorf("node should fall back to index.js:\n%s", df)
+		}
+		if !strings.Contains(df, "ENV PORT=8080") {
+			t.Errorf("node should honor configured port:\n%s", df)
+		}
+	})
+}
+
+func TestFrameworkAdapter_Python(t *testing.T) {
+	t.Parallel()
+	t.Run("django", func(t *testing.T) {
+		t.Parallel()
+		d := t.TempDir()
+		write(t, d, "requirements.txt", "django\n")
+		write(t, d, "manage.py", "import django\n")
+		write(t, d, "myproj/wsgi.py", "application = None\n")
+		df, _ := prepareAndRead(t, d, adapter.BuildConfig{Framework: "python"})
+		if !strings.Contains(df, "myproj.wsgi:application") || !strings.Contains(df, "gunicorn") {
+			t.Errorf("django should gunicorn the wsgi app:\n%s", df)
+		}
+	})
+	t.Run("fastapi", func(t *testing.T) {
+		t.Parallel()
+		d := t.TempDir()
+		write(t, d, "requirements.txt", "fastapi\n")
+		write(t, d, "main.py", "from fastapi import FastAPI\napp = FastAPI()\n")
+		df, _ := prepareAndRead(t, d, adapter.BuildConfig{Framework: "python"})
+		if !strings.Contains(df, "uvicorn") || !strings.Contains(df, "main:app") {
+			t.Errorf("fastapi should run uvicorn:\n%s", df)
+		}
+	})
+	t.Run("procfile override", func(t *testing.T) {
+		t.Parallel()
+		d := t.TempDir()
+		write(t, d, "requirements.txt", "flask\n")
+		write(t, d, "Procfile", "web: gunicorn wsgi:app --workers 3\n")
+		df, _ := prepareAndRead(t, d, adapter.BuildConfig{Framework: "python"})
+		if !strings.Contains(df, "CMD gunicorn wsgi:app --workers 3") {
+			t.Errorf("python should honor Procfile web line:\n%s", df)
+		}
+	})
+}
+
 func TestFor_AutoResolvesAndUndetected(t *testing.T) {
 	t.Parallel()
 	d := t.TempDir()

@@ -244,7 +244,7 @@
     "kinds": {
       "auto": {
         "label": "Auto-detect",
-        "hint": "compose → Dockerfile → React"
+        "hint": "compose → Dockerfile → framework"
       },
       "compose": {
         "label": "Compose",
@@ -256,7 +256,7 @@
       },
       "framework": {
         "label": "Framework",
-        "hint": "React (more soon)"
+        "hint": "React, Next.js, Astro, Vite, Node, Python"
       },
       "static": {
         "label": "Static",
@@ -274,6 +274,7 @@
     "dockerfilePath": "Dockerfile path",
     "relativeToRoot": "Relative to the repo root.",
     "composeDetected": "Detected {{path}} in the repo.",
+    "frameworkDetected": "Detected a {{name}} app — VAC can build it automatically.",
     "framework": "Framework",
     "buildCommand": "Build command",
     "buildCommandHint": "Runs in the build stage. Leave empty for the default.",

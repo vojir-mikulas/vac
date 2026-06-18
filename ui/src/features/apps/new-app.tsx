@@ -168,18 +168,27 @@ function Wizard() {
                 : undefined
 
   // Once the operator reaches the build step we probe the repo (keyless clone)
-  // for a compose file, so we can pre-fill the path and badge the compose card.
-  // Like the .env.example probe this only reaches public repos; a private repo's
-  // deploy key doesn't exist yet, so it fails quietly and the path stays manual.
-  const detectCompose = useQuery({
-    queryKey: ['detect-compose', gitUrl.trim(), branch.trim() || 'main'],
+  // for its build source — a compose file, a Dockerfile, or a known framework —
+  // so we can pre-fill the compose path and surface the detected framework. Like
+  // the .env.example probe this only reaches public repos; a private repo's
+  // deploy key doesn't exist yet, so it fails quietly and everything stays manual.
+  const detectBuild = useQuery({
+    queryKey: ['detect-build', gitUrl.trim(), branch.trim() || 'main'],
     queryFn: () =>
-      appsApi.detectCompose({ git_url: gitUrl.trim(), git_branch: branch.trim() || 'main' }),
+      appsApi.detectBuild({ git_url: gitUrl.trim(), git_branch: branch.trim() || 'main' }),
     enabled: step >= 1 && Boolean(gitUrl.trim()),
     staleTime: Infinity,
     retry: false,
   })
-  const detectedComposePath = detectCompose.data?.found ? detectCompose.data.path : undefined
+  const detectedComposePath = detectBuild.data?.compose_path || undefined
+  // Only surface the detected framework when the repo carries neither a compose
+  // file nor a Dockerfile — those win in auto-detect, so a framework hint would
+  // be misleading (and the operator likely wants the compose/Dockerfile path).
+  const detected = detectBuild.data
+  const detectedFramework =
+    detected && !detected.compose_path && !detected.has_dockerfile && detected.framework
+      ? detected.framework
+      : undefined
 
   // Pre-fill the compose path once per detected value, and only when the operator
   // hasn't typed their own — clearing the field afterwards must not re-trigger it.
@@ -193,6 +202,20 @@ function Wizard() {
         : { ...b, build_config: { ...b.build_config, composePath: detectedComposePath } },
     )
   }, [detectedComposePath])
+
+  // Pre-select the detected framework once, so switching the build kind to
+  // "framework" lands on the right picker entry. Doesn't change the kind itself —
+  // "auto" already builds it; this just makes an explicit pick one tap away.
+  const prefilledFramework = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!detectedFramework || prefilledFramework.current === detectedFramework) return
+    prefilledFramework.current = detectedFramework
+    setBuild((b) =>
+      b.build_config.framework
+        ? b
+        : { ...b, build_config: { ...b.build_config, framework: detectedFramework } },
+    )
+  }, [detectedFramework])
 
   const deployNow = useMutation({
     mutationFn: (appId: string) => deploymentsApi.trigger(appId),
@@ -364,6 +387,7 @@ function Wizard() {
                     onChange={setBuild}
                     detectedKind={detectedComposePath ? 'compose' : undefined}
                     detectedComposePath={detectedComposePath}
+                    detectedFramework={detectedFramework}
                   />
                 )}
               </div>

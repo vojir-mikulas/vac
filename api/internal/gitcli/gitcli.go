@@ -201,6 +201,24 @@ func DetectCompose(ctx context.Context, gitURL, branch, sshKeyPath string) (stri
 	return "", nil
 }
 
+// CloneTemp shallow-clones gitURL into a throwaway temp dir and returns the
+// checkout path plus a cleanup func the caller MUST invoke (even on error it's
+// nil only when err != nil). Used by wizard probes that need to inspect more of
+// a repo than a single filename — they run before a deploy key exists, so pass
+// sshKeyPath="" (public HTTPS resolves; private SSH comes back as ErrAuth).
+func CloneTemp(ctx context.Context, gitURL, branch, sshKeyPath string) (string, func(), error) {
+	tmp, err := os.MkdirTemp("", "vac-probe-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("gitcli: temp dir: %w", err)
+	}
+	repo := filepath.Join(tmp, "repo")
+	if err := Clone(ctx, gitURL, repo, branch, sshKeyPath); err != nil {
+		_ = os.RemoveAll(tmp)
+		return "", nil, err
+	}
+	return repo, func() { _ = os.RemoveAll(tmp) }, nil
+}
+
 // run is the single os/exec entry point so the env handling is consistent.
 // Returns combined stdout+stderr — git interleaves its progress output and
 // we want both for classification.

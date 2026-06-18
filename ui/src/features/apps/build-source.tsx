@@ -27,15 +27,15 @@ const KIND_OPTIONS = [
   { kind: 'static', icon: Box },
 ] satisfies { kind: BuildKind; icon: typeof Box }[]
 
-// Frameworks: React works today; the rest are scaffolded as "coming soon".
-// Each carries a react-icons brand glyph + its brand color for the picker.
-const FRAMEWORKS: { id: string; label: string; icon: IconType; color: string; soon?: boolean }[] = [
+// Frameworks VAC can build today. Each carries a react-icons brand glyph + its
+// brand color for the picker. The `id` is the key the framework adapter expects.
+const FRAMEWORKS: { id: string; label: string; icon: IconType; color: string }[] = [
   { id: 'react', label: 'React', icon: SiReact, color: '#61DAFB' },
-  { id: 'nextjs', label: 'Next.js', icon: SiNextdotjs, color: '#888888', soon: true },
-  { id: 'astro', label: 'Astro', icon: SiAstro, color: '#FF5D01', soon: true },
-  { id: 'vite', label: 'Vite', icon: SiVite, color: '#646CFF', soon: true },
-  { id: 'node', label: 'Node', icon: SiNodedotjs, color: '#5FA04E', soon: true },
-  { id: 'python', label: 'Python', icon: SiPython, color: '#3776AB', soon: true },
+  { id: 'nextjs', label: 'Next.js', icon: SiNextdotjs, color: '#888888' },
+  { id: 'astro', label: 'Astro', icon: SiAstro, color: '#FF5D01' },
+  { id: 'vite', label: 'Vite', icon: SiVite, color: '#646CFF' },
+  { id: 'node', label: 'Node', icon: SiNodedotjs, color: '#5FA04E' },
+  { id: 'python', label: 'Python', icon: SiPython, color: '#3776AB' },
 ]
 
 export function BuildSourcePicker({
@@ -43,6 +43,7 @@ export function BuildSourcePicker({
   onChange,
   detectedKind,
   detectedComposePath,
+  detectedFramework,
 }: {
   value: BuildSourceValue
   onChange: (v: BuildSourceValue) => void
@@ -51,15 +52,25 @@ export function BuildSourcePicker({
   /** Compose filename found by probing the repo; surfaced as a hint under the
    *  compose path input so the operator knows the value came from their repo. */
   detectedComposePath?: string
+  /** Framework auto-detected from the repo (only when it has no compose file or
+   *  Dockerfile); surfaced as a banner so the operator sees what VAC will build. */
+  detectedFramework?: string
 }) {
   const { t } = useTranslation('apps')
   const setKind = (kind: BuildKind) => onChange({ ...value, build_kind: kind })
   const setConfig = (patch: Partial<BuildConfig>) =>
     onChange({ ...value, build_config: { ...value.build_config, ...patch } })
   const cfg = value.build_config
+  const detectedLabel = FRAMEWORKS.find((f) => f.id === detectedFramework)?.label
 
   return (
     <div className="flex flex-col gap-5">
+      {detectedLabel ? (
+        <div className="flex items-center gap-2 rounded-md border border-ok-border bg-ok-bg px-3 py-2 text-xs text-ok-foreground">
+          <Sparkles className="size-3.5 shrink-0" aria-hidden />
+          <span>{t('buildSource.frameworkDetected', { name: detectedLabel })}</span>
+        </div>
+      ) : null}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {KIND_OPTIONS.map((opt) => {
           const active = value.build_kind === opt.kind
@@ -165,30 +176,20 @@ export function BuildSourcePicker({
                       <m.button
                         key={f.id}
                         type="button"
-                        disabled={f.soon}
                         onClick={() => setConfig({ framework: f.id })}
-                        whileTap={f.soon ? undefined : { scale: 0.97 }}
+                        whileTap={{ scale: 0.97 }}
                         transition={transition.fast}
                         className={cn(
-                          'flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 text-center text-xs font-medium transition-colors',
-                          f.soon && 'cursor-not-allowed opacity-50',
-                          !f.soon && 'cursor-pointer',
-                          active && !f.soon
-                            ? 'border-brand bg-brand/5 text-brand'
-                            : 'hover:bg-surface-2',
+                          'flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border px-3 py-3 text-center text-xs font-medium transition-colors',
+                          active ? 'border-brand bg-brand/5 text-brand' : 'hover:bg-surface-2',
                         )}
                       >
                         <Icon
                           className="size-5"
-                          style={{ color: active && !f.soon ? undefined : f.color }}
+                          style={{ color: active ? undefined : f.color }}
                           aria-hidden
                         />
                         <span>{f.label}</span>
-                        {f.soon ? (
-                          <span className="text-2xs font-normal text-muted-foreground">
-                            {t('buildSource.soon')}
-                          </span>
-                        ) : null}
                       </m.button>
                     )
                   })}

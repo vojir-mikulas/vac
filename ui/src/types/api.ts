@@ -375,6 +375,14 @@ export interface ComposeDetectResult {
   error_message?: string
 }
 
+export interface BuildDetectResult {
+  compose_path?: string
+  has_dockerfile: boolean
+  framework?: string
+  error_code?: string
+  error_message?: string
+}
+
 // ── Auth ────────────────────────────────────────────────────────────────
 export interface User {
   id: string

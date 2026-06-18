@@ -5,6 +5,7 @@ import { queryKeys } from '@/lib/query/keys'
 import type {
   App,
   AppVolumes,
+  BuildDetectResult,
   ComposeDetectResult,
   CreateAppInput,
   EnvExampleResult,
@@ -29,6 +30,8 @@ export const appsApi = {
     api.post<EnvExampleResult>('apps/env-example', input),
   detectCompose: (input: { git_url: string; git_branch: string }) =>
     api.post<ComposeDetectResult>('apps/detect-compose', input),
+  detectBuild: (input: { git_url: string; git_branch: string }) =>
+    api.post<BuildDetectResult>('apps/detect-build', input),
   sshKey: (id: string) => api.get<SSHKey>(`apps/${id}/ssh-key`),
   regenerateSshKey: (id: string) => api.post<SSHKey>(`apps/${id}/ssh-key/regenerate`),
   volumes: (id: string) => api.get<AppVolumes>(`apps/${id}/volumes`),

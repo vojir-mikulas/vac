@@ -330,6 +330,10 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				// Probe a repo for a compose file so the wizard can pre-fill the
 				// compose path. Static path; clones without a key (public repos only).
 				r.Post("/detect-compose", handler.DetectCompose(nil))
+				// Probe a repo for its build source (compose / Dockerfile /
+				// framework) so the wizard can pre-select a build kind and badge
+				// the detected framework. Static path; keyless (public repos only).
+				r.Post("/detect-build", handler.DetectBuild(nil))
 				// Global preview budget (count vs VAC_MAX_PREVIEWS). Static path —
 				// resolved before "/{id}".
 				r.Get("/previews/budget", handler.PreviewBudget(s, previews))
