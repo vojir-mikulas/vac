@@ -106,7 +106,10 @@
   --border: oklch(0.91 0.004 60);
   --border-strong: oklch(0.86 0.005 60);
   --input: oklch(0.91 0.004 60);
-  --ring: oklch(0.86 0.005 60);
+  /* Focus ring = brand blue: a near-white-on-near-white gray ring is invisible
+     (it read the same as --border-strong). The brand fully-opaque focus border
+     plus its /50 halo are clearly visible and meet 3:1 non-text contrast. */
+  --ring: var(--brand);
 
   /* shadcn surface roles mapped onto the VAC palette */
   --card: var(--background);
@@ -121,7 +124,7 @@
   --accent: var(--surface-2);
   --accent-foreground: var(--foreground);
 
-  /* Brand — orange (solid button fill) */
+  /* Brand — blue (solid button fill, focus ring) */
   --brand: #0057b8;
   --brand-foreground: oklch(1 0 0);
 

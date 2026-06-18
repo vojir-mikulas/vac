@@ -1,4 +1,5 @@
 import { Link, Outlet, createFileRoute } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { Blocks, ExternalLink, GitBranch, Globe, Lock, RotateCw } from 'lucide-react'
 
 import { PageContainer } from '@/components/layout/app-shell'
@@ -21,23 +22,22 @@ export const Route = createFileRoute('/_app/apps/$appId')({
   component: AppDetailLayout,
 })
 
+// `to` doubles as the i18n key under `layout.tabs.*`; the label is resolved at render.
 const TABS = [
-  { to: 'overview', label: 'Overview' },
-  { to: 'services', label: 'Services' },
-  { to: 'deploys', label: 'Deploys' },
-  { to: 'logs', label: 'Logs' },
-  { to: 'jobs', label: 'Jobs' },
-  { to: 'environment', label: 'Environment' },
-  { to: 'settings', label: 'Settings' },
+  { to: 'overview' },
+  { to: 'services' },
+  { to: 'deploys' },
+  { to: 'logs' },
+  { to: 'jobs' },
+  { to: 'environment' },
+  { to: 'settings' },
 ] as const
 
 // Tabs shown only when the managed-services gate (Track D) is open.
-const MANAGED_TABS = [
-  { to: 'backups', label: 'Backups' },
-  { to: 'databases', label: 'Databases' },
-] as const
+const MANAGED_TABS = [{ to: 'backups' }, { to: 'databases' }] as const
 
 function AppDetailLayout() {
+  const { t } = useTranslation('app-detail')
   const { appId } = Route.useParams()
   const { data: app, isLoading } = useApp(appId)
   const { data: domains } = useDomains(appId)
@@ -69,13 +69,11 @@ function AppDetailLayout() {
       | 'settings'
       | 'backups'
       | 'databases'
-    label: string
   }
   const tabs: Tab[] = [...TABS]
   if (app && !app.is_preview) {
     tabs.splice(tabs.findIndex((tb) => tb.to === 'deploys') + 1, 0, {
       to: 'previews',
-      label: 'Previews',
     })
   }
   if (showManagedTabs) {
@@ -98,17 +96,17 @@ function AppDetailLayout() {
               <StatusPill status={app.status} />
               {app.is_preview ? (
                 <span className="rounded-sm bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand">
-                  Preview
+                  {t('layout.preview')}
                 </span>
               ) : null}
               {app.maintenance_active ? (
                 <span className="rounded-sm bg-warn/15 px-1.5 py-0.5 text-2xs font-medium text-warn-foreground">
-                  Maintenance
+                  {t('layout.maintenance')}
                 </span>
               ) : null}
               {app.suspended ? (
                 <span className="rounded-sm bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
-                  Suspended
+                  {t('layout.suspended')}
                 </span>
               ) : null}
             </div>
@@ -122,7 +120,9 @@ function AppDetailLayout() {
                   ) : (
                     <Blocks className="size-3" />
                   )}
-                  Installed from {app.template_name ?? 'add-on'}
+                  {t('layout.installedFrom', {
+                    name: app.template_name ?? t('layout.addonFallback'),
+                  })}
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
@@ -157,13 +157,13 @@ function AppDetailLayout() {
             disabled={deploy.isPending}
             onClick={() =>
               deploy.mutate(undefined, {
-                onSuccess: () => toast.success('Deploy triggered'),
+                onSuccess: () => toast.success(t('layout.deployTriggered')),
                 onError: (e) => toast.error(e.message),
               })
             }
           >
             <RotateCw className="size-4" />
-            Deploy from HEAD
+            {t('layout.deployFromHead')}
           </Button>
         </div>
       </div>
@@ -171,7 +171,7 @@ function AppDetailLayout() {
       <LiveDeployBanner appId={appId} />
 
       <ScrollArea className="mb-6">
-        <nav aria-label="App sections" className="flex gap-1 border-b">
+        <nav aria-label={t('layout.sectionsAria')} className="flex gap-1 border-b">
           {tabs.map((tab) => (
             <Link
               key={tab.to}
@@ -180,7 +180,7 @@ function AppDetailLayout() {
               className="-mb-px shrink-0 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground data-[status=active]:border-foreground data-[status=active]:text-foreground"
               activeProps={{ 'data-status': 'active', 'aria-current': 'page' }}
             >
-              {tab.label}
+              {t(`layout.tabs.${tab.to}`)}
             </Link>
           ))}
         </nav>

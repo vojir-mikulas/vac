@@ -25,6 +25,17 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -142,20 +153,36 @@ function JobCard({ appId, job }: { appId: string; job: ScheduledJob }) {
             {t('jobs.runNow')}
           </Button>
           <JobDialog appId={appId} job={job} />
-          <Button
-            variant="danger"
-            size="sm"
-            disabled={remove.isPending}
-            onClick={() => {
-              if (!confirm(t('jobs.confirmDelete', { name: job.name }))) return
-              remove.mutate(job.id, {
-                onSuccess: () => toast.success(t('jobs.jobDeleted')),
-                onError: (e) => toast.error(e.message),
-              })
-            }}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="danger" size="sm" disabled={remove.isPending}>
+                <Trash2 className="size-3.5" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('jobs.deleteDialogTitle')}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('jobs.confirmDelete', { name: job.name })}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() =>
+                    remove.mutate(job.id, {
+                      onSuccess: () => toast.success(t('jobs.jobDeleted')),
+                      onError: (e) => toast.error(e.message),
+                    })
+                  }
+                  disabled={remove.isPending}
+                  className="bg-err text-err-foreground hover:bg-err/90"
+                >
+                  {t('common.delete')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 

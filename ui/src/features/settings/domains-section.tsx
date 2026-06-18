@@ -383,15 +383,8 @@ function DomainRowItem({
   const { t } = useTranslation('settings')
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const del = useDeleteDomainById()
-
-  const onDelete = () => {
-    if (!confirm(t('domains.list.deleteConfirm', { hostname: domain.hostname }))) return
-    del.mutate(domain.id, {
-      onSuccess: () => toast.success(t('domains.list.toast.deleted')),
-      onError: (e) => toast.error(e.message),
-    })
-  }
 
   const binding = domain.app_id
     ? `${domain.appName} · ${domain.service_name}`
@@ -460,7 +453,11 @@ function DomainRowItem({
                 <Pencil />
                 {t('domains.list.edit')}
               </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" disabled={del.isPending} onSelect={onDelete}>
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={del.isPending}
+                onSelect={() => setConfirmDelete(true)}
+              >
                 <Trash2 />
                 {t('domains.list.delete')}
               </DropdownMenuItem>
@@ -470,6 +467,31 @@ function DomainRowItem({
       </div>
       {open ? <DomainConfigPanel domain={domain} /> : null}
       {editing ? <DomainEditDialog domain={domain} onClose={() => setEditing(false)} /> : null}
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('domains.list.deleteDialogTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('domains.list.deleteConfirm', { hostname: domain.hostname })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('domains.list.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                del.mutate(domain.id, {
+                  onSuccess: () => toast.success(t('domains.list.toast.deleted')),
+                  onError: (e) => toast.error(e.message),
+                })
+              }
+              disabled={del.isPending}
+              className="bg-err text-err-foreground hover:bg-err/90"
+            >
+              {t('domains.list.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

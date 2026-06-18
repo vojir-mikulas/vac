@@ -1,4 +1,24 @@
 {
+  "layout": {
+    "title": "Settings",
+    "description": "Account, security, instance, and domains.",
+    "aria": "Settings sections",
+    "tabs": {
+      "appearance": "Appearance",
+      "account": "Account & security",
+      "notifications": "Notifications",
+      "deployments": "Deployments",
+      "apiTokens": "API tokens",
+      "domains": "Domains",
+      "instance": "Instance",
+      "danger": "Danger zone"
+    }
+  },
+  "appearance": {
+    "title": "Appearance",
+    "theme": "Theme",
+    "themeDescription": "Choose light, dark, or follow your system preference."
+  },
   "language": {
     "heading": "Language",
     "label": "Display language",
@@ -54,6 +74,11 @@
     "neverUsed": "never used",
     "expires": "expires {{time}}",
     "revoke": "Revoke",
+    "cancel": "Cancel",
+    "revokeDialog": {
+      "title": "Revoke \"{{name}}\"?",
+      "description": "Any client or CI pipeline using this token loses access immediately. This can't be undone."
+    },
     "empty": "No API tokens yet.",
     "newToken": "New token",
     "toast": {
@@ -72,6 +97,11 @@
   "sessions": {
     "heading": "Active sessions",
     "revokeAllOthers": "Revoke all others",
+    "cancel": "Cancel",
+    "revokeAllOthersDialog": {
+      "title": "Revoke all other sessions?",
+      "description": "Every other signed-in device is logged out immediately. This device stays signed in."
+    },
     "unknownDevice": "Unknown device",
     "thisDevice": "This device",
     "active": "active {{time}}",
@@ -132,8 +162,11 @@
     "enableFlow": {
       "recoveryTitle": "Save your recovery codes",
       "setupTitle": "Set up two-factor authentication",
-      "recoveryHint": "Store these somewhere safe. Each code can be used once if you lose your device.",
+      "recoveryHint": "Store these somewhere safe. Each code can be used once if you lose your device. They won't be shown again.",
       "copyCodes": "Copy codes",
+      "downloadCodes": "Download",
+      "ackLabel": "I've saved my recovery codes somewhere safe",
+      "done": "Done",
       "codeLabel": "Enter the 6-digit code",
       "submit": "Verify & enable"
     },
@@ -270,6 +303,8 @@
       "delete": "Delete",
       "actionsLabel": "Domain actions",
       "deleteConfirm": "Delete {{hostname}}? Its route is removed immediately.",
+      "deleteDialogTitle": "Delete domain?",
+      "cancel": "Cancel",
       "toast": {
         "deleted": "Domain deleted"
       }

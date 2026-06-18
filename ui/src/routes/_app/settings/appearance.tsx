@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 
 import { SectionHeader } from '@/components/common/section-header'
 import { Card } from '@/components/ui/card'
@@ -9,16 +10,15 @@ export const Route = createFileRoute('/_app/settings/appearance')({
 })
 
 function AppearanceSection() {
+  const { t } = useTranslation('settings')
   return (
     <section>
-      <SectionHeader>Appearance</SectionHeader>
+      <SectionHeader>{t('appearance.title')}</SectionHeader>
       <Card className="p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <div className="text-sm font-medium">Theme</div>
-            <p className="text-xs text-muted-foreground">
-              Choose light, dark, or follow your system preference.
-            </p>
+            <div className="text-sm font-medium">{t('appearance.theme')}</div>
+            <p className="text-xs text-muted-foreground">{t('appearance.themeDescription')}</p>
           </div>
           <ThemeToggle />
         </div>

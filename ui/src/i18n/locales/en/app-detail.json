@@ -6,6 +6,28 @@
     "delete": "Delete",
     "errorFallback": "—"
   },
+  "layout": {
+    "tabs": {
+      "overview": "Overview",
+      "services": "Services",
+      "deploys": "Deploys",
+      "previews": "Previews",
+      "logs": "Logs",
+      "jobs": "Jobs",
+      "environment": "Environment",
+      "settings": "Settings",
+      "backups": "Backups",
+      "databases": "Databases"
+    },
+    "preview": "Preview",
+    "maintenance": "Maintenance",
+    "suspended": "Suspended",
+    "installedFrom": "Installed from {{name}}",
+    "addonFallback": "add-on",
+    "deployFromHead": "Deploy from HEAD",
+    "deployTriggered": "Deploy triggered",
+    "sectionsAria": "App sections"
+  },
   "traffic": {
     "title": "Request traffic",
     "empty": "No traffic recorded in this range.",
@@ -117,6 +139,7 @@
     "backupNow": "Back up now",
     "backupStarted": "Backup started",
     "confirmDelete": "Delete the backup config for {{service}}?",
+    "deleteDialogTitle": "Delete backup config?",
     "configDeleted": "Backup config deleted",
     "fieldSchedule": "Schedule",
     "fieldDestination": "Destination",
@@ -195,6 +218,7 @@
     "runNow": "Run now",
     "runTriggered": "Job run started",
     "confirmDelete": "Delete the job \"{{name}}\"?",
+    "deleteDialogTitle": "Delete job?",
     "jobDeleted": "Job deleted",
     "fieldSchedule": "Schedule",
     "fieldTimeout": "Timeout",
@@ -246,6 +270,8 @@
     "emptyTitle": "No managed databases",
     "emptyDescription": "Add a database and VAC provisions it, injects the connection string as an env var, and schedules a nightly backup — no manual config.",
     "confirmRemove": "Remove the {{engine}} database \"{{name}}\"? This drops the data.",
+    "removeDialogTitle": "Remove database?",
+    "removeAction": "Remove",
     "removed": "Database removed",
     "fieldDatabase": "Database",
     "fieldEnvVar": "Connection env var",
@@ -318,6 +344,7 @@
   "domains": {
     "noCustom": "No custom domains. This app is reachable at its automatic subdomain.",
     "confirmDelete": "Delete {{hostname}}? Its route is removed immediately.",
+    "deleteDialogTitle": "Delete domain?",
     "deleted": "Domain deleted",
     "managed": "managed",
     "custom": "custom",
@@ -439,6 +466,8 @@
     "stop": "Stop",
     "stopTitle": "Stop",
     "stopAria": "Stop stack",
+    "stopDialogTitle": "Stop this app?",
+    "stopDialogDescription": "All of this app's containers will be stopped and it will stop serving traffic until you start it again.",
     "started": "Stack started",
     "stopped": "Stack stopped",
     "restarted": "Stack restarted"

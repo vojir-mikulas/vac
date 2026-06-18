@@ -7,6 +7,17 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { ListSkeleton } from '@/components/common/list-skeleton'
 import { SwapFade } from '@/components/common/swap-fade'
 import { DomainConfigPanel } from '@/features/settings/domain-config-panel'
@@ -66,14 +77,6 @@ function AppDomainRow({
   const [open, setOpen] = useState(false)
   const del = useDeleteDomain(appId)
 
-  const onDelete = () => {
-    if (!confirm(t('domains.confirmDelete', { hostname: domain.hostname }))) return
-    del.mutate(domain.id, {
-      onSuccess: () => toast.success(t('domains.deleted')),
-      onError: (e) => toast.error(e.message),
-    })
-  }
-
   return (
     <div className={cn('flex flex-col gap-3 px-5 py-3.5', border && 'border-t')}>
       <div className="flex items-center gap-3">
@@ -92,15 +95,41 @@ function AppDomainRow({
             {t('domains.auto')}
           </Badge>
         ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-err-foreground"
-            disabled={del.isPending}
-            onClick={onDelete}
-          >
-            {t('domains.delete')}
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-err-foreground"
+                disabled={del.isPending}
+              >
+                {t('domains.delete')}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('domains.deleteDialogTitle')}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('domains.confirmDelete', { hostname: domain.hostname })}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() =>
+                    del.mutate(domain.id, {
+                      onSuccess: () => toast.success(t('domains.deleted')),
+                      onError: (e) => toast.error(e.message),
+                    })
+                  }
+                  disabled={del.isPending}
+                  className="bg-err text-err-foreground hover:bg-err/90"
+                >
+                  {t('common.delete')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </div>
       {open ? <DomainConfigPanel domain={domain} /> : null}

@@ -3,6 +3,17 @@ import { Play, RotateCw, Square } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { useStackControl } from '@/lib/api/apps'
 import type { AppStatus } from '@/types/api'
 
@@ -64,16 +75,7 @@ export function StackControls({
         >
           <RotateCw className="size-3.5" />
         </Button>
-        <Button
-          variant="danger"
-          size="icon-sm"
-          title={t('stackControls.stopTitle')}
-          aria-label={t('stackControls.stopAria')}
-          disabled={stopDisabled}
-          onClick={() => run('stop')}
-        >
-          <Square className="size-3.5" />
-        </Button>
+        <StopButton compact disabled={stopDisabled} onConfirm={() => run('stop')} />
       </div>
     )
   }
@@ -88,10 +90,60 @@ export function StackControls({
         <RotateCw className="size-3.5" />
         {t('stackControls.restart')}
       </Button>
-      <Button variant="danger" size="sm" disabled={stopDisabled} onClick={() => run('stop')}>
-        <Square className="size-3.5" />
-        {t('stackControls.stop')}
-      </Button>
+      <StopButton compact={false} disabled={stopDisabled} onConfirm={() => run('stop')} />
     </div>
+  )
+}
+
+// Stopping the whole stack takes the app offline, so it's gated behind a confirm
+// dialog (matching app delete / rollback) instead of firing on a single click.
+function StopButton({
+  compact,
+  disabled,
+  onConfirm,
+}: {
+  compact: boolean
+  disabled: boolean
+  onConfirm: () => void
+}) {
+  const { t } = useTranslation('app-detail')
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        {compact ? (
+          <Button
+            variant="danger"
+            size="icon-sm"
+            title={t('stackControls.stopTitle')}
+            aria-label={t('stackControls.stopAria')}
+            disabled={disabled}
+          >
+            <Square className="size-3.5" />
+          </Button>
+        ) : (
+          <Button variant="danger" size="sm" disabled={disabled}>
+            <Square className="size-3.5" />
+            {t('stackControls.stop')}
+          </Button>
+        )}
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('stackControls.stopDialogTitle')}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {t('stackControls.stopDialogDescription')}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className="bg-err text-err-foreground hover:bg-err/90"
+          >
+            {t('stackControls.stop')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

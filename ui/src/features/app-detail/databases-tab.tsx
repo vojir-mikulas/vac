@@ -22,6 +22,17 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -98,21 +109,36 @@ function DatabaseCard({ appId, db }: { appId: string; db: ManagedDatabase }) {
           <span className="font-mono text-sm font-semibold capitalize">{db.engine}</span>
           <StatusPill status={pillStatus(db.status)} size="sm" />
         </div>
-        <Button
-          variant="danger"
-          size="sm"
-          disabled={remove.isPending}
-          onClick={() => {
-            if (!confirm(t('databases.confirmRemove', { engine: db.engine, name: db.db_name })))
-              return
-            remove.mutate(db.id, {
-              onSuccess: () => toast.success(t('databases.removed')),
-              onError: (e) => toast.error(e.message),
-            })
-          }}
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="danger" size="sm" disabled={remove.isPending}>
+              <Trash2 className="size-3.5" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('databases.removeDialogTitle')}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t('databases.confirmRemove', { engine: db.engine, name: db.db_name })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() =>
+                  remove.mutate(db.id, {
+                    onSuccess: () => toast.success(t('databases.removed')),
+                    onError: (e) => toast.error(e.message),
+                  })
+                }
+                disabled={remove.isPending}
+                className="bg-err text-err-foreground hover:bg-err/90"
+              >
+                {t('databases.removeAction')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       <div className="grid gap-x-6 gap-y-1.5 px-5 py-4 text-sm sm:grid-cols-2">

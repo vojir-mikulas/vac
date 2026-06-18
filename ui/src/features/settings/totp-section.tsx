@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { ShieldCheck } from 'lucide-react'
+import { Download, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
@@ -20,6 +20,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { CopyButton } from '@/components/common/copy-button'
+import { downloadFile } from '@/lib/log-export'
 import { authApi, useMe } from '@/lib/api/auth'
 import { queryKeys } from '@/lib/query/keys'
 import type { TotpSetup } from '@/types/api'
@@ -55,6 +56,9 @@ function EnableFlow() {
   const [setup, setSetup] = useState<TotpSetup | null>(null)
   const [code, setCode] = useState('')
   const [recovery, setRecovery] = useState<string[] | null>(null)
+  // Gate the close path: recovery codes are shown exactly once, so the user must
+  // explicitly acknowledge having saved them before the dialog can be dismissed.
+  const [acked, setAcked] = useState(false)
 
   const begin = useMutation({
     mutationFn: () => authApi.totpSetup(),
@@ -77,12 +81,19 @@ function EnableFlow() {
   const open = begin.data != null || begin.isPending
   const onOpenChange = (next: boolean) => {
     if (!next) {
+      // Block dismissal while unacknowledged recovery codes are on screen —
+      // they're irrecoverable once gone. The "Done" button is the only exit.
+      if (recovery && !acked) return
       setSetup(null)
       setCode('')
       setRecovery(null)
+      setAcked(false)
       begin.reset()
     }
   }
+
+  const downloadCodes = () =>
+    recovery && downloadFile('vac-recovery-codes.txt', recovery.join('\n') + '\n', 'text/plain')
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -94,7 +105,17 @@ function EnableFlow() {
           {t('totp.enable')}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent
+        // While recovery codes are shown they can't be retrieved again, so the
+        // only way out is the explicit, acknowledged "Done" button below.
+        showCloseButton={!recovery}
+        onEscapeKeyDown={(e) => {
+          if (recovery) e.preventDefault()
+        }}
+        onInteractOutside={(e) => {
+          if (recovery) e.preventDefault()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>
             {recovery ? t('totp.enableFlow.recoveryTitle') : t('totp.enableFlow.setupTitle')}
@@ -109,7 +130,27 @@ function EnableFlow() {
                 <span key={c}>{c}</span>
               ))}
             </div>
-            <CopyButton value={recovery.join('\n')} label={t('totp.enableFlow.copyCodes')} />
+            <div className="flex gap-2">
+              <CopyButton value={recovery.join('\n')} label={t('totp.enableFlow.copyCodes')} />
+              <Button variant="outline" size="sm" onClick={downloadCodes}>
+                <Download className="size-3.5" />
+                {t('totp.enableFlow.downloadCodes')}
+              </Button>
+            </div>
+            <label className="mt-1 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={acked}
+                onChange={(e) => setAcked(e.target.checked)}
+                className="size-4 accent-[var(--brand)]"
+              />
+              {t('totp.enableFlow.ackLabel')}
+            </label>
+            <DialogFooter>
+              <Button variant="brand" disabled={!acked} onClick={() => onOpenChange(false)}>
+                {t('totp.enableFlow.done')}
+              </Button>
+            </DialogFooter>
           </div>
         ) : setup ? (
           <div className="flex flex-col gap-4">

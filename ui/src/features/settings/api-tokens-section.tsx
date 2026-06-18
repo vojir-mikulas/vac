@@ -18,6 +18,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { CopyButton } from '@/components/common/copy-button'
 import { authApi, useApiTokens } from '@/lib/api/auth'
 import { queryKeys } from '@/lib/query/keys'
@@ -64,14 +75,11 @@ export function ApiTokensSection() {
                     : ''}
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
+              <RevokeTokenButton
+                name={token.name}
                 disabled={revoke.isPending}
-                onClick={() => revoke.mutate(token.id)}
-              >
-                {t('apiTokens.revoke')}
-              </Button>
+                onConfirm={() => revoke.mutate(token.id)}
+              />
             </div>
           ))
         ) : (
@@ -81,6 +89,44 @@ export function ApiTokensSection() {
         )}
       </Card>
     </section>
+  )
+}
+
+// A token may be in active use by a client or CI pipeline, so revoking it is
+// gated behind a confirm that names the token.
+function RevokeTokenButton({
+  name,
+  disabled,
+  onConfirm,
+}: {
+  name: string
+  disabled: boolean
+  onConfirm: () => void
+}) {
+  const { t } = useTranslation('settings')
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="ghost" size="sm" disabled={disabled}>
+          {t('apiTokens.revoke')}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('apiTokens.revokeDialog.title', { name })}</AlertDialogTitle>
+          <AlertDialogDescription>{t('apiTokens.revokeDialog.description')}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('apiTokens.cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className="bg-err text-err-foreground hover:bg-err/90"
+          >
+            {t('apiTokens.revoke')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 

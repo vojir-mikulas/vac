@@ -33,6 +33,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -174,20 +175,36 @@ function BackupCard({ appId, config }: { appId: string; config: BackupConfig }) 
             {t('backups.backupNow')}
           </Button>
           <BackupDialog appId={appId} config={config} />
-          <Button
-            variant="danger"
-            size="sm"
-            disabled={remove.isPending}
-            onClick={() => {
-              if (!confirm(t('backups.confirmDelete', { service: config.service_name }))) return
-              remove.mutate(config.id, {
-                onSuccess: () => toast.success(t('backups.configDeleted')),
-                onError: (e) => toast.error(e.message),
-              })
-            }}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="danger" size="sm" disabled={remove.isPending}>
+                <Trash2 className="size-3.5" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('backups.deleteDialogTitle')}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('backups.confirmDelete', { service: config.service_name })}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() =>
+                    remove.mutate(config.id, {
+                      onSuccess: () => toast.success(t('backups.configDeleted')),
+                      onError: (e) => toast.error(e.message),
+                    })
+                  }
+                  disabled={remove.isPending}
+                  className="bg-err text-err-foreground hover:bg-err/90"
+                >
+                  {t('common.delete')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 

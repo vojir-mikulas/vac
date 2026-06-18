@@ -46,11 +46,19 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
-  // i18n guard against new hardcoded user-facing strings. All feature folders and
-  // the shared log components are migrated to t() (i18n plan, Phase C), so the
-  // guard is live. Tests are exempt — they assert on rendered English.
+  // i18n guard against new hardcoded user-facing strings. All feature folders, the
+  // shared log components, and the persistent app chrome (sidebar/topbar/theme
+  // toggle/command menu) are migrated to t(), so the guard is live for them. Tests
+  // are exempt — they assert on rendered English.
   {
-    files: ['src/features/**/*.{ts,tsx}', 'src/components/common/log-*.tsx'],
+    files: [
+      'src/features/**/*.{ts,tsx}',
+      'src/components/common/log-*.tsx',
+      'src/components/layout/sidebar.tsx',
+      'src/components/layout/topbar.tsx',
+      'src/components/layout/command-menu.tsx',
+      'src/components/theme/theme-toggle.tsx',
+    ],
     ignores: ['src/features/**/*.test.{ts,tsx}'],
     plugins: { i18next },
     rules: {

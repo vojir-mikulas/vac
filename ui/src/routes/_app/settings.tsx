@@ -1,4 +1,5 @@
 import { Link, Outlet, createFileRoute } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import {
   Bell,
   Globe,
@@ -16,24 +17,26 @@ export const Route = createFileRoute('/_app/settings')({
   component: SettingsLayout,
 })
 
+// `key` indexes into the `layout.tabs.*` i18n catalog; resolved at render.
 const TABS = [
-  { to: 'appearance', label: 'Appearance', icon: Settings2 },
-  { to: 'account', label: 'Account & security', icon: UserCog },
-  { to: 'notifications', label: 'Notifications', icon: Bell },
-  { to: 'deployments', label: 'Deployments', icon: Rocket },
-  { to: 'api-tokens', label: 'API tokens', icon: KeyRound },
-  { to: 'domains', label: 'Domains', icon: Globe },
-  { to: 'instance', label: 'Instance', icon: Server },
-  { to: 'danger', label: 'Danger zone', icon: ShieldAlert },
+  { to: 'appearance', key: 'appearance', icon: Settings2 },
+  { to: 'account', key: 'account', icon: UserCog },
+  { to: 'notifications', key: 'notifications', icon: Bell },
+  { to: 'deployments', key: 'deployments', icon: Rocket },
+  { to: 'api-tokens', key: 'apiTokens', icon: KeyRound },
+  { to: 'domains', key: 'domains', icon: Globe },
+  { to: 'instance', key: 'instance', icon: Server },
+  { to: 'danger', key: 'danger', icon: ShieldAlert },
 ] as const
 
 function SettingsLayout() {
+  const { t } = useTranslation('settings')
   return (
     <PageContainer>
-      <PageHeader title="Settings" description="Account, security, instance, and domains." />
+      <PageHeader title={t('layout.title')} description={t('layout.description')} />
       <div className="flex flex-col gap-6 md:flex-row">
         <nav
-          aria-label="Settings sections"
+          aria-label={t('layout.aria')}
           className="flex h-fit w-full shrink-0 flex-col gap-0.5 md:sticky md:top-3 md:w-56"
         >
           {TABS.map((tab) => (
@@ -44,7 +47,7 @@ function SettingsLayout() {
               activeProps={{ 'data-status': 'active', 'aria-current': 'page' }}
             >
               <tab.icon className="size-4" />
-              {tab.label}
+              {t(`layout.tabs.${tab.key}`)}
             </Link>
           ))}
         </nav>

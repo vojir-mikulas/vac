@@ -8,6 +8,17 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { authApi, useSessions } from '@/lib/api/auth'
 import { queryKeys } from '@/lib/query/keys'
 import { relativeTime } from '@/lib/format'
@@ -41,14 +52,30 @@ export function SessionsSection() {
     <section>
       <SectionHeader
         action={
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={revokeOthers.isPending}
-            onClick={() => revokeOthers.mutate()}
-          >
-            {t('sessions.revokeAllOthers')}
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="sm" disabled={revokeOthers.isPending}>
+                {t('sessions.revokeAllOthers')}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('sessions.revokeAllOthersDialog.title')}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('sessions.revokeAllOthersDialog.description')}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('sessions.cancel')}</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => revokeOthers.mutate()}
+                  className="bg-err text-err-foreground hover:bg-err/90"
+                >
+                  {t('sessions.revokeAllOthers')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         }
       >
         {t('sessions.heading')}

@@ -39,5 +39,69 @@
     "submit": "Verify",
     "cancel": "Cancel",
     "error": "Verification failed. Check the code and try again."
+  },
+  "nav": {
+    "aria": "Primary",
+    "apps": "Apps",
+    "deployments": "Deployments",
+    "activity": "Activity",
+    "security": "Security",
+    "addons": "Add-ons",
+    "database": "Database",
+    "backups": "Backups",
+    "storage": "Storage",
+    "settings": "Settings"
+  },
+  "badge": {
+    "active": "{{count}} active",
+    "issuesNeedAttention_one": "{{count}} issue needs attention",
+    "issuesNeedAttention_other": "{{count}} issues need attention",
+    "warnings_one": "{{count}} warning",
+    "warnings_other": "{{count}} warnings",
+    "backupsFailed_one": "{{count}} backup failed recently",
+    "backupsFailed_other": "{{count}} backups failed recently"
+  },
+  "host": {
+    "thisHost": "This host",
+    "host": "Host",
+    "cpu": "CPU",
+    "ram": "RAM",
+    "disk": "Disk",
+    "usage": "{{label}} usage"
+  },
+  "crumbs": {
+    "apps": "Apps",
+    "new": "New",
+    "deployments": "Deployments",
+    "database": "Database",
+    "logs": "Logs",
+    "settings": "Settings",
+    "overview": "Overview",
+    "services": "Services",
+    "deploys": "Deploys",
+    "environment": "Environment"
+  },
+  "topbar": {
+    "openMenu": "Open menu",
+    "navigation": "Navigation",
+    "breadcrumb": "Breadcrumb",
+    "search": "Search…",
+    "searchAria": "Search — ⌘K",
+    "accountMenu": "Account menu",
+    "account": "Account",
+    "signOut": "Sign out"
+  },
+  "theme": {
+    "theme": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "command": {
+    "placeholder": "Search apps, deploys, settings…",
+    "empty": "No results found.",
+    "navigate": "Navigate",
+    "apps": "Apps",
+    "newApp": "New App"
   }
 }
