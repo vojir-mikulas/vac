@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/common/empty-state'
 import { ErrorState } from '@/components/common/error-state'
 import { ListSkeleton } from '@/components/common/list-skeleton'
 import { StatStripSkeleton } from '@/components/common/stat-strip-skeleton'
+import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -272,17 +273,17 @@ function TrafficPanel() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div>
               <SectionHeader>{t('traffic.topTalkers.heading')}</SectionHeader>
-              <TopTalkersTable talkers={data?.top_talkers ?? []} />
+              <TopTalkersTable talkers={data?.top_talkers ?? []} yourIp={data?.your_ip} />
             </div>
             <div>
               <SectionHeader>{t('traffic.anomalies.heading')}</SectionHeader>
-              <AnomaliesList anomalies={data?.recent_anomalies ?? []} />
+              <AnomaliesList anomalies={data?.recent_anomalies ?? []} yourIp={data?.your_ip} />
             </div>
           </div>
 
           <div className="mt-6">
             <SectionHeader>{t('traffic.recentRequests.heading')}</SectionHeader>
-            <RecentRequestsTable requests={data?.recent_requests ?? []} />
+            <RecentRequestsTable requests={data?.recent_requests ?? []} yourIp={data?.your_ip} />
           </div>
         </>
       )}
@@ -290,7 +291,7 @@ function TrafficPanel() {
   )
 }
 
-function RecentRequestsTable({ requests }: { requests: RecentRequest[] }) {
+function RecentRequestsTable({ requests, yourIp }: { requests: RecentRequest[]; yourIp?: string }) {
   const { t } = useTranslation('security')
   if (requests.length === 0) {
     return (
@@ -329,7 +330,8 @@ function RecentRequestsTable({ requests }: { requests: RecentRequest[] }) {
                 {r.path}
               </div>
             </div>
-            <span className="w-28 shrink-0 truncate text-right font-mono text-2xs text-muted-foreground">
+            <span className="flex w-28 shrink-0 items-center justify-end gap-1.5 truncate text-right font-mono text-2xs text-muted-foreground">
+              {isYou(r.ip, yourIp) ? <YouBadge /> : null}
               {r.ip}
             </span>
             <span className="w-16 shrink-0 text-right text-2xs text-muted-foreground">
@@ -342,6 +344,31 @@ function RecentRequestsTable({ requests }: { requests: RecentRequest[] }) {
   )
 }
 
+// normalizeIP lowercases and strips an IPv4-mapped IPv6 prefix so the snapshot's
+// your_ip (from the request's RemoteAddr) compares cleanly to the row IPs Caddy
+// records in its access log for the same client.
+function normalizeIP(ip: string): string {
+  return ip
+    .trim()
+    .toLowerCase()
+    .replace(/^::ffff:/, '')
+}
+
+// isYou reports whether a row's source IP is the operator's own connection.
+function isYou(ip: string, yourIp: string | undefined): boolean {
+  return !!yourIp && normalizeIP(ip) === normalizeIP(yourIp)
+}
+
+// YouBadge marks a row whose source IP is the operator's own connection.
+function YouBadge() {
+  const { t } = useTranslation('security')
+  return (
+    <Badge variant="info" className="text-2xs" title={t('traffic.youTitle')}>
+      {t('traffic.you')}
+    </Badge>
+  )
+}
+
 // statusTone colours an HTTP status: 2xx ok, 3xx muted, 4xx warn, 5xx error.
 function statusTone(status: number): string {
   if (status >= 500) return 'text-err'
@@ -350,7 +377,7 @@ function statusTone(status: number): string {
   return 'text-ok'
 }
 
-function TopTalkersTable({ talkers }: { talkers: TopTalker[] }) {
+function TopTalkersTable({ talkers, yourIp }: { talkers: TopTalker[]; yourIp?: string }) {
   const { t } = useTranslation('security')
   if (talkers.length === 0) {
     return (
@@ -370,7 +397,10 @@ function TopTalkersTable({ talkers }: { talkers: TopTalker[] }) {
       {talkers.map((t, i) => (
         <div key={t.ip} className={`flex items-center gap-4 px-5 py-3 ${i > 0 ? 'border-t' : ''}`}>
           <div className="min-w-0 flex-1">
-            <div className="truncate font-mono text-xs font-medium">{t.ip}</div>
+            <div className="flex items-center gap-1.5 truncate font-mono text-xs font-medium">
+              {t.ip}
+              {isYou(t.ip, yourIp) ? <YouBadge /> : null}
+            </div>
             {t.user_agent ? (
               <div className="truncate text-2xs text-muted-foreground">{t.user_agent}</div>
             ) : null}
@@ -391,8 +421,10 @@ function TopTalkersTable({ talkers }: { talkers: TopTalker[] }) {
 
 function AnomaliesList({
   anomalies,
+  yourIp,
 }: {
   anomalies: { at: string; ip: string; kind: string; detail: string }[]
+  yourIp?: string
 }) {
   const { t } = useTranslation('security')
   if (anomalies.length === 0) {
@@ -414,6 +446,7 @@ function AnomaliesList({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium capitalize">{a.kind}</span>
+              {isYou(a.ip, yourIp) ? <YouBadge /> : null}
               <span className="text-2xs text-muted-foreground">{relativeTime(a.at)}</span>
             </div>
             <p className="mt-0.5 text-sm text-muted-foreground">{a.detail}</p>

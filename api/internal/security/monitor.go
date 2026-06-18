@@ -137,6 +137,10 @@ type Snapshot struct {
 	TopTalkers      []TopTalker     `json:"top_talkers"`     // busiest sources, capped
 	RecentRequests  []RecentRequest `json:"recent_requests"` // live tail, newest first
 	RecentAnomalies []Anomaly       `json:"recent_anomalies"`
+	// YourIP is the source IP of the request that fetched this snapshot, so the
+	// UI can badge rows that are the operator's own traffic. Set by the handler
+	// (it knows the request); the monitor leaves it empty. Omitted when unknown.
+	YourIP string `json:"your_ip,omitempty"`
 }
 
 // Monitor maintains bounded streaming per-IP counters fed by the access-log

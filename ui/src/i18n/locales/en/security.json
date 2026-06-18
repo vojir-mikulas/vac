@@ -29,6 +29,8 @@
     "heading": "Traffic",
     "windowLabel": "{{seconds}}s window",
     "live": "live",
+    "you": "You",
+    "youTitle": "This is the IP you're connected from",
     "stats": {
       "trackedIps": "Tracked IPs",
       "requests": "Requests",

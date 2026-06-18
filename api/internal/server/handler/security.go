@@ -45,15 +45,24 @@ func SecurityPostureHandler(p SecurityPosture) http.HandlerFunc {
 // than erroring.
 func SecurityTrafficHandler(t SecurityTraffic) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		yourIP := ""
+		if addr := clientIP(r); addr != nil {
+			// Unmap so an IPv4-mapped IPv6 form ("::ffff:1.2.3.4") matches the
+			// plain IPv4 the access log records for the same client.
+			yourIP = addr.Unmap().String()
+		}
 		if t == nil {
 			WriteJSON(w, http.StatusOK, security.Snapshot{
 				TopTalkers:      []security.TopTalker{},
 				RecentRequests:  []security.RecentRequest{},
 				RecentAnomalies: []security.Anomaly{},
+				YourIP:          yourIP,
 			})
 			return
 		}
-		WriteJSON(w, http.StatusOK, t.Snapshot(20))
+		snap := t.Snapshot(20)
+		snap.YourIP = yourIP
+		WriteJSON(w, http.StatusOK, snap)
 	}
 }
 

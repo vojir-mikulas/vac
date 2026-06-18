@@ -730,6 +730,9 @@ export interface TrafficSnapshot {
   top_talkers: TopTalker[]
   recent_requests: RecentRequest[]
   recent_anomalies: TrafficAnomaly[]
+  // Source IP of the request that fetched this snapshot, so rows matching it can
+  // be badged as the operator's own traffic. Absent when the IP is unknown.
+  your_ip?: string
 }
 
 export interface Fail2banJail {
