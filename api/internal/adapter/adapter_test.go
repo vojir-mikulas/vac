@@ -119,6 +119,21 @@ func TestFrameworkAdapter_Vite(t *testing.T) {
 	}
 }
 
+// A pnpm project must be built with pnpm (honoring its lockfile), not a blanket
+// `npm install` that re-resolves and chokes on peer conflicts the lockfile pinned past.
+func TestFrameworkAdapter_Vite_LockfileAware(t *testing.T) {
+	t.Parallel()
+	d := t.TempDir()
+	write(t, d, "pnpm-lock.yaml", "lockfileVersion: '9.0'\n")
+	df, _ := prepareAndRead(t, d, adapter.BuildConfig{Framework: "vite"})
+	if !strings.Contains(df, "pnpm install --frozen-lockfile") {
+		t.Errorf("vite with a pnpm lockfile should install via pnpm:\n%s", df)
+	}
+	if strings.Contains(df, "npm install &&") {
+		t.Errorf("vite should not hardcode npm install when a lockfile is present:\n%s", df)
+	}
+}
+
 func TestFrameworkAdapter_Next_Modes(t *testing.T) {
 	t.Parallel()
 	t.Run("standalone", func(t *testing.T) {

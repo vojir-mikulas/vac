@@ -29,9 +29,14 @@ const nodeBuild = `RUN if [ -f pnpm-lock.yaml ]; then corepack enable && pnpm ru
 // nginx — the React/Vite (and Astro-static) shape. A single-stage build keeps
 // the generated file small; the build command stays user-overridable.
 func prepareStaticNode(repoDir string, cfg BuildConfig, framework, defaultOut, nginxConf string) (string, error) {
-	build := strings.TrimSpace(cfg.BuildCommand)
-	if build == "" {
-		build = "npm install && npm run build"
+	// Default to the lockfile-aware install+build the other Node paths use, so a
+	// pnpm/yarn project is built with its own package manager (and lockfile)
+	// rather than a blanket `npm install` — npm re-resolves from scratch and
+	// fails hard on peer conflicts a pnpm/yarn lockfile already pinned past.
+	// An explicit build command overrides the whole step.
+	steps := nodeInstall + "\n" + nodeBuild
+	if c := strings.TrimSpace(cfg.BuildCommand); c != "" {
+		steps = "RUN " + c
 	}
 	out := strings.TrimSpace(cfg.StaticDir)
 	if out == "" {
@@ -45,11 +50,11 @@ func prepareStaticNode(repoDir string, cfg BuildConfig, framework, defaultOut, n
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY . .
-RUN %s
+%s
 FROM nginx:alpine
 COPY --from=build /app/%s /usr/share/nginx/html
 COPY %s /etc/nginx/conf.d/default.conf
-`, framework, build, out, frameworkNginxConfName)
+`, framework, steps, out, frameworkNginxConfName)
 	return writeFramework(repoDir, df, 80)
 }
 
