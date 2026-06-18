@@ -118,6 +118,26 @@ type Handler struct {
 	// header (Caddy expands the {http.request.uri} placeholder to preserve path).
 	StatusCode int                 `json:"status_code,omitempty"`
 	Headers    map[string][]string `json:"headers,omitempty"`
+	// Body is the inline response body Caddy serves for a static_response. VAC
+	// uses it for the maintenance page (status 503 + HTML body) — the page lives
+	// in Caddy's in-memory config, so it must stay size-bounded (see
+	// maintenance.MaxHTMLBytes). Empty on redirect/proxy routes.
+	Body string `json:"body,omitempty"`
+	// URI is the rewrite handler's target request URI. The scale-to-zero wake
+	// route uses handler "rewrite" with URI "/__vac_wake" to funnel any path on a
+	// suspended host to vac-api's wake interceptor.
+	URI string `json:"uri,omitempty"`
+	// Request is the headers handler's request-header mutation. The wake route
+	// uses handler "headers" to carry the original host and URI to vac-api (via
+	// Caddy placeholders) so the waker can resolve the app and redirect back.
+	Request *HeaderOps `json:"request,omitempty"`
+}
+
+// HeaderOps is the subset of Caddy's headers-handler ops VAC uses: setting
+// (overwriting) request headers. Values may contain Caddy placeholders such as
+// {http.request.host} and {http.request.orig_uri}.
+type HeaderOps struct {
+	Set map[string][]string `json:"set,omitempty"`
 }
 
 type Upstream struct {

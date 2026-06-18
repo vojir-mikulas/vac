@@ -32,7 +32,13 @@ import {
   updateApp,
   updateService,
 } from './db'
+import type { AppRecord } from './types'
 import { daysAgoISO, fakeSha, nowISO, uid } from './util'
+
+// Stand-in for the backend's embedded default maintenance page (the mock only
+// needs something non-empty to round-trip the is_default flag and preview).
+const DEFAULT_MAINTENANCE_HTML =
+  '<!doctype html><html><body><h1>We’ll be right back</h1></body></html>'
 
 export class MockHttpError extends Error {
   readonly status: number
@@ -372,6 +378,117 @@ const routes: Route[] = [
     handler: (ctx) => ok(sshKeyFor(appOr404(ctx).slug, true)),
   },
 
+  // ── Maintenance mode + editable page ────────────────────────────────────────
+  {
+    method: 'GET',
+    pattern: 'apps/:id/maintenance',
+    handler: (ctx) => {
+      const a = appOr404(ctx)
+      return ok({
+        enabled: a.maintenance_mode,
+        auto: a.maintenance_auto,
+        active: a.maintenance_active,
+        has_custom_page: a.maintenance_html != null,
+      })
+    },
+  },
+  {
+    method: 'PUT',
+    pattern: 'apps/:id/maintenance',
+    handler: (ctx) => {
+      const a = appOr404(ctx)
+      const body = (ctx.body ?? {}) as { enabled?: boolean; auto?: boolean }
+      a.maintenance_mode = !!body.enabled
+      a.maintenance_auto = !!body.auto
+      a.maintenance_active = !!body.enabled
+      return ok({
+        enabled: a.maintenance_mode,
+        auto: a.maintenance_auto,
+        active: a.maintenance_active,
+        has_custom_page: a.maintenance_html != null,
+      })
+    },
+  },
+  {
+    method: 'GET',
+    pattern: 'apps/:id/maintenance/page',
+    handler: (ctx) => {
+      const a = appOr404(ctx)
+      return ok({
+        html: a.maintenance_html ?? DEFAULT_MAINTENANCE_HTML,
+        is_default: a.maintenance_html == null,
+      })
+    },
+  },
+  {
+    method: 'PUT',
+    pattern: 'apps/:id/maintenance/page',
+    handler: (ctx) => {
+      const a = appOr404(ctx)
+      const body = (ctx.body ?? {}) as { html?: string }
+      a.maintenance_html = body.html ?? ''
+      return ok({ html: a.maintenance_html, is_default: false })
+    },
+  },
+  {
+    method: 'DELETE',
+    pattern: 'apps/:id/maintenance/page',
+    handler: (ctx) => {
+      const a = appOr404(ctx)
+      a.maintenance_html = null
+      return ok({ html: DEFAULT_MAINTENANCE_HTML, is_default: true })
+    },
+  },
+
+  // ── Deploy windows ──────────────────────────────────────────────────────────
+  {
+    method: 'GET',
+    pattern: 'apps/:id/deploy-window',
+    handler: (ctx) => ok({ windows: appOr404(ctx).deploy_window ?? [] }),
+  },
+  {
+    method: 'PUT',
+    pattern: 'apps/:id/deploy-window',
+    handler: (ctx) => {
+      const a = appOr404(ctx)
+      const body = (ctx.body ?? {}) as { windows?: unknown[] }
+      a.deploy_window = (body.windows ?? []) as AppRecord['deploy_window']
+      return ok({ windows: a.deploy_window })
+    },
+  },
+
+  // ── Scale-to-zero (idle suspend) ────────────────────────────────────────────
+  {
+    method: 'GET',
+    pattern: 'apps/:id/idle-suspend',
+    handler: (ctx) => {
+      const a = appOr404(ctx)
+      return ok({
+        enabled: a.idle_suspend_enabled,
+        timeout_minutes: a.idle_timeout_minutes,
+        suspended: a.suspended,
+        last_traffic_at: a.last_traffic_at,
+      })
+    },
+  },
+  {
+    method: 'PUT',
+    pattern: 'apps/:id/idle-suspend',
+    handler: (ctx) => {
+      const a = appOr404(ctx)
+      const body = (ctx.body ?? {}) as { enabled?: boolean; timeout_minutes?: number | null }
+      a.idle_suspend_enabled = !!body.enabled
+      a.idle_timeout_minutes =
+        body.timeout_minutes != null && body.timeout_minutes > 0 ? body.timeout_minutes : null
+      return ok({
+        enabled: a.idle_suspend_enabled,
+        timeout_minutes: a.idle_timeout_minutes,
+        suspended: a.suspended,
+        last_traffic_at: a.last_traffic_at,
+      })
+    },
+  },
+
   // ── Services ──────────────────────────────────────────────────────────────
   { method: 'GET', pattern: 'apps/:id/services', handler: (ctx) => ok(appOr404(ctx).services) },
   {
@@ -403,6 +520,26 @@ const routes: Route[] = [
   },
 
   // ── Deployments ─────────────────────────────────────────────────────────────
+  // Approval gate (Phase 4). `pending` is a static segment registered BEFORE the
+  // `:did` routes so first-match-wins doesn't capture it as a deployment id.
+  {
+    method: 'GET',
+    pattern: 'apps/:id/deployments/pending',
+    handler: (ctx) => {
+      appOr404(ctx)
+      return ok([])
+    },
+  },
+  {
+    method: 'POST',
+    pattern: 'apps/:id/deployments/:did/approve',
+    handler: (ctx) => ok({ id: ctx.params.did, status: 'queued' }),
+  },
+  {
+    method: 'POST',
+    pattern: 'apps/:id/deployments/:did/reject',
+    handler: (ctx) => ok({ id: ctx.params.did, status: 'canceled' }),
+  },
   {
     method: 'GET',
     pattern: 'apps/:id/deployments',

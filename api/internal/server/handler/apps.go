@@ -94,6 +94,18 @@ type appDTO struct {
 	// list; ParentAppID links it back to the app it was branched from.
 	IsPreview   bool    `json:"is_preview"`
 	ParentAppID *string `json:"parent_app_id,omitempty"`
+	// Maintenance mode (docs/plans/maintenance-mode-and-deploy-gates.md):
+	// MaintenanceActive drives the overview badge; Mode/Auto pre-fill the toggle.
+	MaintenanceMode   bool `json:"maintenance_mode"`
+	MaintenanceAuto   bool `json:"maintenance_auto"`
+	MaintenanceActive bool `json:"maintenance_active"`
+	// Scale-to-zero (docs/plans/scale-to-zero.md): IdleSuspendEnabled/IdleTimeoutMinutes
+	// pre-fill the settings toggle; Suspended drives the overview badge;
+	// LastTrafficAt feeds the "last active" hint.
+	IdleSuspendEnabled bool       `json:"idle_suspend_enabled"`
+	IdleTimeoutMinutes *int       `json:"idle_timeout_minutes"`
+	Suspended          bool       `json:"suspended"`
+	LastTrafficAt      *time.Time `json:"last_traffic_at,omitempty"`
 }
 
 // toAppDTO maps a store row to the wire DTO. cat (nil-able) resolves an add-on
@@ -104,23 +116,30 @@ func toAppDTO(a store.App, cat AddonCatalog) appDTO {
 		bc = json.RawMessage("{}")
 	}
 	d := appDTO{
-		ID:          a.ID,
-		Name:        a.Name,
-		Slug:        a.Slug,
-		GitURL:      a.GitURL,
-		GitBranch:   a.GitBranch,
-		ComposeFile: a.ComposeFile,
-		BuildKind:   a.BuildKind,
-		BuildConfig: bc,
-		Status:      a.Status,
-		MemLimitMB:  a.MemLimitMB,
-		DiskLimitMB: a.DiskLimitMB,
-		CreatedAt:   a.CreatedAt,
-		UpdatedAt:   a.UpdatedAt,
-		Source:      a.Source,
-		TemplateID:  a.TemplateID,
-		IsPreview:   a.IsPreview,
-		ParentAppID: a.ParentAppID,
+		ID:                 a.ID,
+		Name:               a.Name,
+		Slug:               a.Slug,
+		GitURL:             a.GitURL,
+		GitBranch:          a.GitBranch,
+		ComposeFile:        a.ComposeFile,
+		BuildKind:          a.BuildKind,
+		BuildConfig:        bc,
+		Status:             a.Status,
+		MemLimitMB:         a.MemLimitMB,
+		DiskLimitMB:        a.DiskLimitMB,
+		CreatedAt:          a.CreatedAt,
+		UpdatedAt:          a.UpdatedAt,
+		Source:             a.Source,
+		TemplateID:         a.TemplateID,
+		IsPreview:          a.IsPreview,
+		ParentAppID:        a.ParentAppID,
+		MaintenanceMode:    a.MaintenanceMode,
+		MaintenanceAuto:    a.MaintenanceAuto,
+		MaintenanceActive:  a.MaintenanceActive,
+		IdleSuspendEnabled: a.IdleSuspendEnabled,
+		IdleTimeoutMinutes: a.IdleTimeoutMinutes,
+		Suspended:          a.Suspended,
+		LastTrafficAt:      a.LastTrafficAt,
 	}
 	if a.Source == store.AppSourceTemplate && a.TemplateID != nil && cat != nil {
 		if t, ok := cat.Get(*a.TemplateID); ok {

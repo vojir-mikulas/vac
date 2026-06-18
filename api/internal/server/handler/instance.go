@@ -106,6 +106,9 @@ func InstanceInfo(cfg config.Config) http.HandlerFunc {
 			// P3.4 gate. The UI hides the per-service Shell affordance until the
 			// operator opts into the interactive container-shell endpoint.
 			"enable_shell": cfg.EnableShell,
+			// Scale-to-zero master gate. The UI hides the per-app idle-suspend
+			// toggle until the operator opts in (VAC_IDLE_SUSPEND).
+			"idle_suspend": cfg.IdleSuspend,
 		})
 	}
 }

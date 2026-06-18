@@ -101,6 +101,16 @@ function AppDetailLayout() {
                   Preview
                 </span>
               ) : null}
+              {app.maintenance_active ? (
+                <span className="rounded-sm bg-warn/15 px-1.5 py-0.5 text-2xs font-medium text-warn-foreground">
+                  Maintenance
+                </span>
+              ) : null}
+              {app.suspended ? (
+                <span className="rounded-sm bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
+                  Suspended
+                </span>
+              ) : null}
             </div>
           )}
           {app ? (

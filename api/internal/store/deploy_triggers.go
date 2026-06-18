@@ -22,17 +22,30 @@ const (
 // type). The matching engine and webhook endpoint land in plan 01; this is the
 // schema seam so that work doesn't churn migrations.
 type DeployTrigger struct {
-	ID        string
-	AppID     string
-	Event     string
-	Filter    string
-	CreatedAt time.Time
+	ID     string
+	AppID  string
+	Event  string
+	Filter string
+	// RequireApproval gates matching pushes behind manual operator approval
+	// (maintenance-mode-and-deploy-gates.md, Phase 4): a matched deploy is created
+	// `pending-approval` and not enqueued until approved.
+	RequireApproval bool
+	CreatedAt       time.Time
+}
+
+// deployTriggerColumns keeps the SELECT/RETURNING list in lockstep with scans.
+const deployTriggerColumns = `id, app_id, event, filter, require_approval, created_at`
+
+func scanDeployTrigger(row interface {
+	Scan(dest ...any) error
+}, t *DeployTrigger) error {
+	return row.Scan(&t.ID, &t.AppID, &t.Event, &t.Filter, &t.RequireApproval, &t.CreatedAt)
 }
 
 // ListDeployTriggers returns an app's rules, oldest first.
 func (s *Store) ListDeployTriggers(ctx context.Context, appID string) ([]DeployTrigger, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, app_id, event, filter, created_at
+		SELECT `+deployTriggerColumns+`
 		FROM deploy_triggers WHERE app_id = $1
 		ORDER BY created_at ASC
 	`, appID)
@@ -43,7 +56,7 @@ func (s *Store) ListDeployTriggers(ctx context.Context, appID string) ([]DeployT
 	var out []DeployTrigger
 	for rows.Next() {
 		var t DeployTrigger
-		if err := rows.Scan(&t.ID, &t.AppID, &t.Event, &t.Filter, &t.CreatedAt); err != nil {
+		if err := scanDeployTrigger(rows, &t); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -52,13 +65,13 @@ func (s *Store) ListDeployTriggers(ctx context.Context, appID string) ([]DeployT
 }
 
 // CreateDeployTrigger adds a rule for an app.
-func (s *Store) CreateDeployTrigger(ctx context.Context, appID, event, filter string) (DeployTrigger, error) {
+func (s *Store) CreateDeployTrigger(ctx context.Context, appID, event, filter string, requireApproval bool) (DeployTrigger, error) {
 	var t DeployTrigger
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO deploy_triggers (app_id, event, filter)
-		VALUES ($1, $2, $3)
-		RETURNING id, app_id, event, filter, created_at
-	`, appID, event, filter).Scan(&t.ID, &t.AppID, &t.Event, &t.Filter, &t.CreatedAt)
+	err := scanDeployTrigger(s.pool.QueryRow(ctx, `
+		INSERT INTO deploy_triggers (app_id, event, filter, require_approval)
+		VALUES ($1, $2, $3, $4)
+		RETURNING `+deployTriggerColumns,
+		appID, event, filter, requireApproval), &t)
 	return t, err
 }
 

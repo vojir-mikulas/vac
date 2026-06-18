@@ -83,6 +83,16 @@ type Notifier interface {
 	DeployFailed(appName, appID, errMsg string, dur time.Duration)
 }
 
+// Maintainer raises/clears an app's maintenance page around a deploy
+// (docs/plans/maintenance-mode-and-deploy-gates.md, Phase 2). Implemented by
+// proxy.Manager; nil disables auto-maintenance. MaintainOn raises the 503 page;
+// MaintainOff clears it unless the operator has set manual maintenance (so a
+// manual maintenance survives a deploy unchanged).
+type Maintainer interface {
+	MaintainOn(ctx context.Context, appID string) error
+	MaintainOff(ctx context.Context, appID string) error
+}
+
 // realGit adapts the gitcli package functions to GitClient.
 type realGit struct{}
 
@@ -115,6 +125,7 @@ type Pipeline struct {
 	Hub                Publisher            // nil → no live build-log streaming
 	Reconciler         Reconciler           // nil → no explicit log-follower nudge
 	Notifier           Notifier             // nil → no deploy notifications
+	Maintainer         Maintainer           // nil → no auto-maintenance during deploy
 	Templates          TemplateMaterializer // nil → template-sourced apps fail
 	WorkDir            string
 	HealthCheckTimeout time.Duration
@@ -183,6 +194,21 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 		return fmt.Errorf("pipeline: mark started: %w", err)
 	}
 	_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusBuilding)
+	// Deploy wins over suspend (docs/plans/scale-to-zero.md): a deploy on a
+	// suspended app clears the flag so the subsequent Sync pushes real routes
+	// (applyApp consults Suspended) rather than re-installing wake routes. The
+	// sweeper only acts on status='running', so it won't re-suspend mid-deploy.
+	_ = p.Store.SetAppSuspended(ctx, app.ID, false)
+
+	// Auto-maintenance (docs/plans/maintenance-mode-and-deploy-gates.md, Phase 2):
+	// when the app opts in, raise the maintenance page now and guarantee it clears
+	// on EVERY exit path (success, transparent failure, panic) unless the operator
+	// set manual maintenance — so a failed deploy can never strand the app in
+	// maintenance, honoring the "deploy never tears down the running stack"
+	// invariant. The `defer expr()` idiom raises immediately and defers the clear;
+	// registered before the failure-finishing defer below so it runs AFTER the app
+	// status is settled, restoring real routes last.
+	defer p.enterAutoMaintenance(ctx, app)()
 
 	defer func() {
 		if runErr != nil {
@@ -516,6 +542,26 @@ func registryLabel(registry string) string {
 		return "docker.io"
 	}
 	return registry
+}
+
+// enterAutoMaintenance raises the maintenance page for an auto-maintenance
+// deploy and returns the clear-on-exit cleanup. The caller MUST defer the
+// returned func so the page clears on every exit path — a failed deploy never
+// strands the app in maintenance. A no-op (returns a no-op cleanup) when the app
+// hasn't opted in or no Maintainer is wired. Failures are logged, never fatal:
+// maintenance is best-effort and must not block or fail the deploy.
+func (p *Pipeline) enterAutoMaintenance(ctx context.Context, app store.App) func() {
+	if !app.MaintenanceAuto || p.Maintainer == nil {
+		return func() {}
+	}
+	if err := p.Maintainer.MaintainOn(ctx, app.ID); err != nil {
+		p.Logger.Warn("pipeline: enter auto-maintenance", "app", app.ID, "err", err)
+	}
+	return func() {
+		if err := p.Maintainer.MaintainOff(ctx, app.ID); err != nil {
+			p.Logger.Warn("pipeline: clear auto-maintenance", "app", app.ID, "err", err)
+		}
+	}
 }
 
 // logSystem persists a pipeline-level system message and tees it to live

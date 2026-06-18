@@ -297,7 +297,9 @@ func replaceTriggers(ctx context.Context, st *store.Store, appID string, trigger
 		}
 	}
 	for _, t := range triggers {
-		if _, err := st.CreateDeployTrigger(ctx, appID, t.Event, t.Filter); err != nil {
+		// require_approval is an operational gate, not part of the portable app
+		// spec — imported triggers default to no approval requirement.
+		if _, err := st.CreateDeployTrigger(ctx, appID, t.Event, t.Filter, false); err != nil {
 			return fmt.Errorf("portability: create trigger %q: %w", t.Event, err)
 		}
 	}

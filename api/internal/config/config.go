@@ -193,6 +193,15 @@ type Config struct {
 	MaxPreviews int           `yaml:"max_previews"`
 	PreviewTTL  time.Duration `yaml:"preview_ttl"`
 
+	// Scale-to-zero (docs/plans/scale-to-zero.md). IdleSuspend is the master gate:
+	// off by default, so the sweeper goroutine never starts and idle cost stays
+	// zero. IdleTimeout is the inactivity window before an opted-in app is
+	// suspended (used when an app sets no per-app override). IdleSweepInterval is
+	// how often the sweeper scans for idle apps.
+	IdleSuspend       bool          `yaml:"idle_suspend"`
+	IdleTimeout       time.Duration `yaml:"idle_timeout"`
+	IdleSweepInterval time.Duration `yaml:"idle_sweep_interval"`
+
 	// DNSAutomation gates the custom-domain DNS-record automation
 	// (dns-automation-and-byo-cert.md Part A): when on, adding a custom domain can
 	// auto-create the A record at the configured DNS provider (Cloudflare).
@@ -277,6 +286,11 @@ func Default() Config {
 		// bounded on a single box (decision #5).
 		MaxPreviews: 5,
 		PreviewTTL:  72 * time.Hour,
+
+		// Scale-to-zero defaults: feature off, 15m idle window, 1m sweep cadence.
+		IdleSuspend:       false,
+		IdleTimeout:       15 * time.Minute,
+		IdleSweepInterval: time.Minute,
 	}
 }
 
@@ -541,6 +555,20 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("VAC_PREVIEW_TTL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d >= 0 {
 			cfg.PreviewTTL = d
+		}
+	}
+
+	if v := os.Getenv("VAC_IDLE_SUSPEND"); v != "" {
+		cfg.IdleSuspend = v == "true" || v == "1"
+	}
+	if v := os.Getenv("VAC_IDLE_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.IdleTimeout = d
+		}
+	}
+	if v := os.Getenv("VAC_IDLE_SWEEP_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.IdleSweepInterval = d
 		}
 	}
 

@@ -59,7 +59,18 @@ func TestIsTerminalDeploymentStatus(t *testing.T) {
 			t.Errorf("%q should be terminal", s)
 		}
 	}
-	nonTerminals := []string{deploy.DeploymentStatusQueued, deploy.DeploymentStatusCloning, deploy.DeploymentStatusBuilding, deploy.DeploymentStatusDeploying, deploy.DeploymentStatusHealthChecking}
+	// canceled is also terminal (frees the app to deploy again immediately).
+	if !deploy.IsTerminalDeploymentStatus(deploy.DeploymentStatusCanceled) {
+		t.Errorf("%q should be terminal", deploy.DeploymentStatusCanceled)
+	}
+	// scheduled (Phase 3) and pending-approval (Phase 4) are NON-terminal /
+	// ACTIVE: they count in the per-app uniqueness guard so parked/pending
+	// deploys can't stack, and the boot interrupt-sweep must leave them alone.
+	nonTerminals := []string{
+		deploy.DeploymentStatusQueued, deploy.DeploymentStatusCloning, deploy.DeploymentStatusBuilding,
+		deploy.DeploymentStatusDeploying, deploy.DeploymentStatusHealthChecking,
+		deploy.DeploymentStatusScheduled, deploy.DeploymentStatusPendingApproval,
+	}
 	for _, s := range nonTerminals {
 		if deploy.IsTerminalDeploymentStatus(s) {
 			t.Errorf("%q should not be terminal", s)

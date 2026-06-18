@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -67,13 +68,15 @@ function TriggerRules({ appId, defaultBranch }: { appId: string; defaultBranch: 
 
   const [event, setEvent] = useState<TriggerEvent>('push')
   const [filter, setFilter] = useState('')
+  const [requireApproval, setRequireApproval] = useState(false)
 
   const addRule = () =>
     create.mutate(
-      { event, filter: filter.trim() },
+      { event, filter: filter.trim(), requireApproval },
       {
         onSuccess: () => {
           setFilter('')
+          setRequireApproval(false)
           toast.success(t('autoDeploy.triggerAdded'))
         },
         onError: (e) => toast.error(e.message),
@@ -98,6 +101,11 @@ function TriggerRules({ appId, defaultBranch }: { appId: string; defaultBranch: 
                   <span className="text-muted-foreground">{t('autoDeploy.anyRef')}</span>
                 )}
               </span>
+              {tr.require_approval ? (
+                <Badge variant="outline" className="text-warn-foreground">
+                  {t('autoDeploy.approvalBadge')}
+                </Badge>
+              ) : null}
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -147,6 +155,11 @@ function TriggerRules({ appId, defaultBranch }: { appId: string; defaultBranch: 
           {t('autoDeploy.addRule')}
         </Button>
       </div>
+
+      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Switch checked={requireApproval} onCheckedChange={setRequireApproval} />
+        {t('autoDeploy.requireApproval')}
+      </label>
     </div>
   )
 }

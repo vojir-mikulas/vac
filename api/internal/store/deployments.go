@@ -83,6 +83,132 @@ func (s *Store) CreateDeployment(ctx context.Context, appID, triggeredBy string,
 	return d, err
 }
 
+// CreateDeploymentWithStatus enqueues a deployment in an explicit non-default
+// status — `scheduled` (parked for a deploy window, Phase 3) or
+// `pending-approval` (awaiting operator approval, Phase 4). Both count as ACTIVE
+// in the per-app uniqueness guard (migration 00076), so a duplicate park/pending
+// can't stack. The worker is NOT notified here; the window sweeper (scheduled) or
+// the approve handler (pending-approval) releases the row to `queued` later.
+func (s *Store) CreateDeploymentWithStatus(ctx context.Context, appID, triggeredBy, status string, rolledBackFrom *string) (Deployment, error) {
+	if triggeredBy == "" {
+		triggeredBy = TriggeredManual
+	}
+	var d Deployment
+	err := scanDeployment(s.pool.QueryRow(ctx, `
+		INSERT INTO deployments (app_id, triggered_by, status, rolled_back_from)
+		VALUES ($1, $2, $3, $4)
+		RETURNING `+deploymentColumns,
+		appID, triggeredBy, status, rolledBackFrom,
+	), &d)
+	if isUniqueViolation(err) {
+		return Deployment{}, ErrActiveDeploymentExists
+	}
+	return d, err
+}
+
+// ScheduledDeploy is a parked (`scheduled`) deployment joined to its app's
+// deploy-window schedule, so the sweeper can decide whether to release it now
+// without a second query.
+type ScheduledDeploy struct {
+	DeploymentID string
+	AppID        string
+	TriggeredBy  string
+	DeployWindow []byte
+}
+
+// ListScheduledDeployments returns every parked deploy across all apps with its
+// app's deploy_window, oldest first. Backs the deploy-window sweeper (Phase 3).
+func (s *Store) ListScheduledDeployments(ctx context.Context) ([]ScheduledDeploy, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT d.id, d.app_id, d.triggered_by, a.deploy_window
+		FROM deployments d
+		JOIN apps a ON a.id = d.app_id
+		WHERE d.status = 'scheduled'
+		ORDER BY d.triggered_at ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ScheduledDeploy
+	for rows.Next() {
+		var sd ScheduledDeploy
+		if err := rows.Scan(&sd.DeploymentID, &sd.AppID, &sd.TriggeredBy, &sd.DeployWindow); err != nil {
+			return nil, err
+		}
+		out = append(out, sd)
+	}
+	return out, rows.Err()
+}
+
+// ReleaseScheduledDeployment flips a parked deploy from `scheduled` to `queued`
+// so the worker can pick it up. Scoped to the `scheduled` status so a concurrent
+// release/cancel can't double-enqueue (the loser gets ErrNotFound).
+func (s *Store) ReleaseScheduledDeployment(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE deployments SET status = 'queued' WHERE id = $1 AND status = 'scheduled'`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ListPendingApprovals returns an app's deploys awaiting approval, oldest first
+// (maintenance-mode-and-deploy-gates.md, Phase 4).
+func (s *Store) ListPendingApprovals(ctx context.Context, appID string) ([]Deployment, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+deploymentColumns+` FROM deployments
+		 WHERE app_id = $1 AND status = 'pending-approval'
+		 ORDER BY triggered_at ASC`, appID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Deployment
+	for rows.Next() {
+		var d Deployment
+		if err := scanDeployment(rows, &d); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// ApproveDeployment flips a `pending-approval` deploy to `queued` so the worker
+// can pick it up. Scoped to the app + pending status so an approve can't release
+// another app's deploy or double-enqueue a race. Returns the updated row, or
+// ErrNotFound if no pending deploy matched.
+func (s *Store) ApproveDeployment(ctx context.Context, appID, id string) (Deployment, error) {
+	var d Deployment
+	err := scanDeployment(s.pool.QueryRow(ctx, `
+		UPDATE deployments SET status = 'queued'
+		WHERE id = $1 AND app_id = $2 AND status = 'pending-approval'
+		RETURNING `+deploymentColumns, id, appID), &d)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Deployment{}, ErrNotFound
+	}
+	return d, err
+}
+
+// RejectDeployment settles a `pending-approval` deploy terminally as `canceled`,
+// stamping a reason and finished_at. Scoped like ApproveDeployment.
+func (s *Store) RejectDeployment(ctx context.Context, appID, id string) (Deployment, error) {
+	reason := "rejected by operator"
+	var d Deployment
+	err := scanDeployment(s.pool.QueryRow(ctx, `
+		UPDATE deployments SET status = 'canceled', error = $3, finished_at = NOW()
+		WHERE id = $1 AND app_id = $2 AND status = 'pending-approval'
+		RETURNING `+deploymentColumns, id, appID, reason), &d)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Deployment{}, ErrNotFound
+	}
+	return d, err
+}
+
 // ErrRollbackSourceInvalid is returned when a rollback names a source
 // deployment that isn't a successful deploy of the same app.
 var ErrRollbackSourceInvalid = errors.New("store: rollback source is not a successful deployment of this app")

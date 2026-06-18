@@ -18,6 +18,15 @@ const (
 	// the timeline reads honestly. Terminal — excluded from the per-app
 	// uniqueness guard, so cancelling frees the app to deploy again immediately.
 	DeploymentStatusCanceled = "canceled"
+	// DeploymentStatusScheduled parks a deploy that arrived outside its app's
+	// deploy window (maintenance-mode-and-deploy-gates.md, Phase 3). The sweeper
+	// releases it to `queued` when a window opens. NON-terminal / ACTIVE — it
+	// counts in the per-app uniqueness guard so parked deploys can't stack.
+	DeploymentStatusScheduled = "scheduled"
+	// DeploymentStatusPendingApproval holds a deploy on an approval-gated trigger
+	// (Phase 4) until an operator approves it (→ `queued`) or rejects it
+	// (→ terminal `canceled`). NON-terminal / ACTIVE, same uniqueness rationale.
+	DeploymentStatusPendingApproval = "pending-approval"
 )
 
 // IsTerminalDeploymentStatus returns true once a deployment has settled.

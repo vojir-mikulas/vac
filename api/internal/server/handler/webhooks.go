@@ -253,6 +253,39 @@ func Webhook(s *store.Store, box *crypto.Box, worker DeploymentEnqueuer, preview
 		if kind == webhook.KindTag {
 			triggeredBy = store.TriggeredTag
 		}
+
+		// Approval gate (maintenance-mode-and-deploy-gates.md, Phase 4): if the
+		// matched trigger requires approval, park the deploy as `pending-approval`
+		// (created but NOT enqueued) until an operator approves it. Checked before
+		// the deploy window — an approval-gated push waits for a human regardless of
+		// schedule, and the approve action enqueues immediately.
+		if mt := webhook.MatchingTrigger(triggers, kind, name); mt != nil && mt.RequireApproval {
+			_, cerr := s.CreateDeploymentWithStatus(r.Context(), appID, triggeredBy, deploy.DeploymentStatusPendingApproval, nil)
+			if cerr != nil && !errors.Is(cerr, store.ErrActiveDeploymentExists) {
+				WriteError(w, http.StatusInternalServerError, "could not create deployment")
+				return
+			}
+			auditWebhookEntry(s, r, appID, "deploy of "+app.Slug+" from "+kind+" "+name+" awaiting approval", http.StatusAccepted)
+			WriteJSON(w, http.StatusAccepted, map[string]string{"status": "pending-approval"})
+			return
+		}
+
+		// Deploy window (maintenance-mode-and-deploy-gates.md, Phase 3): a push that
+		// arrives outside every configured window is parked as `scheduled` rather
+		// than dropped — the window sweeper releases it when a window opens. A
+		// parse error fails open (treats it as always-allowed) so a corrupt window
+		// can't block deploys outright.
+		if windows, werr := webhook.ParseWindows(app.DeployWindow); werr == nil && !webhook.Allows(time.Now(), windows) {
+			_, cerr := s.CreateDeploymentWithStatus(r.Context(), appID, triggeredBy, deploy.DeploymentStatusScheduled, nil)
+			if cerr != nil && !errors.Is(cerr, store.ErrActiveDeploymentExists) {
+				WriteError(w, http.StatusInternalServerError, "could not schedule deployment")
+				return
+			}
+			auditWebhookEntry(s, r, appID, "scheduled "+kind+" "+name+" for "+app.Slug+" (outside deploy window)", http.StatusAccepted)
+			WriteJSON(w, http.StatusAccepted, map[string]string{"status": "scheduled"})
+			return
+		}
+
 		d, err := s.CreateDeployment(r.Context(), appID, triggeredBy, nil)
 		if err != nil {
 			// Lost the check-then-insert race against a concurrent trigger — the

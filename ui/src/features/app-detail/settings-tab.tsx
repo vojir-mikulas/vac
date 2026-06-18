@@ -23,10 +23,14 @@ import {
 import { SectionHeader } from '@/components/common/section-header'
 import { ErrorState } from '@/components/common/error-state'
 import { AutoDeploySection } from '@/features/app-detail/auto-deploy-section'
+import { DeployWindowSection } from '@/features/app-detail/deploy-window-section'
 import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
 import { AppDomainsSection } from '@/features/app-detail/domains-section'
+import { IdleSuspendSection } from '@/features/app-detail/idle-suspend-section'
+import { MaintenanceSection } from '@/features/app-detail/maintenance-section'
 import { BuildSourcePicker, type BuildSourceValue } from '@/features/apps/build-source'
 import { useApp, useDeleteApp, useUpdateApp } from '@/lib/api/apps'
+import { useInstanceInfo } from '@/lib/api/instance'
 import { useBoxBudget } from '@/lib/api/metrics'
 import { useExportApp } from '@/lib/api/portability'
 import { downloadFile } from '@/lib/log-export'
@@ -49,6 +53,10 @@ function SettingsForm({ app }: { app: App }) {
   // materialized template. Hide the repo/branch/build/autodeploy controls and
   // show a read-only "Installed from {template}" panel instead.
   const isAddon = app.source === 'template'
+  // Scale-to-zero is gated on the instance master flag; it also excludes add-ons
+  // and previews on the backend, so don't offer the toggle for those.
+  const { data: instance } = useInstanceInfo()
+  const showIdleSuspend = !!instance?.idle_suspend && !isAddon && !app.is_preview
   const update = useUpdateApp(appId)
   const remove = useDeleteApp()
   const exportApp = useExportApp()
@@ -252,6 +260,8 @@ function SettingsForm({ app }: { app: App }) {
 
           <AutoDeploySection appId={appId} defaultBranch={app.git_branch} />
 
+          <DeployWindowSection appId={appId} />
+
           <section>
             <SectionHeader>{t('settings.build')}</SectionHeader>
             <Card className="gap-5 p-5">
@@ -321,6 +331,10 @@ function SettingsForm({ app }: { app: App }) {
           </div>
         </Card>
       </section>
+
+      <MaintenanceSection appId={appId} />
+
+      {showIdleSuspend ? <IdleSuspendSection appId={appId} /> : null}
 
       <section>
         <SectionHeader>{t('settings.portability')}</SectionHeader>

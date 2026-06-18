@@ -64,6 +64,23 @@ func MatchTriggers(triggers []store.DeployTrigger, kind, name string) bool {
 	return false
 }
 
+// MatchingTrigger returns the first rule that fires for an event of kind/name,
+// or nil if none. The approval gate (maintenance-mode-and-deploy-gates.md, Phase
+// 4) uses it to read the matched trigger's require_approval flag; MatchTriggers
+// stays for the simple boolean callers.
+func MatchingTrigger(triggers []store.DeployTrigger, kind, name string) *store.DeployTrigger {
+	for i := range triggers {
+		t := triggers[i]
+		if t.Event != kind {
+			continue
+		}
+		if t.Filter == "" || globMatch(t.Filter, name) {
+			return &triggers[i]
+		}
+	}
+	return nil
+}
+
 // globMatch matches a Git-ref glob where `*` matches any run of characters
 // (including `/`, so `release/*` matches `release/1/2`) and `?` matches exactly
 // one. Everything else is literal.

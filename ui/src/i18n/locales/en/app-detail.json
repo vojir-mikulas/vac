@@ -41,7 +41,71 @@
     "disable": "Disable",
     "disableDialogTitle": "Disable auto-deploy webhook?",
     "disableDialogDescription": "The current secret is cleared and incoming webhook calls stop deploying until you generate a new secret. Trigger rules are kept.",
-    "webhookDisabled": "Webhook disabled"
+    "webhookDisabled": "Webhook disabled",
+    "requireApproval": "Require manual approval before deploying matching pushes",
+    "approvalBadge": "Approval"
+  },
+  "maintenance": {
+    "title": "Maintenance",
+    "intro": "Put this app into maintenance to serve a 503 page instead of proxying traffic. The stack keeps running behind the scenes.",
+    "enable": "Maintenance mode",
+    "enableHint": "Serve the maintenance page on every host for this app.",
+    "activeBadge": "Active",
+    "auto": "Auto-maintenance during deploys",
+    "autoHint": "Automatically show the page while a deploy is in progress, and clear it when the deploy finishes.",
+    "pageLabel": "Maintenance page",
+    "pageHint": "Raw HTML with inline CSS — no external assets. The preview is sandboxed.",
+    "pageDefault": "Using the built-in default",
+    "pageCustom": "Custom page",
+    "preview": "Preview",
+    "pageSize": "{{kb}} KB / 64 KB",
+    "resetDefault": "Reset to default",
+    "savePage": "Save page",
+    "pageSaved": "Maintenance page saved",
+    "pageReset": "Reverted to the default page",
+    "pageTooLarge": "Maintenance page exceeds the 64 KB limit"
+  },
+  "deployWindow": {
+    "title": "Deploy window",
+    "intro": "Restrict push-to-deploy to specific time windows. A push outside every window is parked and released automatically when a window opens.",
+    "alwaysAllowed": "No windows configured — deploys are allowed at any time.",
+    "everyDay": "Every day",
+    "start": "Start",
+    "end": "End",
+    "tz": "Timezone",
+    "addWindow": "Add window",
+    "remove": "Remove window",
+    "save": "Save",
+    "saved": "Deploy window saved",
+    "days": {
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
+    }
+  },
+  "approvals": {
+    "title": "Pending approval",
+    "pendingFallback": "Deploy awaiting approval",
+    "approve": "Approve",
+    "reject": "Reject",
+    "approved": "Deployment approved",
+    "rejected": "Deployment rejected"
+  },
+  "idleSuspend": {
+    "title": "Idle suspend",
+    "intro": "Stop this app's containers after a period with no inbound traffic, and start them again on the next request. Reclaims RAM for apps that sit idle.",
+    "enable": "Suspend when idle",
+    "enableHint": "The first request after suspend shows a brief \"waking…\" page while the stack starts.",
+    "suspendedBadge": "Suspended",
+    "timeout": "Idle timeout (minutes)",
+    "timeoutPlaceholder": "Default",
+    "timeoutHint": "How long with no traffic before suspending. Leave blank to use the instance default.",
+    "timeoutInvalid": "Idle timeout must be a positive whole number of minutes",
+    "save": "Save"
   },
   "backups": {
     "title": "Scheduled backups",

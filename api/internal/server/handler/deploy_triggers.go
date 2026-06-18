@@ -15,14 +15,21 @@ import (
 const maxTriggerFilterLen = 200
 
 type deployTriggerDTO struct {
-	ID        string    `json:"id"`
-	Event     string    `json:"event"`
-	Filter    string    `json:"filter"`
-	CreatedAt time.Time `json:"created_at"`
+	ID              string    `json:"id"`
+	Event           string    `json:"event"`
+	Filter          string    `json:"filter"`
+	RequireApproval bool      `json:"require_approval"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 func toDeployTriggerDTO(t store.DeployTrigger) deployTriggerDTO {
-	return deployTriggerDTO{ID: t.ID, Event: t.Event, Filter: t.Filter, CreatedAt: t.CreatedAt}
+	return deployTriggerDTO{
+		ID:              t.ID,
+		Event:           t.Event,
+		Filter:          t.Filter,
+		RequireApproval: t.RequireApproval,
+		CreatedAt:       t.CreatedAt,
+	}
 }
 
 // ListDeployTriggers returns an app's push-to-deploy rules, oldest first.
@@ -43,8 +50,9 @@ func ListDeployTriggers(s *store.Store) http.HandlerFunc {
 }
 
 type createTriggerRequest struct {
-	Event  string `json:"event"`
-	Filter string `json:"filter"`
+	Event           string `json:"event"`
+	Filter          string `json:"filter"`
+	RequireApproval bool   `json:"require_approval"`
 }
 
 // CreateDeployTrigger adds a rule. Only push|tag|preview are accepted — `manual`
@@ -75,7 +83,7 @@ func CreateDeployTrigger(s *store.Store) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "filter too long")
 			return
 		}
-		t, err := s.CreateDeployTrigger(r.Context(), appID, req.Event, req.Filter)
+		t, err := s.CreateDeployTrigger(r.Context(), appID, req.Event, req.Filter, req.RequireApproval)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "could not create trigger")
 			return

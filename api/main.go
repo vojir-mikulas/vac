@@ -42,6 +42,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
 	"github.com/vojir-mikulas/vac/api/internal/reqmetrics"
 	"github.com/vojir-mikulas/vac/api/internal/retention"
+	"github.com/vojir-mikulas/vac/api/internal/scaletozero"
 	"github.com/vojir-mikulas/vac/api/internal/security"
 	"github.com/vojir-mikulas/vac/api/internal/server"
 	"github.com/vojir-mikulas/vac/api/internal/server/handler"
@@ -171,6 +172,7 @@ func main() {
 		HealthInterval: 5 * time.Second,
 		HealthTimeout:  cfg.HealthCheckTimeout,
 		HealthRetries:  cfg.HealthCheckRetries,
+		WakeToken:      cfg.CaddyAskToken,
 	}, slog.Default())
 
 	// Apply any runtime base-domain override saved in instance_settings so it
@@ -215,6 +217,9 @@ func main() {
 	pipeline.Router = proxyMgr
 	pipeline.Hub = hub
 	pipeline.Notifier = notifier
+	// Auto-maintenance during deploy (maintenance-mode-and-deploy-gates.md, Phase 2):
+	// proxy.Manager satisfies deploy.Maintainer.
+	pipeline.Maintainer = proxyMgr
 	pipeline.AppCPULimit = cfg.AppCPULimit
 	// Deploy-pool size is an instance setting (plan 20), applied at boot. Default
 	// 1 (strictly serial); the worker clamps to 1..deploy.MaxConcurrency.
@@ -224,6 +229,11 @@ func main() {
 	}
 	worker := deploy.NewPipelineWorker(pipeline, 0, deployConcurrency)
 	worker.Start(ctx)
+
+	// Deploy-window sweeper (maintenance-mode-and-deploy-gates.md, Phase 3):
+	// releases deploys parked outside their app's window when a window opens. One
+	// cheap goroutine — a no-op tick when nothing is parked.
+	go deploy.NewWindowSweeper(st, worker, slog.Default()).Run(ctx)
 
 	// Add-on catalog (Track D / D3). The embedded registry doubles as the deploy
 	// pipeline's template materializer (the clone-step seam), so it's wired even
@@ -419,6 +429,22 @@ func main() {
 		slog.Info("job scheduler started", "jobs", n)
 	}
 
+	// Scale-to-zero (docs/plans/scale-to-zero.md). The waker is always wired so a
+	// suspended app can still wake (e.g. if the operator turned the feature off
+	// while an app was suspended, its installed wake routes still resolve here).
+	// The sweeper goroutine — which creates suspensions — starts only when the
+	// master gate is on AND ≥1 app has opted in, mirroring the jobs scheduler so
+	// idle footprint stays zero when the feature is unused.
+	waker := scaletozero.NewWaker(st, docker, proxyMgr, slog.Default())
+	if cfg.IdleSuspend {
+		if n, err := st.CountIdleSuspendApps(ctx); err != nil {
+			slog.Warn("scaletozero: could not count opted-in apps; sweeper not started", "err", err)
+		} else if n > 0 {
+			go scaletozero.NewSweeper(st, waker, cfg.IdleSweepInterval, cfg.IdleTimeout, slog.Default()).Run(ctx)
+			slog.Info("idle-suspend sweeper started", "apps", n)
+		}
+	}
+
 	// Add-on installer (D3) — only when the gate is open and the registry loaded.
 	var addonInstaller *addon.Installer
 	if cfg.ManagedServices && addonRegistry != nil {
@@ -443,7 +469,7 @@ func main() {
 	proxyMgr.SetStatusEngine(statusEngine)
 	go statusEngine.Run(ctx)
 
-	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, jobsEngine, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost, previewSvc)
+	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, jobsEngine, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost, previewSvc, waker)
 	if err != nil {
 		slog.Error("server init failed", "err", err)
 		os.Exit(1)

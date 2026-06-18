@@ -11,6 +11,8 @@ export interface DeployTrigger {
   id: string
   event: TriggerEvent
   filter: string
+  /** Gate matching pushes behind manual approval (maintenance-mode-and-deploy-gates.md). */
+  require_approval: boolean
   created_at: string
 }
 
@@ -26,8 +28,12 @@ export interface WebhookSecret {
 
 export const autoDeployApi = {
   listTriggers: (appId: string) => api.get<DeployTrigger[]>(`apps/${appId}/triggers`),
-  createTrigger: (appId: string, event: TriggerEvent, filter: string) =>
-    api.post<DeployTrigger>(`apps/${appId}/triggers`, { event, filter }),
+  createTrigger: (appId: string, event: TriggerEvent, filter: string, requireApproval: boolean) =>
+    api.post<DeployTrigger>(`apps/${appId}/triggers`, {
+      event,
+      filter,
+      require_approval: requireApproval,
+    }),
   deleteTrigger: (appId: string, triggerId: string) =>
     api.del<void>(`apps/${appId}/triggers/${triggerId}`),
   getWebhook: (appId: string) => api.get<WebhookConfig>(`apps/${appId}/webhook`),
@@ -45,8 +51,8 @@ export function useTriggers(appId: string) {
 export function useCreateTrigger(appId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { event: TriggerEvent; filter: string }) =>
-      autoDeployApi.createTrigger(appId, vars.event, vars.filter),
+    mutationFn: (vars: { event: TriggerEvent; filter: string; requireApproval: boolean }) =>
+      autoDeployApi.createTrigger(appId, vars.event, vars.filter, vars.requireApproval),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.apps.triggers(appId) }),
   })
 }

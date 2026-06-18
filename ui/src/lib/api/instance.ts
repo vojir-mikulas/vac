@@ -12,6 +12,8 @@ export interface InstanceInfo {
   managed_services: boolean
   /** P3.4 gate — hides the interactive container-shell affordance when off. */
   enable_shell: boolean
+  /** Scale-to-zero master gate — hides the per-app idle-suspend toggle when off. */
+  idle_suspend: boolean
 }
 
 export interface UpdateInfo {

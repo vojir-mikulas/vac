@@ -123,6 +123,21 @@ func (s *Store) QueryHostRequestSeries(ctx context.Context, since time.Time, buc
 	return out, rows.Err()
 }
 
+// LastTrafficSince returns the most recent request-bucket timestamp for an app,
+// or the zero time if it has no rows in the retained window. The idle sweeper
+// compares this against now-timeout to decide suspension; reading MAX(bucket_ts)
+// means idle detection needs no per-request writes (scale-to-zero decision #5).
+func (s *Store) LastTrafficSince(ctx context.Context, appID string) (time.Time, error) {
+	var ts *time.Time
+	if err := s.pool.QueryRow(ctx, `SELECT MAX(bucket_ts) FROM request_metrics WHERE app_id = $1`, appID).Scan(&ts); err != nil {
+		return time.Time{}, err
+	}
+	if ts == nil {
+		return time.Time{}, nil
+	}
+	return *ts, nil
+}
+
 // DeleteRequestMetricsOlderThan prunes the rolling window. Called by the
 // retention pruner.
 func (s *Store) DeleteRequestMetricsOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {

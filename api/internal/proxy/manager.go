@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/caddy"
+	"github.com/vojir-mikulas/vac/api/internal/maintenance"
 	"github.com/vojir-mikulas/vac/api/internal/store"
 )
 
@@ -21,6 +22,12 @@ type Store interface {
 	ListAllDomains(ctx context.Context) ([]store.Domain, error)
 	GetService(ctx context.Context, appID, name string) (store.Service, error)
 	ListServicesForApp(ctx context.Context, appID string) ([]store.Service, error)
+	// Maintenance auto-during-deploy (docs/plans/maintenance-mode-and-deploy-gates.md):
+	// the deploy pipeline drives the effective flag through these (via MaintainOn/
+	// MaintainOff) so the page can be raised at the start of a deploy and cleared
+	// on every exit path.
+	SetAppMaintenanceActive(ctx context.Context, id string, active bool) error
+	ClearAppMaintenanceActiveIfManualOff(ctx context.Context, id string) (bool, error)
 }
 
 // CaddyClient is the slice of *caddy.Client the manager drives.
@@ -72,6 +79,11 @@ type Config struct {
 	HealthInterval time.Duration // Caddy active health-check interval
 	HealthTimeout  time.Duration // per-check timeout + overall WaitHealthy budget
 	HealthRetries  int           // WaitHealthy poll count
+	// WakeToken, when set, is sent as X-Caddy-Ask-Token on scale-to-zero wake
+	// routes so the (unauthenticated, control-domain-reachable) /__vac_wake
+	// endpoint can reject requests that didn't come through a VAC-installed route.
+	// Reuses the CaddyAsk shared secret.
+	WakeToken string
 }
 
 // Manager projects VAC domains into Caddy routes and manages vac-edge
@@ -306,6 +318,36 @@ func (m *Manager) AutoHosts(ctx context.Context) ([]AutoHost, error) {
 	return out, nil
 }
 
+// AppIDForHost resolves a request host to its owning app id, covering both
+// assigned custom domains and derived auto hosts. Backs the scale-to-zero wake
+// handler, which must turn a suspended host back into an app to wake. Returns
+// ok=false (no error) for an unknown host.
+func (m *Manager) AppIDForHost(ctx context.Context, host string) (string, bool, error) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return "", false, nil
+	}
+	domains, err := m.store.ListAllDomains(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	for _, d := range domains {
+		if d.Assigned() && strings.EqualFold(d.Hostname, host) {
+			return d.AppID, true, nil
+		}
+	}
+	hosts, err := m.AutoHosts(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	for _, h := range hosts {
+		if strings.EqualFold(h.Hostname, host) {
+			return h.AppID, true, nil
+		}
+	}
+	return "", false, nil
+}
+
 // IsAutoHost reports whether host is one of the currently-derived automatic
 // subdomains. Backs CaddyAsk so on-demand TLS issuance is allowed for a derived
 // host that has no domain row.
@@ -369,6 +411,70 @@ func (m *Manager) redirectRoute(id, hostname, target string) caddy.Route {
 	}
 }
 
+// maintenanceRoute builds a static_response that serves the maintenance page
+// (HTTP 503 + inline HTML body) for one host. Like a redirect route it dials no
+// upstream, so it serves regardless of whether any app container is up — which
+// is exactly what maintenance needs. Reusing the host's normal @id means a clean
+// swap into and out of maintenance with no orphan or precedence ambiguity (a
+// later Sync with maintenance off replaces the same @id with the proxy route).
+func (m *Manager) maintenanceRoute(id, hostname, html string) caddy.Route {
+	return caddy.Route{
+		ID:    id,
+		Match: []caddy.Match{{Host: []string{hostname}}},
+		Handle: []caddy.Handler{{
+			Handler:    "static_response",
+			StatusCode: 503,
+			Headers: map[string][]string{
+				"Content-Type": {"text/html; charset=utf-8"},
+				// Tell crawlers/clients this is temporary, not a permanent outage.
+				"Retry-After": {"120"},
+			},
+			Body: html,
+		}},
+	}
+}
+
+// wakeRoute builds the scale-to-zero wake route for one host
+// (docs/plans/scale-to-zero.md). A suspended app's containers are stopped, so
+// instead of proxying to the (absent) container this route funnels every request
+// to vac-api's /__vac_wake interceptor, carrying the original host and URI as
+// headers (via Caddy placeholders) so the waker can resolve the app and redirect
+// back once healthy. It dials vac-api — proven reachable, exactly like
+// applyControlRoute — not the app container, which is deliberately off vac-edge.
+// Reusing the host's normal @id means the next Sync (on wake/deploy) replaces it
+// in place. No upstream health check: vac-api is always up.
+// controlDial is the Caddy upstream address for vac-api itself (the control
+// plane), shared by the dashboard route and the scale-to-zero wake route.
+func (m *Manager) controlDial() string {
+	port := m.cfg.ControlPort
+	if port <= 0 {
+		port = 9393 // must match config.Default().Server.Port
+	}
+	return fmt.Sprintf("vac-api:%d", port)
+}
+
+func (m *Manager) wakeRoute(id, hostname string) caddy.Route {
+	set := map[string][]string{
+		"X-Vac-Wake-Host": {"{http.request.host}"},
+		"X-Vac-Wake-Uri":  {"{http.request.orig_uri}"},
+	}
+	if m.cfg.WakeToken != "" {
+		set["X-Caddy-Ask-Token"] = []string{m.cfg.WakeToken}
+	}
+	return caddy.Route{
+		ID:    id,
+		Match: []caddy.Match{{Host: []string{hostname}}},
+		Handle: []caddy.Handler{
+			{Handler: "headers", Request: &caddy.HeaderOps{Set: set}},
+			{Handler: "rewrite", URI: "/__vac_wake"},
+			{
+				Handler:   "reverse_proxy",
+				Upstreams: []caddy.Upstream{{Dial: m.controlDial()}},
+			},
+		},
+	}
+}
+
 // route builds the Caddy route for one hostname → service. The upstream dials
 // the service's vac-edge alias on its container port; an active health check
 // lets Caddy (and, via the upstreams endpoint, WaitHealthy) track liveness.
@@ -424,6 +530,32 @@ func (m *Manager) Sync(ctx context.Context, appID string) error {
 	return errors.Join(errApply, errControl, errPrune, errCerts)
 }
 
+// MaintainOn raises the maintenance page for an app (auto-maintenance during a
+// deploy): it sets the effective runtime flag and re-syncs so Caddy swaps every
+// host to the 503 page. The page has no upstream, so it serves even while the
+// stack is being rebuilt. Satisfies deploy.Maintainer.
+func (m *Manager) MaintainOn(ctx context.Context, appID string) error {
+	if err := m.store.SetAppMaintenanceActive(ctx, appID, true); err != nil {
+		return err
+	}
+	return m.Sync(ctx, appID)
+}
+
+// MaintainOff clears auto-maintenance after a deploy — but only when the operator
+// has NOT set manual maintenance, so a manual maintenance survives the deploy
+// unchanged. When the flag actually clears, it re-syncs to restore the proxy
+// routes in place. Satisfies deploy.Maintainer; safe to call on every exit path.
+func (m *Manager) MaintainOff(ctx context.Context, appID string) error {
+	cleared, err := m.store.ClearAppMaintenanceActiveIfManualOff(ctx, appID)
+	if err != nil {
+		return err
+	}
+	if cleared {
+		return m.Sync(ctx, appID)
+	}
+	return nil
+}
+
 // applyApp attaches the app's routable containers to vac-edge and pushes a route
 // per assigned custom domain and per derived auto host. A route whose service
 // has no container / internal port yet is removed (nothing to route to).
@@ -443,6 +575,56 @@ func (m *Manager) applyApp(ctx context.Context, appID string) error {
 	byName := make(map[string]store.Service, len(services))
 	for _, s := range services {
 		byName[s.ServiceName] = s
+	}
+
+	// Maintenance mode (docs/plans/maintenance-mode-and-deploy-gates.md): when the
+	// app's effective flag is set, every host serves a 503 maintenance page
+	// instead of proxying. We reuse each host's normal @id so flipping maintenance
+	// off restores the proxy/redirect route in place on the next Sync. The page
+	// has no upstream, so it serves even mid-deploy with the container down.
+	if app.MaintenanceActive {
+		html := maintenance.Render(app.MaintenanceHTML)
+		var merrs []error
+		for _, spec := range m.desiredRoutes(app, domains, services) {
+			if err := m.caddy.PutRoute(ctx, spec.id, m.maintenanceRoute(spec.id, spec.hostname, html)); err != nil {
+				merrs = append(merrs, fmt.Errorf("maintenance %s: %w", spec.hostname, err))
+				if m.engine != nil {
+					m.engine.SetError(spec.hostname, err.Error())
+				}
+			} else if m.engine != nil {
+				m.engine.ClearError(spec.hostname)
+			}
+		}
+		return errors.Join(merrs...)
+	}
+
+	// Scale-to-zero (docs/plans/scale-to-zero.md): a suspended app's containers are
+	// stopped, so every host serves a wake route that funnels the request to
+	// vac-api's /__vac_wake interceptor instead of proxying to an absent upstream.
+	// This branch also runs under Reconcile on boot — a Caddy restart while
+	// suspended re-installs wake routes (not normal routes) and starts no stack.
+	// Reusing each host's normal @id lets the next Sync (wake/deploy) replace it
+	// in place. Redirect domains don't proxy to the app, so suspend leaves them
+	// serving their 308.
+	if app.Suspended {
+		var werrs []error
+		for _, spec := range m.desiredRoutes(app, domains, services) {
+			var route caddy.Route
+			if spec.redirectTo != "" {
+				route = m.redirectRoute(spec.id, spec.hostname, spec.redirectTo)
+			} else {
+				route = m.wakeRoute(spec.id, spec.hostname)
+			}
+			if err := m.caddy.PutRoute(ctx, spec.id, route); err != nil {
+				werrs = append(werrs, fmt.Errorf("wake %s: %w", spec.hostname, err))
+				if m.engine != nil {
+					m.engine.SetError(spec.hostname, err.Error())
+				}
+			} else if m.engine != nil {
+				m.engine.ClearError(spec.hostname)
+			}
+		}
+		return errors.Join(werrs...)
 	}
 
 	attached := make(map[string]bool)
@@ -538,16 +720,12 @@ func (m *Manager) applyControlRoute(ctx context.Context) error {
 		}
 		return nil
 	}
-	port := m.cfg.ControlPort
-	if port <= 0 {
-		port = 9393 // must match config.Default().Server.Port
-	}
 	route := caddy.Route{
 		ID:    controlRouteID,
 		Match: []caddy.Match{{Host: []string{m.cfg.ControlDomain}}},
 		Handle: []caddy.Handler{{
 			Handler:   "reverse_proxy",
-			Upstreams: []caddy.Upstream{{Dial: fmt.Sprintf("vac-api:%d", port)}},
+			Upstreams: []caddy.Upstream{{Dial: m.controlDial()}},
 			HealthChecks: &caddy.HealthChecks{Active: &caddy.ActiveHealthCheck{
 				Path:     "/health",
 				Interval: m.cfg.HealthInterval.String(),
@@ -586,6 +764,46 @@ func (m *Manager) Teardown(ctx context.Context, appID string) error {
 	for _, spec := range m.desiredRoutes(app, domains, services) {
 		if err := m.caddy.DeleteRoute(ctx, spec.id); err != nil {
 			m.logger.Debug("proxy: teardown route", "host", spec.hostname, "err", err)
+		}
+	}
+	for _, s := range services {
+		if s.ContainerID != nil && *s.ContainerID != "" {
+			if err := m.net.NetworkDisconnect(ctx, m.cfg.EdgeNetwork, *s.ContainerID); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// InstallWakeRoutes swaps an app's live proxy routes for scale-to-zero wake
+// routes and detaches its containers from vac-edge. The sweeper calls it after
+// stopping an idle stack (the app row must already be marked suspended). Each
+// host's wake route reuses its normal @id, so the next Sync (on wake or deploy)
+// replaces it in place. Redirect domains never proxy to the app, so they're left
+// untouched. Mirrors applyApp's suspended branch but as a focused delta — no
+// orphan prune or cert push needed for a stop.
+func (m *Manager) InstallWakeRoutes(ctx context.Context, appID string) error {
+	m.ensureBaseConfig(ctx)
+	app, err := m.store.GetApp(ctx, appID)
+	if err != nil {
+		return err
+	}
+	domains, err := m.store.ListDomainsByApp(ctx, appID)
+	if err != nil {
+		return err
+	}
+	services, err := m.store.ListServicesForApp(ctx, appID)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, spec := range m.desiredRoutes(app, domains, services) {
+		if spec.redirectTo != "" {
+			continue // redirect routes don't proxy to the app; leave them serving
+		}
+		if err := m.caddy.PutRoute(ctx, spec.id, m.wakeRoute(spec.id, spec.hostname)); err != nil {
+			errs = append(errs, fmt.Errorf("wake route %s: %w", spec.hostname, err))
 		}
 	}
 	for _, s := range services {

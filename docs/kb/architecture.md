@@ -67,6 +67,7 @@ Each package owns one concern.
 | `addon` | `Registry`/`Installer` materializes catalog templates into an app (env defaults, `@random` secrets, DB provisioning, enqueue deploy); `ServiceHealthPaths` exposes per-service Caddy health-check paths the deploy pipeline applies post-up |
 | `backup` | `Engine` runs a backup end-to-end: exec in container → stream to destination → record run → prune → notify. `Restorer` is the inverse: read a recorded run's artifact back → resolve the engine restore command → stream it into the container over `docker exec -i` (destructive; gated by step-up 2FA) |
 | `jobs` | user-facing cron (modelled on `backup`): `Scheduler` is one sleeping goroutine (started only when ≥1 enabled job exists; gated on `CountScheduledJobs`, no master flag — jobs are core) with an in-flight overlap guard + completion-wake; `Engine.RunOnce` execs a command in the running service container under a per-job `context.WithTimeout`, captures a bounded (16 KB) output tail into a `cappedBuffer`, records the `job_runs` row (`success`/`failed`/`timeout`), rolls `last_run`/`next_run`, and fires `JobFailed`. `nextOccurrence` adds an `interval` branch (anchored on `last_run`) to `backup`'s daily/weekly |
+| `scaletozero` | idle-suspend + wake-on-request (docs/plans/scale-to-zero.md), opt-in via `VAC_IDLE_SUSPEND` + per-app `idle_suspend_enabled`. `Sweeper` is one sleeping goroutine (jobs-style; started only when the gate is on AND ≥1 app opted in) that stops apps idle past their window (idle detection reads `request_metrics` MAX bucket — no per-request writes). `Waker` owns both transitions under one per-app in-flight guard: `Suspend` does `docker stop` → mark `suspended` → `proxy.InstallWakeRoutes` (swap routes for a wake route dialing `vac-api`, detach `vac-edge`); `Wake` does `docker start` → clear `suspended` → `proxy.Sync` → `WaitHealthy`. The wake route funnels requests to `handler.WakeApp` (`/__vac_wake`, off the `/api` auth group) which 307-redirects when healthy or serves a refreshing waking page. Deploy wins: the pipeline clears `suspended` on start |
 | `revert` | `Reverter` applies the inverse of revertable audit entries (env replace, base-domain, app-config) from before-snapshots |
 | `audit` | per-request mutable `Record` carried in context, enriched by handlers, persisted by middleware |
 | `auditdiff` | computes normalized before→current diffs for curated audit entries (`FieldStatus`, secret masking) |
@@ -111,7 +112,8 @@ Schema lives in goose migrations under `api/internal/db/migrations/` (embedded a
 - **Apps & services:** `apps` (includes `source` = `git`|`template`|`image`,
   `webhook_secret_enc`, `registry_auth_enc` for image apps' private-registry creds, and
   `is_preview` / `parent_app_id` (ON DELETE CASCADE) / `last_preview_push_at` for preview
-  environments),
+  environments, and `idle_suspend_enabled` / `idle_timeout_minutes` / `suspended` /
+  `last_traffic_at` for scale-to-zero),
   `services` (incl. `has_volumes`, set from the compose file each deploy to flag stateful
   services), `ssh_keys`, `env_vars`, `domains` (custom/auto hosts, cert expiry, redirects,
   lifecycle).

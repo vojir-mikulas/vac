@@ -49,6 +49,20 @@ export interface App {
   is_preview: boolean
   /** The app this preview was branched from; null/absent for a normal app. */
   parent_app_id?: string
+  /** Operator-set manual maintenance (maintenance-mode-and-deploy-gates.md). */
+  maintenance_mode: boolean
+  /** Opt-in: show the maintenance page automatically during a deploy. */
+  maintenance_auto: boolean
+  /** Effective runtime flag — the 503 page is being served right now. */
+  maintenance_active: boolean
+  /** Scale-to-zero opt-in (docs/plans/scale-to-zero.md). */
+  idle_suspend_enabled: boolean
+  /** Per-app idle window override in minutes; null = instance default. */
+  idle_timeout_minutes: number | null
+  /** True when the stack is stopped and hosts serve a wake route. */
+  suspended: boolean
+  /** Last observed inbound-request time (sweeper-stamped); absent if never seen. */
+  last_traffic_at?: string
 }
 
 /** A preview environment listed under its parent app's Previews tab. */

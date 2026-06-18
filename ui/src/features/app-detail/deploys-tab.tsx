@@ -25,6 +25,11 @@ import { SectionHeader } from '@/components/common/section-header'
 import { StatusPill } from '@/components/common/status-pill'
 import { LogViewer } from '@/components/common/log-viewer'
 import { DeploySteps } from '@/features/app-detail/deploy-steps'
+import {
+  usePendingDeployments,
+  useApproveDeployment,
+  useRejectDeployment,
+} from '@/lib/api/approvals'
 import { useDeployments, useRollbackDeploy } from '@/lib/api/deployments'
 import { useDeploymentLogs } from '@/lib/ws/use-log-stream'
 import { isDeploySucceeded } from '@/lib/deploy-status'
@@ -43,6 +48,8 @@ export function DeploysTab({ appId }: { appId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <PendingApprovals appId={appId} />
+
       <SectionHeader className="mb-0">{t('deploys.history')}</SectionHeader>
 
       <SwapFade
@@ -70,6 +77,62 @@ export function DeploysTab({ appId }: { appId: string }) {
           <EmptyState title={t('deploys.emptyTitle')} description={t('deploys.emptyDescription')} />
         )}
       </SwapFade>
+    </div>
+  )
+}
+
+function PendingApprovals({ appId }: { appId: string }) {
+  const { t } = useTranslation('app-detail')
+  const { data: pending } = usePendingDeployments(appId)
+  const approve = useApproveDeployment(appId)
+  const reject = useRejectDeployment(appId)
+
+  if (!pending || pending.length === 0) return null
+
+  return (
+    <div className="flex flex-col gap-2">
+      <SectionHeader className="mb-0">{t('approvals.title')}</SectionHeader>
+      {pending.map((d) => (
+        <Card
+          key={d.id}
+          className="flex flex-row flex-wrap items-center gap-3 border-warn-border bg-warn-bg/40 p-4"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium">
+              {d.commit_message ?? t('approvals.pendingFallback')}
+            </div>
+            <div className="font-mono text-2xs text-muted-foreground">
+              {shortSha(d.commit_sha)} · {relativeTime(d.triggered_at)}
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={reject.isPending}
+            onClick={() =>
+              reject.mutate(d.id, {
+                onSuccess: () => toast.success(t('approvals.rejected')),
+                onError: (e) => toast.error(e.message),
+              })
+            }
+          >
+            {t('approvals.reject')}
+          </Button>
+          <Button
+            variant="brand"
+            size="sm"
+            disabled={approve.isPending}
+            onClick={() =>
+              approve.mutate(d.id, {
+                onSuccess: () => toast.success(t('approvals.approved')),
+                onError: (e) => toast.error(e.message),
+              })
+            }
+          >
+            {t('approvals.approve')}
+          </Button>
+        </Card>
+      ))}
     </div>
   )
 }

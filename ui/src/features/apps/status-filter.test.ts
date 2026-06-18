@@ -21,6 +21,12 @@ function app(status: string): App {
     source: 'git',
     template_id: null,
     is_preview: false,
+    maintenance_mode: false,
+    maintenance_auto: false,
+    maintenance_active: false,
+    idle_suspend_enabled: false,
+    idle_timeout_minutes: null,
+    suspended: false,
   }
 }
 

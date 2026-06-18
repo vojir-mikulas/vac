@@ -61,13 +61,39 @@ type App struct {
 	IsPreview         bool
 	ParentAppID       *string
 	LastPreviewPushAt *time.Time
+	// Maintenance mode + editable page + deploy windows
+	// (docs/plans/maintenance-mode-and-deploy-gates.md).
+	// MaintenanceMode is the operator-set manual flag (sticky — survives deploys).
+	// MaintenanceAuto opts the app into showing the page automatically during a
+	// deploy. MaintenanceActive is the effective runtime flag the router reads —
+	// kept distinct so the pipeline's clear-on-exit defer can restore correctly
+	// (clear active only when mode is false). MaintenanceHTML is the custom page
+	// (nil = built-in default). DeployWindow is a JSONB array of allowed windows
+	// (nil = always allowed).
+	MaintenanceMode   bool
+	MaintenanceAuto   bool
+	MaintenanceActive bool
+	MaintenanceHTML   *string
+	DeployWindow      json.RawMessage
+	// Scale-to-zero (docs/plans/scale-to-zero.md). IdleSuspendEnabled is the
+	// per-app opt-in; IdleTimeoutMinutes overrides the instance default
+	// (VAC_IDLE_TIMEOUT) when non-nil. Suspended is the live runtime state — when
+	// true the stack is stopped and the app's hosts serve a wake route, so
+	// proxy.Reconcile must read it on boot. LastTrafficAt is the sweeper's
+	// denormalized last-seen request time (advisory only).
+	IdleSuspendEnabled bool
+	IdleTimeoutMinutes *int
+	Suspended          bool
+	LastTrafficAt      *time.Time
 }
 
 // appColumns is the canonical SELECT/RETURNING list, kept in one place so the
 // field order stays in lockstep with scanApp.
 const appColumns = `id, name, slug, git_url, git_branch, compose_file, build_kind,
 	build_config, status, mem_limit_mb, disk_limit_mb, created_at, updated_at,
-	source, template_id, is_preview, parent_app_id, last_preview_push_at`
+	source, template_id, is_preview, parent_app_id, last_preview_push_at,
+	maintenance_mode, maintenance_auto, maintenance_active, maintenance_html, deploy_window,
+	idle_suspend_enabled, idle_timeout_minutes, suspended, last_traffic_at`
 
 // scanApp scans one row in appColumns order. pgx.Rows satisfies pgx.Row, so the
 // same helper serves both single-row and iterating queries.
@@ -76,6 +102,8 @@ func scanApp(row pgx.Row, a *App) error {
 		&a.ID, &a.Name, &a.Slug, &a.GitURL, &a.GitBranch, &a.ComposeFile, &a.BuildKind,
 		&a.BuildConfig, &a.Status, &a.MemLimitMB, &a.DiskLimitMB, &a.CreatedAt, &a.UpdatedAt,
 		&a.Source, &a.TemplateID, &a.IsPreview, &a.ParentAppID, &a.LastPreviewPushAt,
+		&a.MaintenanceMode, &a.MaintenanceAuto, &a.MaintenanceActive, &a.MaintenanceHTML, &a.DeployWindow,
+		&a.IdleSuspendEnabled, &a.IdleTimeoutMinutes, &a.Suspended, &a.LastTrafficAt,
 	)
 }
 
@@ -222,6 +250,88 @@ func (s *Store) UpdateApp(ctx context.Context, id string, name, gitURL, gitBranc
 // owned by the Go side (no DB CHECK after 00011).
 func (s *Store) SetAppStatus(ctx context.Context, id, status string) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE apps SET status = $2, updated_at = NOW() WHERE id = $1`, id, status)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetAppMaintenance sets the operator's manual maintenance flags
+// (docs/plans/maintenance-mode-and-deploy-gates.md). The effective runtime flag
+// (maintenance_active) tracks the manual flag on the manual toggle path; the
+// deploy pipeline drives it independently via SetAppMaintenanceActive /
+// ClearAppMaintenanceActiveIfManualOff for auto-maintenance.
+func (s *Store) SetAppMaintenance(ctx context.Context, id string, mode, auto bool) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE apps
+		SET maintenance_mode = $2, maintenance_auto = $3, maintenance_active = $2,
+		    updated_at = NOW()
+		WHERE id = $1`, id, mode, auto)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetAppMaintenanceActive flips the effective runtime flag without touching the
+// manual flags. Used by the deploy pipeline to raise the maintenance page at the
+// start of an auto-maintenance deploy.
+func (s *Store) SetAppMaintenanceActive(ctx context.Context, id string, active bool) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE apps SET maintenance_active = $2, updated_at = NOW() WHERE id = $1`, id, active)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ClearAppMaintenanceActiveIfManualOff clears the effective runtime flag, but
+// only when the operator's manual maintenance is NOT set. This is the deploy
+// pipeline's clear-on-every-exit path: a failed auto-maintenance deploy can
+// never strand an app in maintenance, yet an operator-set manual maintenance
+// survives the deploy unchanged. Returns whether the flag was cleared.
+func (s *Store) ClearAppMaintenanceActiveIfManualOff(ctx context.Context, id string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE apps SET maintenance_active = FALSE, updated_at = NOW()
+		WHERE id = $1 AND maintenance_mode = FALSE AND maintenance_active = TRUE`, id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// SetAppMaintenanceHTML stores (or clears, with nil) an app's custom maintenance
+// page. The size cap is enforced by the handler and a DB CHECK constraint.
+func (s *Store) SetAppMaintenanceHTML(ctx context.Context, id string, html *string) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE apps SET maintenance_html = $2, updated_at = NOW() WHERE id = $1`, id, html)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetAppDeployWindow stores (or clears, with nil) an app's deploy-window schedule
+// (Phase 3). A nil/empty value means "always allowed".
+func (s *Store) SetAppDeployWindow(ctx context.Context, id string, window json.RawMessage) error {
+	var w any
+	if len(window) > 0 {
+		w = window
+	}
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE apps SET deploy_window = $2, updated_at = NOW() WHERE id = $1`, id, w)
 	if err != nil {
 		return err
 	}

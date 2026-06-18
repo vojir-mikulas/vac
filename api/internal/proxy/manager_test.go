@@ -45,6 +45,19 @@ func (f *fakeStore) ListServicesForApp(_ context.Context, _ string) ([]store.Ser
 	return f.services, nil
 }
 
+func (f *fakeStore) SetAppMaintenanceActive(_ context.Context, _ string, active bool) error {
+	f.app.MaintenanceActive = active
+	return nil
+}
+
+func (f *fakeStore) ClearAppMaintenanceActiveIfManualOff(_ context.Context, _ string) (bool, error) {
+	if f.app.MaintenanceMode || !f.app.MaintenanceActive {
+		return false, nil
+	}
+	f.app.MaintenanceActive = false
+	return true, nil
+}
+
 type fakeCaddy struct {
 	put       map[string]caddy.Route
 	deleted   []string
@@ -466,5 +479,197 @@ func TestClearedCertPushesEmptySet(t *testing.T) {
 	}
 	if len(fc.certSets) != 1 || len(fc.certSets[0]) != 0 {
 		t.Errorf("expected one empty cert push, got %v", fc.certSets)
+	}
+}
+
+// TestSync_MaintenanceMode verifies that when an app's effective maintenance
+// flag is set, Sync swaps every host's route to a 503 static_response carrying
+// the rendered page under the SAME @id (a clean swap), and that turning it off
+// restores the proxy route in place.
+func TestSync_MaintenanceMode(t *testing.T) {
+	d := store.Domain{ID: "d1", AppID: "a1", Hostname: "blog.vac.example.com", ServiceName: "web"}
+	custom := "<h1>down for maintenance</h1>"
+	s := &fakeStore{
+		app:      store.App{ID: "a1", Slug: "blog", MaintenanceActive: true, MaintenanceHTML: &custom},
+		domains:  []store.Domain{d},
+		services: []store.Service{{ServiceName: "web", ContainerID: strp("c1"), InternalPort: intp(3000)}},
+	}
+	c := newFakeCaddy()
+	m := newManagerWith(s, c, newFakeNet())
+
+	if err := m.Sync(context.Background(), "a1"); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	r, ok := c.put["vac-route-d1"]
+	if !ok {
+		t.Fatalf("maintenance route not pushed under the host @id: %+v", c.put)
+	}
+	if len(r.Handle) != 1 || r.Handle[0].Handler != "static_response" {
+		t.Fatalf("handler = %+v, want static_response", r.Handle)
+	}
+	if r.Handle[0].StatusCode != 503 {
+		t.Errorf("status = %d, want 503", r.Handle[0].StatusCode)
+	}
+	if r.Handle[0].Body != custom {
+		t.Errorf("body = %q, want the custom page", r.Handle[0].Body)
+	}
+
+	// Turning maintenance off restores the proxy route in place (same @id).
+	s.app.MaintenanceActive = false
+	if err := m.Sync(context.Background(), "a1"); err != nil {
+		t.Fatalf("Sync (off): %v", err)
+	}
+	r = c.put["vac-route-d1"]
+	if len(r.Handle) != 1 || r.Handle[0].Handler != "reverse_proxy" {
+		t.Fatalf("after off, handler = %+v, want reverse_proxy", r.Handle)
+	}
+}
+
+// TestSync_MaintenanceMode_DefaultPage verifies the built-in default page is
+// served when the app has no custom HTML.
+func TestSync_MaintenanceMode_DefaultPage(t *testing.T) {
+	d := store.Domain{ID: "d1", AppID: "a1", Hostname: "h", ServiceName: "web"}
+	s := &fakeStore{
+		app:      store.App{ID: "a1", Slug: "blog", MaintenanceActive: true},
+		domains:  []store.Domain{d},
+		services: []store.Service{{ServiceName: "web", ContainerID: strp("c1"), InternalPort: intp(3000)}},
+	}
+	c := newFakeCaddy()
+	m := newManagerWith(s, c, newFakeNet())
+	if err := m.Sync(context.Background(), "a1"); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	r := c.put["vac-route-d1"]
+	if r.Handle[0].Body == "" {
+		t.Errorf("expected the default page body to be served")
+	}
+}
+
+// ---- scale-to-zero wake routes ----
+
+func TestInstallWakeRoutes_SwapsRoutesAndDetaches(t *testing.T) {
+	d := store.Domain{ID: "d1", AppID: "a1", Hostname: "blog.vac.example.com", ServiceName: "web"}
+	svc := store.Service{ServiceName: "web", ContainerID: strp("c1"), InternalPort: intp(3000)}
+	s := &fakeStore{
+		app:      store.App{ID: "a1", Slug: "blog"},
+		domains:  []store.Domain{d},
+		services: []store.Service{svc},
+	}
+	c := newFakeCaddy()
+	n := newFakeNet()
+	m := New(s, c, n, Config{EdgeNetwork: "vac-edge", BaseDomain: "vac.example.com", ControlPort: 9393, WakeToken: "sek"}, nil)
+
+	if err := m.InstallWakeRoutes(context.Background(), "a1"); err != nil {
+		t.Fatalf("InstallWakeRoutes: %v", err)
+	}
+
+	// Custom-domain route is swapped for a wake route at the same @id.
+	r, ok := c.put["vac-route-d1"]
+	if !ok {
+		t.Fatalf("wake route not pushed: %+v", c.put)
+	}
+	if len(r.Handle) != 3 {
+		t.Fatalf("wake route handlers = %+v", r.Handle)
+	}
+	if r.Handle[0].Handler != "headers" || r.Handle[0].Request == nil {
+		t.Errorf("handler[0] = %+v, want headers+request", r.Handle[0])
+	}
+	if got := r.Handle[0].Request.Set["X-Caddy-Ask-Token"]; len(got) != 1 || got[0] != "sek" {
+		t.Errorf("wake token header = %+v", got)
+	}
+	if r.Handle[1].Handler != "rewrite" || r.Handle[1].URI != "/__vac_wake" {
+		t.Errorf("handler[1] = %+v, want rewrite /__vac_wake", r.Handle[1])
+	}
+	if got := r.Handle[2].Upstreams[0].Dial; got != "vac-api:9393" {
+		t.Errorf("wake upstream = %q, want vac-api:9393", got)
+	}
+
+	// Container is detached from vac-edge.
+	if len(n.disconnected) != 1 || n.disconnected[0] != "c1" {
+		t.Errorf("disconnected = %+v, want [c1]", n.disconnected)
+	}
+}
+
+func TestApplyApp_SuspendedInstallsWakeRoutes(t *testing.T) {
+	d := store.Domain{ID: "d1", AppID: "a1", Hostname: "blog.vac.example.com", ServiceName: "web"}
+	svc := store.Service{ServiceName: "web", ContainerID: strp("c1"), InternalPort: intp(3000)}
+	s := &fakeStore{
+		app:      store.App{ID: "a1", Slug: "blog", Suspended: true},
+		domains:  []store.Domain{d},
+		services: []store.Service{svc},
+	}
+	c := newFakeCaddy()
+	n := newFakeNet()
+	m := newManagerWith(s, c, n)
+
+	// Reconcile drives applyApp; a suspended app must get wake routes (not proxy
+	// routes) and must NOT be (re)attached to vac-edge.
+	if err := m.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	r, ok := c.put["vac-route-d1"]
+	if !ok {
+		t.Fatalf("route not pushed: %+v", c.put)
+	}
+	if got := r.Handle[len(r.Handle)-1].Upstreams[0].Dial; got != "vac-api:9393" {
+		t.Errorf("suspended route should dial vac-api, got %q", got)
+	}
+	if len(n.connected) != 0 {
+		t.Errorf("suspended app should not attach to edge, got %+v", n.connected)
+	}
+}
+
+// TestMaintainOnOff verifies the deploy pipeline's auto-maintenance seam:
+// MaintainOn raises the 503 page on every host; MaintainOff restores the proxy
+// route when manual maintenance is off, and preserves the page when it's on.
+func TestMaintainOnOff(t *testing.T) {
+	d := store.Domain{ID: "d1", AppID: "a1", Hostname: "h", ServiceName: "web"}
+	mk := func() (*fakeStore, *fakeCaddy, *Manager) {
+		s := &fakeStore{
+			app:      store.App{ID: "a1", Slug: "blog"},
+			domains:  []store.Domain{d},
+			services: []store.Service{{ServiceName: "web", ContainerID: strp("c1"), InternalPort: intp(3000)}},
+		}
+		c := newFakeCaddy()
+		return s, c, newManagerWith(s, c, newFakeNet())
+	}
+
+	// On → 503 page pushed under the host @id.
+	s, c, m := mk()
+	if err := m.MaintainOn(context.Background(), "a1"); err != nil {
+		t.Fatalf("MaintainOn: %v", err)
+	}
+	if !s.app.MaintenanceActive {
+		t.Fatal("MaintainOn should set the effective flag")
+	}
+	if got := c.put["vac-route-d1"].Handle[0].Handler; got != "static_response" {
+		t.Fatalf("after MaintainOn, handler = %q, want static_response", got)
+	}
+
+	// Off with manual maintenance NOT set → flag cleared, proxy route restored.
+	if err := m.MaintainOff(context.Background(), "a1"); err != nil {
+		t.Fatalf("MaintainOff: %v", err)
+	}
+	if s.app.MaintenanceActive {
+		t.Fatal("MaintainOff should clear the flag when manual mode is off")
+	}
+	if got := c.put["vac-route-d1"].Handle[0].Handler; got != "reverse_proxy" {
+		t.Fatalf("after MaintainOff, handler = %q, want reverse_proxy", got)
+	}
+
+	// Off with manual maintenance set → page survives the deploy.
+	s, c, m = mk()
+	s.app.MaintenanceMode = true
+	if err := m.MaintainOn(context.Background(), "a1"); err != nil {
+		t.Fatalf("MaintainOn: %v", err)
+	}
+	if err := m.MaintainOff(context.Background(), "a1"); err != nil {
+		t.Fatalf("MaintainOff: %v", err)
+	}
+	if !s.app.MaintenanceActive {
+		t.Fatal("manual maintenance must survive a deploy's MaintainOff")
+	}
+	if got := c.put["vac-route-d1"].Handle[0].Handler; got != "static_response" {
+		t.Fatalf("manual maintenance page should remain, handler = %q", got)
 	}
 }

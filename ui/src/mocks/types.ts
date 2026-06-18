@@ -31,6 +31,10 @@ export interface AppRecord extends App {
   deployments: DeployRecord[]
   env: EnvRecord[]
   domains: Domain[]
+  /** Custom maintenance-page HTML; null/undefined = built-in default. */
+  maintenance_html?: string | null
+  /** Deploy-window schedule (Phase 3); undefined = always allowed. */
+  deploy_window?: import('@/lib/api/deploy-window').DeployWindow[]
 }
 
 export interface MockState {

@@ -38,7 +38,7 @@ import (
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, jobsEngine handler.JobRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost, previewSvc *preview.Service) (*http.Server, error) {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, jobsEngine handler.JobRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost, previewSvc *preview.Service, waker handler.Waker) (*http.Server, error) {
 	// Gate X-Forwarded-Proto trust (cookie Secure decision) on config — the
 	// bundled vac-proxy sets the header; a raw-HTTP box can disable trusting it.
 	handler.SetTrustForwardedProto(cfg.TrustProxyHeaders)
@@ -79,6 +79,13 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	var routeRec handler.RouteReconciler
 	if pm != nil {
 		routeRec = pm
+	}
+	// Scale-to-zero wake handler resolves a suspended host back to its app via the
+	// proxy manager. nil-able so the endpoint 404s cleanly when the proxy isn't
+	// wired (tests).
+	var wakeResolver handler.WakeResolver
+	if pm != nil {
+		wakeResolver = pm
 	}
 
 	// Same resolver the status engine uses, so the one-shot DNS-check button and
@@ -176,6 +183,13 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	// On-demand-TLS ask hook for Caddy. Unauthenticated by design (Caddy can't
 	// present a session); reachable only on the internal compose network.
 	r.Get("/internal/caddy/ask", handler.CaddyAsk(s, cfg.CaddyAskToken, ctrlChk, autoChk))
+
+	// Scale-to-zero wake interceptor (docs/plans/scale-to-zero.md). A suspended
+	// app's Caddy routes rewrite any path to this endpoint; it starts the stack
+	// and redirects back. Unauthenticated like CaddyAsk (it's the route's job to
+	// authenticate, via the shared X-Caddy-Ask-Token), outside the /api group, and
+	// matched on every method so a rewritten POST still reaches it.
+	r.HandleFunc("/__vac_wake", handler.WakeApp(waker, wakeResolver, cfg.CaddyAskToken))
 
 	// Token-gated runtime introspection for the RAM benchmark (plan 07).
 	// Default-closed: with VAC_METRICS_TOKEN unset these 404. Sits outside the
@@ -343,6 +357,11 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				if worker != nil {
 					r.Post("/{id}/deployments", handler.TriggerDeployment(s, worker))
 					r.Get("/{id}/deployments", handler.ListDeployments(s))
+					// Approval gate (maintenance-mode-and-deploy-gates.md, Phase 4).
+					// `pending` is a static segment, matched ahead of the {did} param.
+					r.Get("/{id}/deployments/pending", handler.ListPendingDeployments(s))
+					r.Post("/{id}/deployments/{did}/approve", handler.ApproveDeployment(s, worker))
+					r.Post("/{id}/deployments/{did}/reject", handler.RejectDeployment(s))
 					r.Get("/{id}/deployments/{did}", handler.GetDeployment(s))
 					r.Get("/{id}/deployments/{did}/logs", handler.GetDeploymentLogs(s))
 					r.Post("/{id}/deployments/{did}/rollback", handler.RollbackDeployment(s, worker))
@@ -361,6 +380,26 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/{id}/triggers", handler.ListDeployTriggers(s))
 				r.Post("/{id}/triggers", handler.CreateDeployTrigger(s))
 				r.Delete("/{id}/triggers/{triggerId}", handler.DeleteDeployTrigger(s))
+				// Maintenance mode + editable page (docs/plans/
+				// maintenance-mode-and-deploy-gates.md). Toggling re-syncs the proxy,
+				// which swaps every host's route to/from the 503 page in place.
+				r.Get("/{id}/maintenance", handler.GetMaintenance(s))
+				r.Put("/{id}/maintenance", handler.SetMaintenance(s, proxyMgr))
+				r.Get("/{id}/maintenance/page", handler.GetMaintenancePage(s))
+				r.Put("/{id}/maintenance/page", handler.PutMaintenancePage(s, proxyMgr))
+				r.Delete("/{id}/maintenance/page", handler.DeleteMaintenancePage(s, proxyMgr))
+
+				// Deploy windows (maintenance-mode-and-deploy-gates.md, Phase 3):
+				// restrict push-to-deploy to time windows; pushes outside park as
+				// `scheduled` until the window sweeper releases them.
+				r.Get("/{id}/deploy-window", handler.GetDeployWindow(s))
+				r.Put("/{id}/deploy-window", handler.PutDeployWindow(s))
+
+				// Scale-to-zero per-app opt-in (docs/plans/scale-to-zero.md). Writes
+				// config only; the sweeper (gated on VAC_IDLE_SUSPEND) acts on it.
+				r.Get("/{id}/idle-suspend", handler.GetIdleSuspend(s))
+				r.Put("/{id}/idle-suspend", handler.SetIdleSuspend(s))
+
 				r.Get("/{id}/webhook", handler.GetAppWebhookConfig(s))
 				r.Post("/{id}/webhook/regenerate", handler.RegenerateAppWebhookSecret(s, box))
 				r.Delete("/{id}/webhook", handler.DeleteAppWebhookSecret(s))
