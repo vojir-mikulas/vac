@@ -14,8 +14,12 @@ type fakeStore struct {
 	services map[string][]store.Service
 	upserts  []store.VolumeUsage
 	pruned   map[string][]string
+	alloc    store.MemAllocation
 }
 
+func (f *fakeStore) SumAppMemLimits(context.Context) (store.MemAllocation, error) {
+	return f.alloc, nil
+}
 func (f *fakeStore) ListApps(context.Context) ([]store.App, error) { return f.apps, nil }
 func (f *fakeStore) ListServicesForApp(_ context.Context, appID string) ([]store.Service, error) {
 	return f.services[appID], nil
@@ -43,16 +47,18 @@ func (f *fakeDocker) ContainerMounts(_ context.Context, id string) ([]dockercli.
 }
 
 type fakeNotifier struct {
-	calls []string // scope of each DiskUsageHigh
+	calls    []string // scope of each DiskUsageHigh
+	memCalls []string // detail of each MemOverCommitted
 }
 
 func (f *fakeNotifier) DiskUsageHigh(_, _, scope, _ string) { f.calls = append(f.calls, scope) }
+func (f *fakeNotifier) MemOverCommitted(detail string)      { f.memCalls = append(f.memCalls, detail) }
 
 func cid(s string) *string { return &s }
 func mb(n int) *int        { return &n }
 
 func newTestCollector(s Store, d Docker, n Notifier, host HostDisk) *Collector {
-	c := New(s, d, n, host, Config{Interval: time.Minute, AlertPercent: 85, Cooldown: time.Hour}, nil)
+	c := New(s, d, n, host, nil, Config{Interval: time.Minute, AlertPercent: 85, Cooldown: time.Hour}, nil)
 	return c
 }
 
@@ -149,6 +155,54 @@ func TestEvalHost_FiresOverThreshold(t *testing.T) {
 	c.evalHost(context.Background())
 	if len(n.calls) != 1 || n.calls[0] != "host disk" {
 		t.Fatalf("want host alert, got %v", n.calls)
+	}
+}
+
+func TestEvalMemCommit_FireCooldownRecover(t *testing.T) {
+	st := &fakeStore{}
+	n := &fakeNotifier{}
+	host := func(context.Context) uint64 { return 1024 * 1024 * 1024 } // 1024 MiB box
+	c := New(st, &fakeDocker{}, n, nil, host, Config{Interval: time.Minute, Cooldown: time.Hour}, nil)
+	now := time.Unix(0, 0)
+	c.now = func() time.Time { return now }
+
+	// Committed > total → fire once.
+	st.alloc = store.MemAllocation{AllocatedMB: 2048}
+	c.evalMemCommit(context.Background())
+	if len(n.memCalls) != 1 {
+		t.Fatalf("want 1 alert on first over-commit, got %d", len(n.memCalls))
+	}
+	// Still over, within cooldown → suppressed.
+	now = now.Add(30 * time.Minute)
+	c.evalMemCommit(context.Background())
+	if len(n.memCalls) != 1 {
+		t.Fatalf("cooldown should suppress, got %d", len(n.memCalls))
+	}
+	// Recovers (≤ total) → re-arms, no alert.
+	st.alloc = store.MemAllocation{AllocatedMB: 512}
+	c.evalMemCommit(context.Background())
+	if len(n.memCalls) != 1 {
+		t.Fatalf("recovery should not alert, got %d", len(n.memCalls))
+	}
+	// Over again after re-arm → fires immediately despite the cooldown window.
+	st.alloc = store.MemAllocation{AllocatedMB: 2048}
+	c.evalMemCommit(context.Background())
+	if len(n.memCalls) != 2 {
+		t.Fatalf("re-crossing after recovery should alert, got %d", len(n.memCalls))
+	}
+}
+
+func TestEvalMemCommit_DisabledAndWithinBudget(t *testing.T) {
+	n := &fakeNotifier{}
+	// No host-mem source → disabled, never fires.
+	c := New(&fakeStore{alloc: store.MemAllocation{AllocatedMB: 9999}}, &fakeDocker{}, n, nil, nil, Config{}, nil)
+	c.evalMemCommit(context.Background())
+	// Wired but within budget → no alert.
+	host := func(context.Context) uint64 { return 1024 * 1024 * 1024 } // 1024 MiB
+	c2 := New(&fakeStore{alloc: store.MemAllocation{AllocatedMB: 1024}}, &fakeDocker{}, n, nil, host, Config{}, nil)
+	c2.evalMemCommit(context.Background())
+	if len(n.memCalls) != 0 {
+		t.Fatalf("no alert expected, got %d", len(n.memCalls))
 	}
 }
 

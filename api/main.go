@@ -181,6 +181,16 @@ func main() {
 		proxyMgr.SetBaseDomain(settings.BaseDomain)
 	}
 
+	// Bring-your-own TLS certs (dns-automation plan B): the manager loads
+	// operator-uploaded certs into Caddy over the admin API. It needs the store
+	// (to list them) and the crypto box (to open each sealed key). Wire before the
+	// base config so DesiredCerts can seed it for restart self-heal. Only wire
+	// when the box exists — a typed-nil *crypto.Box in the KeyOpener interface
+	// would be non-nil and panic on Open; leaving it unset disables BYO certs.
+	if box != nil {
+		proxyMgr.SetCertSource(st, box)
+	}
+
 	loadCaddyBaseConfig(ctx, cfg, caddyClient, proxyMgr)
 
 	// Outbound notifications (Discord/Slack/email). Stored webhook URLs and the
@@ -341,6 +351,8 @@ func main() {
 	diskCollector := diskusage.New(st, docker, notifier, func(ctx context.Context) (uint64, uint64) {
 		snap := hostCollector.Snapshot(ctx)
 		return snap.DiskUsedBytes, snap.DiskTotalBytes
+	}, func(ctx context.Context) uint64 {
+		return hostCollector.Snapshot(ctx).MemTotalBytes
 	}, diskusage.Config{
 		Interval:     cfg.DiskPollInterval,
 		AlertPercent: cfg.DiskAlertPercent,
@@ -482,11 +494,22 @@ func loadCaddyBaseConfig(parent context.Context, cfg config.Config, client *cadd
 	if askURL == "" {
 		askURL = fmt.Sprintf("http://vac-api:%d/internal/caddy/ask", cfg.Server.Port)
 	}
+	// Seed the base with any uploaded (bring-your-own) certs so they are served
+	// immediately after a Caddy restart, before the first route sync re-pushes
+	// them (dns-automation plan B). Best-effort: an error here just means the
+	// next Sync/SyncCerts repopulates the cert set.
+	var certs []caddy.CertKeyPair
+	if c, err := mgr.DesiredCerts(parent); err != nil {
+		slog.Warn("could not load uploaded certs for base config", "err", err)
+	} else {
+		certs = c
+	}
 	base := caddy.BaseConfig(caddy.BaseOptions{
 		AdminListen:   ":2019",
 		AccessLogPath: cfg.CaddyAccessLog,
 		AskURL:        askURL,
 		ACMECA:        cfg.ACMECA,
+		Certs:         certs,
 	})
 
 	// Hand the same base config to the manager so it can self-heal whenever the

@@ -50,7 +50,14 @@ func CaddyAsk(s *store.Store, token string, ctrl ControlDomainChecker, auto Auto
 		}
 		// A known custom domain (assigned or not — an added-but-unpointed domain
 		// pre-warms its cert by design, see plan 09 Phase 1).
-		if _, err := s.GetDomainByHostname(r.Context(), host); err == nil {
+		if d, err := s.GetDomainByHostname(r.Context(), host); err == nil {
+			// A bring-your-own-cert host must NOT ACME-issue: VAC serves the
+			// uploaded cert (dns-automation plan B). Refusing here closes the brief
+			// window between an upload and the cert reaching Caddy's cache.
+			if d.TLSCertSource == "uploaded" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
 			w.WriteHeader(http.StatusOK)
 			return
 		}

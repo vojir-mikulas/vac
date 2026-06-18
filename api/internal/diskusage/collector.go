@@ -29,6 +29,8 @@ type Store interface {
 	ListServicesForApp(ctx context.Context, appID string) ([]store.Service, error)
 	UpsertVolumeUsage(ctx context.Context, v store.VolumeUsage) error
 	DeleteVolumeUsageForAppExcept(ctx context.Context, appID string, keepMountPaths []string) error
+	// SumAppMemLimits totals the per-app RAM caps for the over-commit check.
+	SumAppMemLimits(ctx context.Context) (store.MemAllocation, error)
 }
 
 // Docker is the volume-introspection surface. *dockercli.Compose satisfies it.
@@ -37,15 +39,20 @@ type Docker interface {
 	ContainerMounts(ctx context.Context, id string) ([]dockercli.Mount, error)
 }
 
-// Notifier fires the storage-high alert. *notify.Dispatcher satisfies it. nil
-// disables alerting (the collector still records usage).
+// Notifier fires the storage-high and RAM-over-commit alerts. *notify.Dispatcher
+// satisfies it. nil disables alerting (the collector still records usage).
 type Notifier interface {
 	DiskUsageHigh(appName, appID, scope, detail string)
+	MemOverCommitted(detail string)
 }
 
 // HostDisk reports current host disk usage (used, total bytes). Wired to the host
 // stats collector; nil disables the host-level threshold check.
 type HostDisk func(ctx context.Context) (used, total uint64)
+
+// HostMemTotal reports the box's total RAM in bytes. Wired to the host stats
+// collector; nil disables the RAM-over-commit check.
+type HostMemTotal func(ctx context.Context) uint64
 
 // Config tunes the collector. Zero values fall back to sane defaults.
 type Config struct {
@@ -84,7 +91,10 @@ type alertState struct {
 	lastNotify time.Time
 }
 
-const hostScope = "host"
+const (
+	hostScope = "host"
+	memScope  = "mem"
+)
 
 // Collector is the background sampler. Construct with New and drive with Run.
 type Collector struct {
@@ -92,6 +102,7 @@ type Collector struct {
 	docker   Docker
 	notifier Notifier
 	hostDisk HostDisk
+	hostMem  HostMemTotal
 	cfg      Config
 	logger   *slog.Logger
 	now      func() time.Time
@@ -101,8 +112,8 @@ type Collector struct {
 	alerts map[string]*alertState
 }
 
-// New wires a Collector. notifier and hostDisk may be nil.
-func New(s Store, docker Docker, notifier Notifier, hostDisk HostDisk, cfg Config, logger *slog.Logger) *Collector {
+// New wires a Collector. notifier, hostDisk, and hostMem may be nil.
+func New(s Store, docker Docker, notifier Notifier, hostDisk HostDisk, hostMem HostMemTotal, cfg Config, logger *slog.Logger) *Collector {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -111,6 +122,7 @@ func New(s Store, docker Docker, notifier Notifier, hostDisk HostDisk, cfg Confi
 		docker:   docker,
 		notifier: notifier,
 		hostDisk: hostDisk,
+		hostMem:  hostMem,
 		cfg:      cfg.withDefaults(),
 		logger:   logger,
 		now:      time.Now,
@@ -158,6 +170,7 @@ func (c *Collector) collectOnce(ctx context.Context) {
 		c.evalApp(app, total, measured)
 	}
 	c.evalHost(ctx)
+	c.evalMemCommit(ctx)
 }
 
 // collectApp samples every volume of one app, persists the rows, prunes mounts
@@ -275,9 +288,54 @@ func (c *Collector) evalHost(ctx context.Context) {
 	c.fire(hostScope, "", "", "host disk", detail)
 }
 
+// evalMemCommit fires (or clears) the box RAM-over-commit alert: apps' summed
+// per-app caps vs the box's total RAM. Disabled when no host-mem source is wired.
+// A soft signal, debounced exactly like the disk alerts (shared cooldown).
+func (c *Collector) evalMemCommit(ctx context.Context) {
+	if c.hostMem == nil {
+		return
+	}
+	totalBytes := c.hostMem(ctx)
+	if totalBytes == 0 {
+		return
+	}
+	alloc, err := c.store.SumAppMemLimits(ctx)
+	if err != nil {
+		c.logger.Warn("diskusage: sum mem limits", "err", err)
+		return
+	}
+	totalMB := int64(totalBytes / (1024 * 1024))
+	if alloc.AllocatedMB <= totalMB {
+		c.clear(memScope)
+		return
+	}
+	if !c.armed(memScope) {
+		return
+	}
+	detail := fmt.Sprintf("Apps have reserved %d MiB of RAM but the box has %d MiB — over-committed by %d MiB.",
+		alloc.AllocatedMB, totalMB, alloc.AllocatedMB-totalMB)
+	c.logger.Warn("diskusage: ram over-committed", "detail", detail)
+	if c.notifier != nil {
+		c.notifier.MemOverCommitted(detail)
+	}
+}
+
 // fire notifies for a scope, debounced by the cooldown. A scope not currently
 // firing notifies immediately; a sustained overflow re-notifies once per cooldown.
 func (c *Collector) fire(key, appName, appID, scope, detail string) {
+	if !c.armed(key) {
+		return
+	}
+	c.logger.Warn("diskusage: storage high", "scope", scope, "detail", detail)
+	if c.notifier != nil {
+		c.notifier.DiskUsageHigh(appName, appID, scope, detail)
+	}
+}
+
+// armed reports whether a scope should notify now, recording the notification
+// time. It returns false while within the cooldown of the last fire, so a
+// sustained overflow re-notifies once per cooldown rather than every poll.
+func (c *Collector) armed(key string) bool {
 	st := c.alerts[key]
 	if st == nil {
 		st = &alertState{}
@@ -285,14 +343,11 @@ func (c *Collector) fire(key, appName, appID, scope, detail string) {
 	}
 	now := c.now()
 	if st.firing && now.Sub(st.lastNotify) < c.cfg.Cooldown {
-		return
+		return false
 	}
 	st.firing = true
 	st.lastNotify = now
-	c.logger.Warn("diskusage: storage high", "scope", scope, "detail", detail)
-	if c.notifier != nil {
-		c.notifier.DiskUsageHigh(appName, appID, scope, detail)
-	}
+	return true
 }
 
 // clear re-arms a scope so it alerts afresh on the next crossing once it recovers.

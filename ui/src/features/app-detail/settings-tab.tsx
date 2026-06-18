@@ -27,6 +27,7 @@ import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
 import { AppDomainsSection } from '@/features/app-detail/domains-section'
 import { BuildSourcePicker, type BuildSourceValue } from '@/features/apps/build-source'
 import { useApp, useDeleteApp, useUpdateApp } from '@/lib/api/apps'
+import { useBoxBudget } from '@/lib/api/metrics'
 import { useExportApp } from '@/lib/api/portability'
 import { downloadFile } from '@/lib/log-export'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -65,6 +66,18 @@ function SettingsForm({ app }: { app: App }) {
   const [diskLimit, setDiskLimit] = useState(
     app.disk_limit_mb != null ? String(app.disk_limit_mb) : '',
   )
+
+  // Soft overcommit warning: would this cap push the box's committed RAM (which
+  // already includes this app's current cap) past host RAM? Warn only — saving
+  // is never blocked, matching the dashboard's over-commit signal.
+  const { data: budget } = useBoxBudget()
+  const ramValue = ramLimit.trim() === '' ? 0 : Number(ramLimit.trim())
+  const ramOvercommits =
+    !!budget &&
+    budget.total_ram_mb > 0 &&
+    Number.isInteger(ramValue) &&
+    ramValue > 0 &&
+    budget.allocated_mb - (app.mem_limit_mb ?? 0) + ramValue > budget.total_ram_mb
 
   const saveRuntime = () => {
     const trimmed = ramLimit.trim()
@@ -274,6 +287,9 @@ function SettingsForm({ app }: { app: App }) {
               className="max-w-40 font-mono text-xs"
             />
             <p className="text-xs text-muted-foreground">{t('settings.ramLimitHint')}</p>
+            {ramOvercommits ? (
+              <p className="text-2xs text-warn-foreground">{t('settings.ramLimitOvercommit')}</p>
+            ) : null}
           </div>
           <div className="flex justify-end">
             <Button variant="brand" size="sm" disabled={update.isPending} onClick={saveRuntime}>

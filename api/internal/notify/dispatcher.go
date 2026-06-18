@@ -407,10 +407,18 @@ func (d *Dispatcher) RestoreFinished(appName, appID, service string, ok bool) {
 
 // CertExpiring fires the TLS-certificate-expiring event (plan 03). daysLeft is
 // the whole days until notAfter; a non-positive value means already expired.
-func (d *Dispatcher) CertExpiring(host string, daysLeft int, notAfter time.Time) {
+// uploaded selects the copy: a bring-your-own cert can't auto-renew, so it tells
+// the operator to upload a replacement rather than waiting for ACME.
+func (d *Dispatcher) CertExpiring(host string, daysLeft int, notAfter time.Time, uploaded bool) {
 	var msg string
 	when := notAfter.Format("2006-01-02")
 	switch {
+	case uploaded && daysLeft <= 0:
+		msg = fmt.Sprintf("The uploaded TLS certificate for %s has expired (%s). Upload a new certificate to keep HTTPS working — it will not auto-renew.", host, when)
+	case uploaded && daysLeft == 1:
+		msg = fmt.Sprintf("The uploaded TLS certificate for %s expires tomorrow (%s). Upload a new certificate — it will not auto-renew.", host, when)
+	case uploaded:
+		msg = fmt.Sprintf("The uploaded TLS certificate for %s expires in %d days (%s). Upload a new certificate — it will not auto-renew.", host, daysLeft, when)
 	case daysLeft <= 0:
 		msg = fmt.Sprintf("The TLS certificate for %s has expired (%s). Auto-renewal has not recovered it.", host, when)
 	case daysLeft == 1:
@@ -434,6 +442,18 @@ func (d *Dispatcher) DiskUsageHigh(appName, appID, scope, detail string) {
 		Type: EventDiskUsageHigh, OK: false,
 		Title:   "Storage high: " + scope,
 		AppName: appName, AppID: appID, Message: detail,
+	})
+}
+
+// MemOverCommitted fires when apps have reserved (via per-app RAM caps) more
+// memory than the box physically has. Host-scoped (not attributable to one app)
+// and a soft signal — VAC never blocks a deploy on it; the operator decides
+// whether to lower a cap, add RAM, or accept the overcommit.
+func (d *Dispatcher) MemOverCommitted(detail string) {
+	d.dispatch(Event{
+		Type: EventMemOverCommitted, OK: false,
+		Title:   "RAM over-committed",
+		Message: detail,
 	})
 }
 

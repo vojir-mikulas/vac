@@ -50,6 +50,7 @@ type fakeCaddy struct {
 	deleted   []string
 	existing  []caddy.Route
 	upstreams []caddy.UpstreamStatus
+	certSets  [][]caddy.CertKeyPair
 }
 
 func newFakeCaddy() *fakeCaddy { return &fakeCaddy{put: map[string]caddy.Route{}} }
@@ -78,6 +79,10 @@ func (c *fakeCaddy) Upstreams(_ context.Context) ([]caddy.UpstreamStatus, error)
 }
 func (c *fakeCaddy) Ping(_ context.Context) error                  { return nil }
 func (c *fakeCaddy) Load(_ context.Context, _ *caddy.Config) error { return nil }
+func (c *fakeCaddy) PutCertSet(_ context.Context, certs []caddy.CertKeyPair) error {
+	c.certSets = append(c.certSets, certs)
+	return nil
+}
 
 type fakeNet struct {
 	connected    map[string]string // container -> alias
@@ -399,5 +404,67 @@ func TestAutoHosts_MultiService(t *testing.T) {
 	}
 	if !got["web.shop.vac.example.com"] || !got["api.shop.vac.example.com"] {
 		t.Errorf("multi-service hostnames wrong: %+v", got)
+	}
+}
+
+// ---- bring-your-own cert push (dns-automation plan B) ----
+
+type fakeCertSource struct{ certs []store.UploadedCert }
+
+func (f fakeCertSource) ListUploadedCerts(context.Context) ([]store.UploadedCert, error) {
+	return f.certs, nil
+}
+
+// fakeKeyOpener returns the sealed bytes verbatim — a deterministic stand-in for
+// the crypto.Box so the test asserts on plaintext.
+type fakeKeyOpener struct{}
+
+func (fakeKeyOpener) Open(b []byte) ([]byte, error) { return b, nil }
+
+func TestSyncCertsPushesUploaded(t *testing.T) {
+	fc := newFakeCaddy()
+	m := newManagerWith(&fakeStore{}, fc, newFakeNet())
+	m.SetCertSource(fakeCertSource{certs: []store.UploadedCert{
+		{DomainID: "d1", Hostname: "x.example.com", CertPEM: "CERTPEM", KeyEnc: []byte("KEYPEM")},
+	}}, fakeKeyOpener{})
+
+	if err := m.SyncCerts(context.Background()); err != nil {
+		t.Fatalf("SyncCerts: %v", err)
+	}
+	if len(fc.certSets) != 1 {
+		t.Fatalf("expected one cert push, got %d", len(fc.certSets))
+	}
+	got := fc.certSets[0]
+	if len(got) != 1 {
+		t.Fatalf("expected one cert, got %d", len(got))
+	}
+	if got[0].Certificate != "CERTPEM" || got[0].Key != "KEYPEM" {
+		t.Errorf("cert/key = %q / %q", got[0].Certificate, got[0].Key)
+	}
+	if len(got[0].Tags) != 1 || got[0].Tags[0] != "vac-cert-d1" {
+		t.Errorf("tags = %v, want [vac-cert-d1]", got[0].Tags)
+	}
+}
+
+func TestSyncCertsNoSourceIsNoop(t *testing.T) {
+	fc := newFakeCaddy()
+	m := newManagerWith(&fakeStore{}, fc, newFakeNet())
+	if err := m.SyncCerts(context.Background()); err != nil {
+		t.Fatalf("SyncCerts: %v", err)
+	}
+	if len(fc.certSets) != 0 {
+		t.Errorf("expected no cert push when BYO certs unwired, got %d", len(fc.certSets))
+	}
+}
+
+func TestClearedCertPushesEmptySet(t *testing.T) {
+	fc := newFakeCaddy()
+	m := newManagerWith(&fakeStore{}, fc, newFakeNet())
+	m.SetCertSource(fakeCertSource{certs: nil}, fakeKeyOpener{})
+	if err := m.SyncCerts(context.Background()); err != nil {
+		t.Fatalf("SyncCerts: %v", err)
+	}
+	if len(fc.certSets) != 1 || len(fc.certSets[0]) != 0 {
+		t.Errorf("expected one empty cert push, got %v", fc.certSets)
 	}
 }

@@ -121,3 +121,44 @@ func TestClientUnavailable(t *testing.T) {
 		t.Error("expected error against dead admin API")
 	}
 }
+
+func TestBaseConfigSeedsCertLoader(t *testing.T) {
+	cfg := BaseConfig(BaseOptions{
+		AskURL: "http://vac-api:3000/internal/caddy/ask",
+		Certs:  []CertKeyPair{{Certificate: "CERT", Key: "KEY", Tags: []string{"vac-cert-d1"}}},
+	})
+	if cfg.Apps.TLS == nil || cfg.Apps.TLS.Certificates == nil {
+		t.Fatal("tls.certificates must always be present so PutCertSet has a path")
+	}
+	b, _ := json.Marshal(cfg)
+	js := string(b)
+	if !strings.Contains(js, `"load_pem"`) || !strings.Contains(js, `"vac-cert-d1"`) {
+		t.Errorf("base config missing seeded load_pem cert: %s", js)
+	}
+}
+
+func TestPutCertSet(t *testing.T) {
+	var (
+		method string
+		path   string
+		body   Certificates
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	certs := []CertKeyPair{{Certificate: "C", Key: "K", Tags: []string{"vac-cert-d1"}}}
+	if err := c.PutCertSet(context.Background(), certs); err != nil {
+		t.Fatalf("PutCertSet: %v", err)
+	}
+	if method != http.MethodPatch || path != "/config/apps/tls/certificates" {
+		t.Errorf("PutCertSet sent %s %s", method, path)
+	}
+	if len(body.LoadPEM) != 1 || body.LoadPEM[0].Certificate != "C" {
+		t.Errorf("PutCertSet body = %+v", body)
+	}
+}

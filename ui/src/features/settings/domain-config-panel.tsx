@@ -2,6 +2,7 @@ import { CheckCircle2, RotateCw } from 'lucide-react'
 import { Trans, useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/common/copy-button'
+import { DomainCertPanel } from '@/features/settings/domain-cert-panel'
 import { RegistrarHostHint } from '@/features/settings/registrar-host-hint'
 import { Button } from '@/components/ui/button'
 import { useHostStats } from '@/lib/api/metrics'
@@ -105,6 +106,9 @@ export function DomainConfigPanel({ domain }: { domain: Domain }) {
           </span>
         ) : null}
       </div>
+
+      {/* Bring-your-own TLS cert (plan B) — custom rows only (auto hosts have no id). */}
+      {domain.id && !domain.managed ? <DomainCertPanel domain={domain} /> : null}
     </div>
   )
 }

@@ -175,6 +175,27 @@ export interface BoxBudget {
   over_committed: boolean
 }
 
+/** One app's row in the capacity breakdown (GET /api/host/capacity). */
+export interface CapacityApp {
+  slug: string
+  name: string
+  /** Committed RAM cap in MiB; null = unlimited (unbudgeted). */
+  mem_limit_mb: number | null
+  /** Live usage summed across the app's services, in bytes. */
+  actual_mem_bytes: number
+  running: boolean
+}
+
+/** Per-app RAM breakdown behind the budget panel (GET /api/host/capacity). */
+export interface BoxCapacity {
+  total_ram_mb: number
+  allocated_mb: number
+  apps_with_limit: number
+  apps_total: number
+  over_committed: boolean
+  apps: CapacityApp[]
+}
+
 export interface UpdateServiceInput {
   exposed_port?: number
   internal_port?: number
@@ -249,12 +270,44 @@ export interface Domain {
   type: string // 'custom' | 'auto'
   managed: boolean // derived auto host — read-only
   redirect_to?: string // Phase 3: when set, 308-redirects to this host
+  tls_cert_source?: 'acme' | 'uploaded' // bring-your-own cert origin (plan B)
+  tls_cert_uploaded_at?: string
   status?: DomainStatusState
   status_detail?: string
   cert_not_after?: string
   last_checked?: string
+  // DNS-automation outcome, present only on the add-domain response (plan A).
+  dns_record?: DomainDNSRecordOutcome
   created_at: string
   updated_at: string
+}
+
+/** Per-domain DNS-automation result attached to an add-domain response. */
+export interface DomainDNSRecordOutcome {
+  attempted: boolean
+  created: boolean
+  detail?: string
+  error?: string
+}
+
+/** Parsed metadata returned after a bring-your-own cert upload (plan B). */
+export interface CertMeta {
+  subject?: string
+  dns_names?: string[]
+  not_before: string
+  not_after: string
+  issuer?: string
+  self_signed: boolean
+  tls_cert_source: string
+  tls_cert_uploaded_at?: string
+}
+
+/** Instance DNS-provider settings (plan A). The token is never returned. */
+export interface DNSSettings {
+  enabled: boolean
+  provider: string // '' | 'cloudflare'
+  zone: string
+  token_set: boolean
 }
 
 export interface MetricSample {

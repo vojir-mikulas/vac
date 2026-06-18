@@ -55,6 +55,16 @@ func (c *Client) DeleteRoute(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodDelete, "/id/"+id, nil, nil)
 }
 
+// PutCertSet replaces Caddy's full inline-PEM certificate set with certs (a
+// wholesale PATCH of /config/apps/tls/certificates). VAC owns the config, so a
+// full replace is simpler and more robust than indexed appends — load_pem
+// entries carry no @id, so VAC can't address them individually; it manages them
+// by the `vac-cert-{domainID}` tag instead. The base config always emits a
+// (possibly empty) certificates subtree so this PATCH path exists.
+func (c *Client) PutCertSet(ctx context.Context, certs []CertKeyPair) error {
+	return c.do(ctx, http.MethodPatch, "/config/apps/tls/certificates", &Certificates{LoadPEM: certs}, nil)
+}
+
 // GetRoutes reads the current route set from the managed server. Used by
 // reconcile to find and prune orphaned vac-route-* entries.
 func (c *Client) GetRoutes(ctx context.Context) ([]Route, error) {

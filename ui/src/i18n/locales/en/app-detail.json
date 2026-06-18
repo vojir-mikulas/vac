@@ -414,6 +414,7 @@
     "ramLimit": "RAM limit (MiB)",
     "ramLimitPlaceholder": "Unlimited",
     "ramLimitHint": "Hard memory ceiling per container — VAC kills it before it can OOM the box. Leave blank for unlimited. Applied on the next deploy.",
+    "ramLimitOvercommit": "This cap pushes committed RAM past the box's total — the box would be over-committed.",
     "diskLimitInvalid": "Disk budget must be a whole number of MiB (or blank for no limit)",
     "diskLimitRemoved": "Disk budget removed",
     "diskLimitUpdated": "Disk budget updated",

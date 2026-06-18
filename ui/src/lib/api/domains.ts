@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
-import type { Domain, DomainStatusState } from '@/types/api'
+import type { CertMeta, Domain, DomainStatusState } from '@/types/api'
 
 export interface DomainStatus {
   state: DomainStatusState
@@ -36,6 +36,12 @@ export const domainsApi = {
   removeById: (id: string) => api.del<{ status: string }>(`domains/${id}`),
   refresh: (hostname: string) =>
     api.post<DomainStatus>(`domains/refresh?host=${encodeURIComponent(hostname)}`),
+
+  // Bring-your-own TLS cert (plan B). Both are step-up gated server-side; the
+  // global client handles the 403 step_up_required prompt + retry transparently.
+  uploadCert: (id: string, certPem: string, keyPem: string) =>
+    api.post<CertMeta>(`domains/${id}/cert`, { cert_pem: certPem, key_pem: keyPem }),
+  clearCert: (id: string) => api.del<{ status: string }>(`domains/${id}/cert`),
 }
 
 // Per-app domains (custom + derived auto hosts). Polls while any domain is still
@@ -122,5 +128,33 @@ export function useRefreshDomainStatus() {
   return useMutation({
     mutationFn: (hostname: string) => domainsApi.refresh(hostname),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.domains }),
+  })
+}
+
+// invalidateDomainViews refreshes every domain list (the hub plus each app's
+// view) after a cert change, so an upload/clear is reflected wherever it shows.
+function invalidateDomainViews(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: queryKeys.domains })
+  void qc.invalidateQueries({
+    predicate: (q) => q.queryKey[0] === 'apps' && q.queryKey[2] === 'domains',
+  })
+}
+
+/** Upload a bring-your-own TLS cert for a domain (plan B). */
+export function useUploadDomainCert() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, certPem, keyPem }: { id: string; certPem: string; keyPem: string }) =>
+      domainsApi.uploadCert(id, certPem, keyPem),
+    onSuccess: () => invalidateDomainViews(qc),
+  })
+}
+
+/** Remove an uploaded cert and revert the domain to ACME (plan B). */
+export function useClearDomainCert() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => domainsApi.clearCert(id),
+    onSuccess: () => invalidateDomainViews(qc),
   })
 }

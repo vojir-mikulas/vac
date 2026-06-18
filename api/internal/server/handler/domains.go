@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/vojir-mikulas/vac/api/internal/audit"
 	"github.com/vojir-mikulas/vac/api/internal/domainstatus"
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
 	"github.com/vojir-mikulas/vac/api/internal/store"
@@ -60,26 +61,35 @@ type domainDTO struct {
 	Type        string `json:"type"`
 	Managed     bool   `json:"managed"`               // derived auto host (read-only); custom rows are false
 	RedirectTo  string `json:"redirect_to,omitempty"` // Phase 3: 308 redirect target
+	// TLS cert origin (dns-automation plan B). 'acme' (auto-issued) or 'uploaded'
+	// (operator-supplied). TLSCertUploadedAt is set only for uploaded certs.
+	TLSCertSource     string     `json:"tls_cert_source,omitempty"`
+	TLSCertUploadedAt *time.Time `json:"tls_cert_uploaded_at,omitempty"`
 	// Live DNS/cert status projection (plan 09 F3). Zero values until the status
 	// engine is wired / has observed the host.
 	Status       string     `json:"status,omitempty"`
 	StatusDetail string     `json:"status_detail,omitempty"`
 	CertNotAfter *time.Time `json:"cert_not_after,omitempty"`
 	LastChecked  *time.Time `json:"last_checked,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	// DNSRecord is the DNS-automation outcome (Part A), set only on the add-domain
+	// response when automation is enabled+configured. Nil otherwise.
+	DNSRecord *dnsRecordOutcome `json:"dns_record,omitempty"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at"`
 }
 
 func toDomainDTO(d store.Domain) domainDTO {
 	return domainDTO{
-		ID:          d.ID,
-		AppID:       d.AppID,
-		ServiceName: d.ServiceName,
-		Hostname:    d.Hostname,
-		Type:        d.Type,
-		RedirectTo:  d.RedirectTo,
-		CreatedAt:   d.CreatedAt,
-		UpdatedAt:   d.UpdatedAt,
+		ID:                d.ID,
+		AppID:             d.AppID,
+		ServiceName:       d.ServiceName,
+		Hostname:          d.Hostname,
+		Type:              d.Type,
+		RedirectTo:        d.RedirectTo,
+		TLSCertSource:     d.TLSCertSource,
+		TLSCertUploadedAt: d.TLSCertUploadedAt,
+		CreatedAt:         d.CreatedAt,
+		UpdatedAt:         d.UpdatedAt,
 	}
 }
 
@@ -243,8 +253,9 @@ func validateAssignment(ctx context.Context, s *store.Store, appID, serviceName 
 
 // AddDomainHub adds a custom domain, optionally assigned to an app/service. An
 // unassigned domain is DNS-verifiable immediately but emits no route until it is
-// bound (plan 09 Phase 1).
-func AddDomainHub(s *store.Store, syncer RouteSyncer, status DomainStatusProvider) http.HandlerFunc {
+// bound (plan 09 Phase 1). When DNS automation is enabled+configured (Part A) it
+// best-effort auto-creates the A record and surfaces the outcome on the response.
+func AddDomainHub(s *store.Store, syncer RouteSyncer, status DomainStatusProvider, automator DNSAutomator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req hubDomainRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -277,7 +288,12 @@ func AddDomainHub(s *store.Store, syncer RouteSyncer, status DomainStatusProvide
 		if d.Assigned() {
 			syncRoutes(r.Context(), syncer, d.AppID)
 		}
-		WriteJSON(w, http.StatusCreated, withStatus(toDomainDTO(d), status))
+		// Best-effort DNS record creation (Part A). A failure here never fails the
+		// request — the domain is created and DomainConfigPanel shows the manual
+		// record to add as the fallback.
+		dto := withStatus(toDomainDTO(d), status)
+		dto.DNSRecord = ensureDNSRecord(r, automator, host)
+		WriteJSON(w, http.StatusCreated, dto)
 	}
 }
 
@@ -365,8 +381,10 @@ func UpdateDomainHub(s *store.Store, syncer RouteSyncer, status DomainStatusProv
 }
 
 // DeleteDomainHub deletes a custom domain by id (assigned or not) and prunes its
-// route. Auto hosts aren't deletable (they have no row).
-func DeleteDomainHub(s *store.Store, syncer RouteSyncer) http.HandlerFunc {
+// route. Auto hosts aren't deletable (they have no row). With DNS automation on,
+// passing ?delete_dns=true also removes the auto-created record — opt-in, since
+// deleting DNS the operator may rely on is surprising.
+func DeleteDomainHub(s *store.Store, syncer RouteSyncer, automator DNSAutomator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		existing, err := s.GetDomainByID(r.Context(), id)
@@ -388,6 +406,15 @@ func DeleteDomainHub(s *store.Store, syncer RouteSyncer) http.HandlerFunc {
 		}
 		if existing.Assigned() {
 			syncRoutes(r.Context(), syncer, existing.AppID)
+		}
+		// Opt-in DNS record removal (Part A). Best-effort; a failure is logged but
+		// never fails the delete (the row is already gone).
+		if automator != nil && automator.Enabled() && r.URL.Query().Get("delete_dns") == "true" {
+			if _, err := automator.DeleteDomainRecord(r.Context(), existing.Hostname); err != nil {
+				slog.Warn("dns record delete after domain delete failed", "host", existing.Hostname, "err", err)
+			} else {
+				audit.Describe(r.Context(), "auto-deleted DNS record for "+existing.Hostname)
+			}
 		}
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 	}

@@ -31,6 +31,19 @@ type CaddyClient interface {
 	Upstreams(ctx context.Context) ([]caddy.UpstreamStatus, error)
 	Ping(ctx context.Context) error
 	Load(ctx context.Context, cfg *caddy.Config) error
+	PutCertSet(ctx context.Context, certs []caddy.CertKeyPair) error
+}
+
+// CertSource lists the bring-your-own certificates VAC should load into Caddy
+// (dns-automation plan B). Optional — nil disables uploaded-cert loading.
+type CertSource interface {
+	ListUploadedCerts(ctx context.Context) ([]store.UploadedCert, error)
+}
+
+// KeyOpener decrypts a sealed private key. *crypto.Box satisfies it. Kept as a
+// narrow interface so the proxy package doesn't depend on the crypto package.
+type KeyOpener interface {
+	Open(sealed []byte) ([]byte, error)
 }
 
 // NetworkController is the slice of *dockercli.Compose used for vac-edge.
@@ -71,6 +84,8 @@ type Manager struct {
 	logger     *slog.Logger
 	baseConfig *caddy.Config // re-pushed to self-heal a Caddy restart; nil disables
 	engine     StatusEngine  // route-push outcome sink; nil disables
+	certSource CertSource    // uploaded-cert lister; nil disables BYO certs
+	keyOpener  KeyOpener     // decrypts sealed private keys; nil disables BYO certs
 
 	mu                 sync.RWMutex
 	baseDomainOverride string // runtime override from instance_settings; "" = use cfg.BaseDomain
@@ -127,6 +142,70 @@ func (m *Manager) SetStatusEngine(e StatusEngine) { m.engine = e }
 // proxy restart (see ensureBaseConfig). Called once at startup; safe to leave
 // unset, which disables the self-heal probe.
 func (m *Manager) SetBaseConfig(cfg *caddy.Config) { m.baseConfig = cfg }
+
+// SetCertSource wires the bring-your-own-cert source (uploaded-cert lister +
+// key decryptor) so Sync/Reconcile/SyncCerts push the inline-PEM cert set to
+// Caddy. Called once at startup; nil-safe (leaving it unset disables BYO certs).
+func (m *Manager) SetCertSource(cs CertSource, ko KeyOpener) {
+	m.certSource = cs
+	m.keyOpener = ko
+}
+
+// desiredCerts assembles Caddy's inline-PEM cert set from the uploaded-cert
+// rows, opening each sealed key. A key that fails to decrypt is skipped (and
+// logged) rather than failing the whole push — one bad row must not knock out
+// every other host's cert. Returns nil when BYO certs aren't wired.
+func (m *Manager) desiredCerts(ctx context.Context) ([]caddy.CertKeyPair, error) {
+	if m.certSource == nil || m.keyOpener == nil {
+		return nil, nil
+	}
+	rows, err := m.certSource.ListUploadedCerts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]caddy.CertKeyPair, 0, len(rows))
+	for _, c := range rows {
+		key, err := m.keyOpener.Open(c.KeyEnc)
+		if err != nil {
+			m.logger.Warn("proxy: decrypt uploaded cert key", "host", c.Hostname, "err", err)
+			continue
+		}
+		out = append(out, caddy.CertKeyPair{
+			Certificate: c.CertPEM,
+			Key:         string(key),
+			Tags:        []string{"vac-cert-" + c.DomainID},
+		})
+	}
+	return out, nil
+}
+
+// DesiredCerts returns the inline-PEM cert set VAC wants Caddy to load. Exported
+// so the boot base config can seed it (uploaded certs survive a Caddy restart).
+func (m *Manager) DesiredCerts(ctx context.Context) ([]caddy.CertKeyPair, error) {
+	return m.desiredCerts(ctx)
+}
+
+// pushCerts replaces Caddy's inline-PEM cert set with the current desired set.
+// Best-effort and idempotent. A no-op when BYO certs aren't wired.
+func (m *Manager) pushCerts(ctx context.Context) error {
+	if m.certSource == nil || m.keyOpener == nil {
+		return nil
+	}
+	certs, err := m.desiredCerts(ctx)
+	if err != nil {
+		return err
+	}
+	return m.caddy.PutCertSet(ctx, certs)
+}
+
+// SyncCerts re-pushes the uploaded-cert set to Caddy (self-healing the base
+// server tree first). Called by the cert upload/clear handler — which may act on
+// an unassigned domain with no app to Sync — so the change reaches Caddy
+// immediately rather than waiting for the next deploy.
+func (m *Manager) SyncCerts(ctx context.Context) error {
+	m.ensureBaseConfig(ctx)
+	return m.pushCerts(ctx)
+}
 
 // EnsureNetwork creates vac-edge if it doesn't already exist.
 func (m *Manager) EnsureNetwork(ctx context.Context) error {
@@ -341,7 +420,8 @@ func (m *Manager) Sync(ctx context.Context, appID string) error {
 	errApply := m.applyApp(ctx, appID)
 	errControl := m.applyControlRoute(ctx)
 	errPrune := m.pruneOrphans(ctx)
-	return errors.Join(errApply, errControl, errPrune)
+	errCerts := m.pushCerts(ctx)
+	return errors.Join(errApply, errControl, errPrune, errCerts)
 }
 
 // applyApp attaches the app's routable containers to vac-edge and pushes a route
@@ -540,6 +620,9 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 	if err := m.pruneOrphans(ctx); err != nil {
+		errs = append(errs, err)
+	}
+	if err := m.pushCerts(ctx); err != nil {
 		errs = append(errs, err)
 	}
 	if err := errors.Join(errs...); err != nil {

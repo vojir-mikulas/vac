@@ -26,9 +26,11 @@ type Store interface {
 	ClearCertExpiryNotified(ctx context.Context, id string) error
 }
 
-// Notifier fires the expiry alert. *notify.Dispatcher satisfies it.
+// Notifier fires the expiry alert. *notify.Dispatcher satisfies it. uploaded
+// distinguishes a bring-your-own cert (which can't auto-renew, so the copy tells
+// the operator to upload a new one) from an ACME cert (which should self-renew).
 type Notifier interface {
-	CertExpiring(host string, daysLeft int, notAfter time.Time)
+	CertExpiring(host string, daysLeft int, notAfter time.Time, uploaded bool)
 }
 
 // Probe reads the leaf certificate's NotAfter for a host. Injectable so tests
@@ -154,7 +156,7 @@ func (c *Checker) CheckOnce(ctx context.Context) error {
 		}
 		daysLeft := int(remaining / (24 * time.Hour))
 		if c.notifier != nil {
-			c.notifier.CertExpiring(d.Hostname, daysLeft, notAfter)
+			c.notifier.CertExpiring(d.Hostname, daysLeft, notAfter, d.Source == "uploaded")
 		}
 		if err := c.store.MarkCertExpiryNotified(ctx, d.ID, now); err != nil {
 			c.logger.Warn("certcheck: mark notified", "host", d.Hostname, "err", err)

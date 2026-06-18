@@ -439,6 +439,48 @@ footprint on a box that uses none — the `<200 MB` claim holds.
 
 ---
 
+## DNS automation + bring-your-own TLS cert (plan `dns-automation-and-byo-cert.md`)
+
+### D1 — Uploaded certs win over ACME, served via Caddy's inline `load_pem` loader
+
+- **mvp.md says:** HTTPS is fully automatic via Caddy's on-demand ACME; there is no notion of an
+  operator-supplied certificate.
+- **We do instead:** a domain may carry an **uploaded** cert+key (`tls_cert_source='uploaded'`).
+  The private key is sealed (`crypto.Box`, like `ssh_keys.private_key`); the public chain is
+  plaintext. The proxy manager pushes the full cert set to Caddy over the admin API as inline
+  `load_pem` PEM strings (`PATCH /config/apps/tls/certificates`), tagged `vac-cert-{domainID}`.
+  `vac-api` shares **no** volume with Caddy, so `load_files` is impossible — inline PEM keeps the
+  "Caddy is a rebuildable cache" invariant. The base config always emits a (possibly empty)
+  `tls.certificates` subtree so the PATCH path exists, and is seeded with current certs at boot
+  so they survive a Caddy restart.
+- **Precedence is structural:** a loaded cert lives in Caddy's cache, so on-demand issuance never
+  fires for a host it covers. As defence-in-depth, `caddy_ask` returns non-2xx for an
+  uploaded-cert host. Uploaded always wins; clearing reverts the host to ACME.
+- **Expiry:** observed unchanged via the TLS-handshake probe (`certprobe`); `certcheck` only
+  branches the **alert copy** for uploaded certs ("upload a new cert" — they can't auto-renew).
+- **Trade-off:** uploaded certs are operator-managed (no auto-renew); we alert before expiry. A
+  mid-session Caddy restart with no following route sync serves the boot-time cert set until the
+  next `Sync`/`SyncCerts` — negligible in practice (deploys/domain ops trigger it).
+
+### D2 — Custom-domain DNS automation is opt-in, Cloudflare-first, egress via `netguard`
+
+- **mvp.md says:** the operator creates the DNS A record by hand at their registrar; the UI shows
+  the exact record to create.
+- **We do instead:** behind `VAC_DNS_AUTOMATION` (default **off**), adding a custom domain can
+  auto-create the A record at a configured provider (**Cloudflare** first, behind a `Provider`
+  interface). Credentials are instance-wide in `instance_settings` (token sealed, like
+  `smtp_password_enc`); the record is always an `A` to the VPS IP with **`proxied=false`** (the
+  orange cloud breaks Caddy's ACME HTTP challenge). All provider egress goes through
+  `netguard.DialContext` (SSRF invariant) — a token pointed at a private endpoint is refused with
+  `ErrPrivateAddress`.
+- **Best-effort:** a DNS failure **never** fails domain creation — the manual-record fallback
+  (the existing `DomainConfigPanel`) always remains; the outcome is surfaced on the response and
+  audit-logged.
+- **Trade-off:** one provider per instance; DNS-01 ACME (wildcard via ACME) is out of scope —
+  BYO upload (D1) covers wildcards for v1.
+
+---
+
 > Maintenance note: when a deviation is later reconciled (e.g. we adopt the mvp's original
 > approach, or update `mvp.md` to match), mark the row **Resolved** with the date and the
 > commit/PR rather than deleting it — the history is the point.

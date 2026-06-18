@@ -29,20 +29,30 @@ type Domain struct {
 	Hostname    string
 	Type        string
 	RedirectTo  string // when set, emits a 308 redirect route to this host (Phase 3)
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// TLSCertSource is 'acme' (default — Caddy auto-issues) or 'uploaded' (the
+	// operator supplied a cert+key; Caddy serves it and never ACME-issues). The
+	// PEM/key bytes are deliberately NOT on this struct — they stay off the hot
+	// scan path (fetched lazily via ListUploadedCerts). See dns-automation plan B.
+	TLSCertSource     string
+	TLSCertUploadedAt *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 // Assigned reports whether the domain is bound to an app/service (and so emits
 // a route). An unassigned domain is DNS-verifiable but routes nowhere.
 func (d Domain) Assigned() bool { return d.AppID != "" && d.ServiceName != "" }
 
-const domainColumns = `id, app_id, service_name, hostname, type, redirect_to, created_at, updated_at`
+// domainColumns is the hot scan path. It carries the small TLS metadata
+// (source + uploaded-at) so the Domains hub can label a host's cert origin, but
+// deliberately NOT the cert/key PEM (fetched lazily via ListUploadedCerts) so a
+// list query never pulls key ciphertext.
+const domainColumns = `id, app_id, service_name, hostname, type, redirect_to, tls_cert_source, tls_cert_uploaded_at, created_at, updated_at`
 
 func scanDomain(row pgx.Row) (Domain, error) {
 	var d Domain
 	var appID, serviceName, redirectTo sql.NullString
-	err := row.Scan(&d.ID, &appID, &serviceName, &d.Hostname, &d.Type, &redirectTo, &d.CreatedAt, &d.UpdatedAt)
+	err := row.Scan(&d.ID, &appID, &serviceName, &d.Hostname, &d.Type, &redirectTo, &d.TLSCertSource, &d.TLSCertUploadedAt, &d.CreatedAt, &d.UpdatedAt)
 	d.AppID = appID.String
 	d.ServiceName = serviceName.String
 	d.RedirectTo = redirectTo.String
@@ -187,13 +197,16 @@ type DomainCert struct {
 	Hostname   string
 	NotAfter   *time.Time
 	NotifiedAt *time.Time
+	// Source is 'acme' or 'uploaded'. An uploaded cert can't auto-renew, so the
+	// expiry checker branches its alert copy/severity on it ("upload a new cert").
+	Source string
 }
 
 // ListDomainCerts returns every domain's cert-expiry state for the background
 // checker to refresh.
 func (s *Store) ListDomainCerts(ctx context.Context) ([]DomainCert, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, hostname, cert_not_after, cert_expiry_notified_at
+		SELECT id, hostname, cert_not_after, cert_expiry_notified_at, tls_cert_source
 		FROM domains ORDER BY hostname
 	`)
 	if err != nil {
@@ -203,12 +216,88 @@ func (s *Store) ListDomainCerts(ctx context.Context) ([]DomainCert, error) {
 	var out []DomainCert
 	for rows.Next() {
 		var c DomainCert
-		if err := rows.Scan(&c.ID, &c.Hostname, &c.NotAfter, &c.NotifiedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Hostname, &c.NotAfter, &c.NotifiedAt, &c.Source); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// UploadedCert is one bring-your-own certificate: the public leaf+chain PEM and
+// the sealed (crypto.Box) private key. Fetched off the hot domain scan path so a
+// list query never pulls key ciphertext.
+type UploadedCert struct {
+	DomainID string
+	Hostname string
+	CertPEM  string
+	KeyEnc   []byte
+}
+
+// ListUploadedCerts returns every domain whose cert source is 'uploaded', for
+// the proxy manager to assemble Caddy's inline-PEM cert set. The caller opens
+// KeyEnc with the crypto.Box.
+func (s *Store) ListUploadedCerts(ctx context.Context) ([]UploadedCert, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, hostname, tls_cert_pem, tls_key_enc
+		FROM domains
+		WHERE tls_cert_source = 'uploaded' AND tls_cert_pem IS NOT NULL AND tls_key_enc IS NOT NULL
+		ORDER BY hostname
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []UploadedCert
+	for rows.Next() {
+		var c UploadedCert
+		if err := rows.Scan(&c.DomainID, &c.Hostname, &c.CertPEM, &c.KeyEnc); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// SetDomainCert stores an uploaded cert+sealed-key for a domain and flips its
+// source to 'uploaded'. certPEM is the public leaf+chain; keyEnc is the sealed
+// private key. uploadedAt records when. A missing row returns ErrNotFound.
+func (s *Store) SetDomainCert(ctx context.Context, id, certPEM string, keyEnc []byte, uploadedAt time.Time) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE domains
+		SET tls_cert_pem = $2, tls_key_enc = $3, tls_cert_source = 'uploaded',
+		    tls_cert_uploaded_at = $4, cert_not_after = NULL, cert_expiry_notified_at = NULL,
+		    updated_at = NOW()
+		WHERE id = $1
+	`, id, certPEM, keyEnc, uploadedAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ClearDomainCert removes any uploaded cert for a domain and reverts it to ACME,
+// so Caddy resumes automatic issuance. Resetting cert_not_after/notified clears
+// the expiry-alert state so the re-issued ACME cert is observed afresh. A missing
+// row returns ErrNotFound.
+func (s *Store) ClearDomainCert(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE domains
+		SET tls_cert_pem = NULL, tls_key_enc = NULL, tls_cert_source = 'acme',
+		    tls_cert_uploaded_at = NULL, cert_not_after = NULL, cert_expiry_notified_at = NULL,
+		    updated_at = NOW()
+		WHERE id = $1
+	`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SetCertNotAfter records the leaf certificate's observed expiry for a host.

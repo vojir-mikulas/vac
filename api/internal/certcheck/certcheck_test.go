@@ -47,12 +47,13 @@ func (f *fakeStore) ClearCertExpiryNotified(_ context.Context, id string) error 
 type alert struct {
 	host     string
 	daysLeft int
+	uploaded bool
 }
 
 type fakeNotifier struct{ alerts []alert }
 
-func (n *fakeNotifier) CertExpiring(host string, daysLeft int, _ time.Time) {
-	n.alerts = append(n.alerts, alert{host, daysLeft})
+func (n *fakeNotifier) CertExpiring(host string, daysLeft int, _ time.Time, uploaded bool) {
+	n.alerts = append(n.alerts, alert{host, daysLeft, uploaded})
 }
 
 // checker builds a Checker with an injected probe (bypassing the real TLS dial).
@@ -186,5 +187,20 @@ func TestExpiredCertAlertsOnce(t *testing.T) {
 	}
 	if n.alerts[0].daysLeft > 0 {
 		t.Errorf("days left for expired cert should be <= 0, got %d", n.alerts[0].daysLeft)
+	}
+}
+
+func TestUploadedSourceAlertFlagged(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	s := newFakeStore(store.DomainCert{ID: "d1", Hostname: "app.example.com", Source: "uploaded"})
+	n := &fakeNotifier{}
+	expiry := now.Add(3 * 24 * time.Hour)
+	c := checker(s, n, probeReturning(map[string]time.Time{"app.example.com": expiry}), now)
+
+	if err := c.CheckOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.alerts) != 1 || !n.alerts[0].uploaded {
+		t.Fatalf("expected one uploaded-source alert, got %+v", n.alerts)
 	}
 }

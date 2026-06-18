@@ -193,6 +193,14 @@ type Config struct {
 	MaxPreviews int           `yaml:"max_previews"`
 	PreviewTTL  time.Duration `yaml:"preview_ttl"`
 
+	// DNSAutomation gates the custom-domain DNS-record automation
+	// (dns-automation-and-byo-cert.md Part A): when on, adding a custom domain can
+	// auto-create the A record at the configured DNS provider (Cloudflare).
+	// Default false — the feature/UI is hidden and the handlers 404 until the
+	// operator opts in, since it grants the box outbound write access to their DNS
+	// zone. Credentials live in instance_settings, not here.
+	DNSAutomation bool `yaml:"dns_automation"`
+
 	// Build metadata injected by main() from ldflags vars; surfaced by the
 	// instance-info endpoint. Not read from env/yaml.
 	Version   string `yaml:"-"`
@@ -570,6 +578,10 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("VAC_SECURITY_EXPECT_FAIL2BAN"); v != "" {
 		cfg.SecurityExpectFail2ban = v == "true" || v == "1"
+	}
+
+	if v := os.Getenv("VAC_DNS_AUTOMATION"); v != "" {
+		cfg.DNSAutomation = v == "true" || v == "1"
 	}
 }
 

@@ -81,6 +81,15 @@
       "unbudgeted_other": "{{count}} apps without a RAM limit aren't budgeted.",
       "requestRate": "Request rate",
       "reqPerSecond": "{{rate}} req/s"
+    },
+    "capacity": {
+      "view": "Per-app breakdown",
+      "title": "RAM capacity",
+      "description": "Committed cap vs live usage per app. Committed RAM includes stopped apps; apps without a limit aren't budgeted.",
+      "stopped": "Stopped",
+      "unbudgeted": "No limit",
+      "loading": "Loading usage…",
+      "empty": "No apps yet."
     }
   },
   "new": {

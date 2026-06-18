@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
-import type { BoxBudget, HostStats, MetricSample } from '@/types/api'
+import type { BoxBudget, BoxCapacity, HostStats, MetricSample } from '@/types/api'
 
 export const metricsApi = {
   app: (appId: string, since: string) =>
@@ -12,6 +12,7 @@ export const metricsApi = {
     api.get<MetricSample[]>(`apps/${appId}/services/${name}/metrics?since=${since}`),
   host: () => api.get<HostStats>('host/stats'),
   budget: () => api.get<BoxBudget>('host/budget'),
+  capacity: () => api.get<BoxCapacity>('host/capacity'),
   hostMetrics: (since: string) => api.get<MetricSample[]>(`host/metrics?since=${since}`),
 }
 
@@ -35,6 +36,18 @@ export function useBoxBudget() {
     queryKey: queryKeys.host.budget,
     queryFn: () => metricsApi.budget(),
     refetchInterval: 5_000,
+  })
+}
+
+// useBoxCapacity backs the per-app RAM breakdown dialog. `enabled` gates the
+// fetch so the underlying one-shot `docker stats` poll only runs while the
+// dialog is open — keeping idle cost at zero. Refreshes every 10s while open.
+export function useBoxCapacity(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.host.capacity,
+    queryFn: () => metricsApi.capacity(),
+    enabled,
+    refetchInterval: enabled ? 10_000 : false,
   })
 }
 

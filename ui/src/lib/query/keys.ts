@@ -12,9 +12,11 @@ export const queryKeys = {
   host: {
     stats: ['host', 'stats'] as const,
     budget: ['host', 'budget'] as const,
+    capacity: ['host', 'capacity'] as const,
     metrics: (since: string) => ['host', 'metrics', since] as const,
   },
   notifications: ['notifications'] as const,
+  dnsSettings: ['settings', 'dns'] as const,
   activity: ['activity'] as const,
   domains: ['domains'] as const,
   // Box-wide database inventory (plan 20).

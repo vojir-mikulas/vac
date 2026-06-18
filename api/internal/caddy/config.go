@@ -52,7 +52,26 @@ type ServerLogs struct {
 }
 
 type TLSApp struct {
-	Automation *Automation `json:"automation,omitempty"`
+	Certificates *Certificates `json:"certificates,omitempty"`
+	Automation   *Automation   `json:"automation,omitempty"`
+}
+
+// Certificates is the tls app's manual certificate loaders. VAC uses only the
+// inline PEM loader: bring-your-own certs are POSTed as PEM strings over the
+// admin API (vac-api shares no volume with Caddy, so it can't drop files for
+// load_files). See docs/plans/dns-automation-and-byo-cert.md Part B.
+type Certificates struct {
+	LoadPEM []CertKeyPair `json:"load_pem,omitempty"`
+}
+
+// CertKeyPair is one inline-loaded certificate: the leaf+chain PEM and its
+// private-key PEM as strings, optionally tagged so VAC can identify its own
+// entries (`vac-cert-{domainID}`). A loaded cert lives in Caddy's cert cache, so
+// on-demand ACME issuance never fires for a host it covers — uploaded wins.
+type CertKeyPair struct {
+	Certificate string   `json:"certificate"`
+	Key         string   `json:"key"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
 type Automation struct {
@@ -139,6 +158,10 @@ type BaseOptions struct {
 	// ACMECA optionally overrides the ACME directory (e.g. Let's Encrypt
 	// staging in CI). Empty uses Caddy's default (LE production).
 	ACMECA string
+	// Certs seeds the inline PEM loader with bring-your-own certificates so they
+	// survive a Caddy restart (self-heal). The certificates subtree is always
+	// emitted (even empty) so PutCertSet has a path to PATCH.
+	Certs []CertKeyPair
 }
 
 // ServerName is the single HTTP server VAC manages. Route paths reference it.
@@ -204,9 +227,15 @@ func BaseConfig(opts BaseOptions) *Config {
 			auto.Policies[i].Issuers = []map[string]any{issuer}
 		}
 	}
+	// The tls app is always emitted: it carries the inline cert loader (seeded
+	// with any uploaded certs and otherwise an empty load_pem set) so PutCertSet
+	// always has a `certificates` path to PATCH. Automation is attached only when
+	// on-demand/ACME is actually configured.
+	tlsApp := &TLSApp{Certificates: &Certificates{LoadPEM: opts.Certs}}
 	if auto.OnDemand != nil || len(auto.Policies) > 0 {
-		cfg.Apps.TLS = &TLSApp{Automation: auto}
+		tlsApp.Automation = auto
 	}
+	cfg.Apps.TLS = tlsApp
 
 	return cfg
 }

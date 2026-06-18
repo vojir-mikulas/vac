@@ -285,6 +285,28 @@
       "checking": "Checking…",
       "checked": "Checked {{time}}"
     },
+    "cert": {
+      "title": "TLS certificate",
+      "acme": "Issued automatically via Let’s Encrypt (ACME).",
+      "uploaded": "Serving an uploaded certificate.",
+      "uploadedAt": "Uploaded {{time}}",
+      "expires": "Expires {{date}}",
+      "byoIntro": "Upload your own certificate for a wildcard or internal host where automatic HTTPS can’t work. VAC serves it instead of issuing one; it won’t auto-renew, so you’ll be alerted before it expires.",
+      "certLabel": "Certificate (PEM — leaf + chain)",
+      "keyLabel": "Private key (PEM)",
+      "certPlaceholder": "-----BEGIN CERTIFICATE-----",
+      "keyPlaceholder": "-----BEGIN PRIVATE KEY-----",
+      "upload": "Upload certificate",
+      "uploading": "Uploading…",
+      "replace": "Replace certificate",
+      "clear": "Remove & revert to ACME",
+      "clearing": "Removing…",
+      "selfSignedWarn": "This certificate is self-signed — browsers will warn visitors unless they trust it.",
+      "toast": {
+        "uploaded": "Certificate uploaded — {{hostname}} is now served with it",
+        "cleared": "Certificate removed — {{hostname}} reverted to automatic HTTPS"
+      }
+    },
     "edit": {
       "title": "Edit domain",
       "description": "Re-point this domain to another service or app, or rename it. Routing swaps in place.",
@@ -303,6 +325,26 @@
       "recheck": "Recheck",
       "ok": "Wildcard DNS configured — every app gets an automatic subdomain.",
       "notResolving": "Not resolving here yet — add the record above and recheck"
+    },
+    "dnsProvider": {
+      "title": "DNS provider",
+      "description": "Let VAC create the A record automatically when you add a custom domain, instead of adding it by hand at your provider.",
+      "providerLabel": "Provider",
+      "providerNone": "Off (add records manually)",
+      "providerCloudflare": "Cloudflare",
+      "zoneLabel": "DNS zone",
+      "zonePlaceholder": "example.com",
+      "tokenLabel": "API token",
+      "tokenPlaceholder": "Cloudflare API token (Zone · DNS · Edit)",
+      "tokenSet": "A token is stored. Leave blank to keep it.",
+      "tokenHelp": "Create a token scoped to this zone with DNS edit permission. It is encrypted at rest and never shown again.",
+      "proxiedNote": "Records are created un-proxied (grey cloud) — Cloudflare’s proxy breaks Caddy’s certificate issuance.",
+      "save": "Save",
+      "saving": "Saving…",
+      "toast": {
+        "saved": "DNS provider settings saved",
+        "cleared": "DNS automation turned off"
+      }
     }
   }
 }

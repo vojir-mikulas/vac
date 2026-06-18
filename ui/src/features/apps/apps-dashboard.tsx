@@ -76,6 +76,7 @@ import {
   type AppFilter,
 } from '@/features/apps/status-filter'
 import { ImportAppDialog } from '@/features/apps/import-app-dialog'
+import { CapacityBreakdown } from '@/features/apps/capacity-breakdown'
 import { OnboardingChecklist } from '@/features/onboarding/onboarding-checklist'
 import { useDeleteApp, useStackControl } from '@/lib/api/apps'
 import type { App } from '@/types/api'
@@ -388,6 +389,7 @@ export function AppsDashboard() {
                 })}
               </Badge>
             ) : null}
+            {budget && budget.apps_total > 0 ? <CapacityBreakdown /> : null}
             {host ? (
               <div className="mt-4 flex items-center justify-between border-t pt-3.5 text-xs text-muted-foreground">
                 <span>{t('dashboard.budget.requestRate')}</span>

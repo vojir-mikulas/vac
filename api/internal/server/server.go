@@ -19,6 +19,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/dbprovision"
 	"github.com/vojir-mikulas/vac/api/internal/deploy"
+	"github.com/vojir-mikulas/vac/api/internal/dnsprovider"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 	"github.com/vojir-mikulas/vac/api/internal/domainstatus"
 	"github.com/vojir-mikulas/vac/api/internal/preview"
@@ -46,13 +47,14 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	// values so handlers' `== nil` guards behave (a typed-nil pointer in an
 	// interface is not nil).
 	var (
-		proxyMgr handler.ProxyManager
-		syncer   handler.RouteSyncer
-		caddyPin handler.CaddyPinger
-		ctrlChk  handler.ControlDomainChecker
-		autoChk  handler.AutoHostChecker
-		autoList handler.AutoHostLister
-		baseDom  handler.BaseDomainSetter
+		proxyMgr   handler.ProxyManager
+		syncer     handler.RouteSyncer
+		caddyPin   handler.CaddyPinger
+		ctrlChk    handler.ControlDomainChecker
+		autoChk    handler.AutoHostChecker
+		autoList   handler.AutoHostLister
+		baseDom    handler.BaseDomainSetter
+		certSyncer handler.CertSyncer
 	)
 	if pm != nil {
 		proxyMgr = pm
@@ -62,6 +64,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		autoChk = pm
 		autoList = pm
 		baseDom = pm
+		certSyncer = pm
 	}
 	var domStatus handler.DomainStatusProvider
 	if dstatus != nil {
@@ -128,6 +131,19 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	tm := auth.NewTOTPManager(s, box)
 	tokm := auth.NewTokenManager(s)
 	keys := sshkey.NewManager(s, box)
+
+	// Custom-domain DNS automation (dns-automation plan A). Opt-in via
+	// VAC_DNS_AUTOMATION; when off the automator is nil and the domain hook /
+	// settings handlers degrade to the manual-record flow. The box is passed as a
+	// nil interface when absent so the automator's nil-key guard behaves.
+	var dnsAutomator handler.DNSAutomator
+	if cfg.DNSAutomation {
+		var opener dnsprovider.KeyOpener
+		if box != nil {
+			opener = box
+		}
+		dnsAutomator = dnsprovider.NewAutomator(true, s, opener, hostIP, slog.Default())
+	}
 
 	// One shared limiter across the auth surface: an attacker who burns the
 	// password budget should not then get a fresh budget on /auth/totp.
@@ -232,6 +248,13 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Post("/settings/notifications/test", handler.TestNotification(notifier))
 			}
 
+			// DNS provider automation settings (dns-automation plan A). GET always
+			// works (returns enabled=false when the flag is off so the UI hides the
+			// section); the write grants the box DNS-zone access, so it is step-up
+			// gated and 404s when the feature flag is off.
+			r.Get("/settings/dns", handler.GetDNSSettings(s, cfg.DNSAutomation))
+			r.With(middleware.RequireStepUp).Put("/settings/dns", handler.PutDNSSettings(s, box, cfg.DNSAutomation))
+
 			// Instance-level settings & operations (info, base domain, DNS
 			// check, danger-zone control-plane ops).
 			r.Route("/instance", func(r chi.Router) {
@@ -269,10 +292,15 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			// in one place, with the live DNS/cert status engine behind it.
 			r.Route("/domains", func(r chi.Router) {
 				r.Get("/", handler.ListDomainsHub(s, domStatus, autoList))
-				r.Post("/", handler.AddDomainHub(s, syncer, domStatus))
+				r.Post("/", handler.AddDomainHub(s, syncer, domStatus, dnsAutomator))
 				r.Post("/refresh", handler.RefreshDomainStatus(domStatus))
 				r.Patch("/{id}", handler.UpdateDomainHub(s, syncer, domStatus))
-				r.Delete("/{id}", handler.DeleteDomainHub(s, syncer))
+				r.Delete("/{id}", handler.DeleteDomainHub(s, syncer, dnsAutomator))
+				// Bring-your-own TLS cert (dns-automation plan B). Installing the
+				// cert a host serves is sensitive — gate on fresh 2FA like the
+				// other destructive routes.
+				r.With(middleware.RequireStepUp).Post("/{id}/cert", handler.UploadDomainCert(s, box, certSyncer))
+				r.With(middleware.RequireStepUp).Delete("/{id}/cert", handler.ClearDomainCert(s, certSyncer))
 			})
 
 			r.Route("/apps", func(r chi.Router) {
@@ -473,9 +501,11 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 			if hub != nil && statsProv != nil {
 				r.Get("/host/stats", handler.HostStats(statsProv, hub, wsOpts))
 			}
-			// Box RAM budget: allocated-vs-total for the dashboard panel.
+			// Box RAM budget: allocated-vs-total for the dashboard panel, plus a
+			// per-app breakdown (committed cap vs live actual usage).
 			if statsProv != nil {
 				r.Get("/host/budget", handler.HostBudget(statsProv, s))
+				r.Get("/host/capacity", handler.HostCapacity(statsProv, s))
 			}
 			// Box-wide request series (all apps summed), for the dashboard's
 			// traffic sparkline. Downsampled server-side to a few dozen points.

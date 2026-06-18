@@ -26,6 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { DnsProviderSection } from '@/features/settings/dns-provider-section'
 import { DomainConfigPanel } from '@/features/settings/domain-config-panel'
 import { DomainStatusBadge } from '@/features/settings/domain-status-badge'
 import { DomainEditDialog } from '@/features/settings/domain-edit-dialog'
@@ -46,6 +47,7 @@ export function DomainsSection() {
   return (
     <div className="flex flex-col gap-8">
       <BaseDomainCard />
+      <DnsProviderSection />
       <AddDomainCard />
       <DomainList />
     </div>
@@ -245,8 +247,12 @@ function AddDomainCard() {
     add.mutate(
       { hostname: trimmed, assign },
       {
-        onSuccess: () => {
+        onSuccess: (domain) => {
           toast.success(t('domains.add.toast.added'))
+          // Surface the DNS-automation outcome (plan A), when attempted.
+          const rec = domain.dns_record
+          if (rec?.error) toast.error(rec.error)
+          else if (rec?.created && rec.detail) toast.success(rec.detail)
           setHostname('')
         },
         onError: (e) => toast.error(e.message),
