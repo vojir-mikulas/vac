@@ -12,7 +12,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,6 +47,14 @@ type Config struct {
 	RPSThreshold int           // requests from one IP in the window → spike
 	ErrThreshold int           // 4xx/5xx from one IP in the window → error surge
 	Cooldown     time.Duration // min gap between alerts for the same IP+kind
+	// Allowlist holds IPs/CIDRs whose breaches are still recorded and shown on the
+	// dashboard but never fire a Slack/email notification. It exists because the
+	// monitor rides the same Caddy access log the operator's own dashboard traffic
+	// flows through: a single open dashboard tab (panel polling + WS reconnects)
+	// easily clears the default 300-req/min bar, and paging the operator for their
+	// own browsing is pure noise. Bare IPs match exactly; CIDRs match the range.
+	// Unparseable entries are dropped at construction.
+	Allowlist []string
 }
 
 func (c Config) withDefaults() Config {
@@ -106,6 +116,9 @@ type Anomaly struct {
 	IP     string    `json:"ip"`
 	Kind   string    `json:"kind"`
 	Detail string    `json:"detail"`
+	// Suppressed is true when the IP is allowlisted: the breach is still recorded
+	// and shown, but no notification was sent. Lets the UI explain the silence.
+	Suppressed bool `json:"suppressed,omitempty"`
 }
 
 // RecentRequest is one line of the live recent-requests feed.
@@ -150,6 +163,7 @@ type Monitor struct {
 	notifier Notifier
 	logger   *slog.Logger
 	now      func() time.Time
+	allow    []netip.Prefix // parsed Config.Allowlist; notifications skipped for matches
 
 	mu        sync.Mutex
 	ips       map[string]*ipCounter
@@ -167,8 +181,56 @@ func NewMonitor(cfg Config, notifier Notifier, logger *slog.Logger) *Monitor {
 		notifier: notifier,
 		logger:   logger,
 		now:      time.Now,
+		allow:    parseAllowlist(cfg.Allowlist, logger),
 		ips:      map[string]*ipCounter{},
 	}
+}
+
+// parseAllowlist turns IP/CIDR strings into prefixes. A bare IP becomes a
+// host-wide prefix (/32 or /128). Unparseable entries are logged and skipped so
+// one typo can't silently widen or break suppression.
+func parseAllowlist(entries []string, logger *slog.Logger) []netip.Prefix {
+	var out []netip.Prefix
+	for _, e := range entries {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		if strings.Contains(e, "/") {
+			p, err := netip.ParsePrefix(e)
+			if err != nil {
+				logger.Warn("security: ignoring invalid allowlist CIDR", "entry", e, "err", err)
+				continue
+			}
+			out = append(out, p.Masked())
+			continue
+		}
+		a, err := netip.ParseAddr(e)
+		if err != nil {
+			logger.Warn("security: ignoring invalid allowlist IP", "entry", e, "err", err)
+			continue
+		}
+		out = append(out, netip.PrefixFrom(a, a.BitLen()))
+	}
+	return out
+}
+
+// isAllowlisted reports whether ip falls in any allowlist prefix.
+func (m *Monitor) isAllowlisted(ip string) bool {
+	if len(m.allow) == 0 {
+		return false
+	}
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap()
+	for _, p := range m.allow {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 // Observe is the access-log hook. It records the line against its source IP's
@@ -241,9 +303,12 @@ func (m *Monitor) evaluate(c *ipCounter, now time.Time) {
 		return
 	}
 	c.lastTrip = now
-	m.recordAnomaly(Anomaly{At: now, IP: c.ip, Kind: kind, Detail: detail})
-	m.logger.Warn("security: traffic anomaly", "kind", kind, "ip", c.ip, "detail", detail)
-	if m.notifier != nil {
+	suppressed := m.isAllowlisted(c.ip)
+	m.recordAnomaly(Anomaly{At: now, IP: c.ip, Kind: kind, Detail: detail, Suppressed: suppressed})
+	m.logger.Warn("security: traffic anomaly", "kind", kind, "ip", c.ip, "detail", detail, "notify_suppressed", suppressed)
+	// Allowlisted sources (the operator's own dashboard traffic, known monitors)
+	// stay visible on the dashboard but don't page anyone.
+	if m.notifier != nil && !suppressed {
 		m.notifier.TrafficAnomaly("", "", kind, detail)
 	}
 }

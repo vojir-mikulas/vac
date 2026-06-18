@@ -144,8 +144,13 @@
     },
     "domain": {
       "title": "Domain",
-      "subtitle": "Custom domains are added after the first deploy — here's how it works.",
-      "note": "Point a <0>CNAME</0> (or A record) at this VPS, then add the domain from the app's <1>Domains</1> tab after the first deploy — certificates are issued on the first request. Until then, your app is reachable at its generated URL."
+      "subtitle": "Optional. Point a custom domain at this VPS now so DNS can propagate while your app builds.",
+      "label": "Custom domain",
+      "hint": "A domain or subdomain you own, e.g. app.example.com. Leave blank to use the generated URL.",
+      "invalid": "Enter a valid domain, e.g. app.example.com (no http://, port, or path).",
+      "skip": "No custom domain — your app will be reachable at its generated URL. You can add one later from the Domains tab.",
+      "bindNote": "We'll register this domain now and start checking DNS. Once your first deploy is live, bind it to a service from the Domains hub — certificates are issued on the first request.",
+      "addFailed": "Could not register the domain — add it later from the Domains tab."
     },
     "env": {
       "title": "Environment Variables",

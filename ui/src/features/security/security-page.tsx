@@ -484,6 +484,17 @@ function YouBadge() {
   )
 }
 
+// NotAlertedBadge marks an anomaly from an allowlisted source: recorded and
+// shown here, but no Slack/email notification was sent.
+function NotAlertedBadge() {
+  const { t } = useTranslation('security')
+  return (
+    <Badge variant="outline" className="text-2xs" title={t('traffic.anomalies.notAlertedTitle')}>
+      {t('traffic.anomalies.notAlerted')}
+    </Badge>
+  )
+}
+
 // statusTone colours an HTTP status: 2xx ok, 3xx muted, 4xx warn, 5xx error.
 function statusTone(status: number): string {
   if (status >= 500) return 'text-err'
@@ -587,6 +598,7 @@ function AnomaliesList({
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium capitalize">{a.kind}</span>
               {isYou(a.ip, yourIp) ? <YouBadge /> : null}
+              {a.suppressed ? <NotAlertedBadge /> : null}
               <span className="text-2xs text-muted-foreground">{relativeTime(a.at)}</span>
             </div>
             <p className="mt-0.5 text-sm text-muted-foreground">{a.detail}</p>

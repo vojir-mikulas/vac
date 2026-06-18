@@ -165,6 +165,14 @@ type Config struct {
 	SecurityErrThreshold int           `yaml:"security_err_threshold"`
 	SecurityWindow       time.Duration `yaml:"security_window"`
 	SecurityCooldown     time.Duration `yaml:"security_cooldown"`
+	// SecurityAllowlist lists IPs/CIDRs whose anomalies are still recorded and
+	// shown on the dashboard but never fire a notification. The monitor rides the
+	// same Caddy access log the operator's own dashboard traffic flows through, so
+	// without this a single open dashboard tab can clear the spike threshold and
+	// page the operator for their own browsing. Put the operator's IP (and any
+	// known uptime monitors / health-check probers) here. Env override is
+	// comma-separated (VAC_SECURITY_ALLOWLIST="203.0.113.7,10.0.0.0/8").
+	SecurityAllowlist []string `yaml:"security_allowlist"`
 
 	// SecurityAgent records whether the operator opted into the host-side security
 	// agent (scripts/vac-security-agent.sh) — an opt-in, like EnableShell /
@@ -594,6 +602,15 @@ func applyEnv(cfg *Config) {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			cfg.SecurityCooldown = d
 		}
+	}
+	if v := os.Getenv("VAC_SECURITY_ALLOWLIST"); v != "" {
+		var list []string
+		for _, e := range strings.Split(v, ",") {
+			if e = strings.TrimSpace(e); e != "" {
+				list = append(list, e)
+			}
+		}
+		cfg.SecurityAllowlist = list
 	}
 	if v := os.Getenv("VAC_SECURITY_AGENT"); v != "" {
 		cfg.SecurityAgent = v == "true" || v == "1"

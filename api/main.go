@@ -260,6 +260,7 @@ func main() {
 			RPSThreshold: cfg.SecurityRPSThreshold,
 			ErrThreshold: cfg.SecurityErrThreshold,
 			Cooldown:     cfg.SecurityCooldown,
+			Allowlist:    cfg.SecurityAllowlist,
 		}, notifier, slog.Default())
 		secTraffic = secMonitor
 	}

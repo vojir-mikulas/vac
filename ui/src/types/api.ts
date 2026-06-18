@@ -787,6 +787,8 @@ export interface TrafficAnomaly {
   ip: string
   kind: string
   detail: string
+  /** True when the IP is allowlisted: recorded and shown, but no alert was sent. */
+  suppressed?: boolean
 }
 
 export interface RecentRequest {

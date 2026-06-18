@@ -122,6 +122,46 @@ func TestMonitor_RequestSpikeTrips(t *testing.T) {
 	}
 }
 
+func TestMonitor_AllowlistSuppressesNotification(t *testing.T) {
+	notifier := &fakeNotifier{}
+	// 5.5.5.5 is an exact match; 6.6.6.x is covered by a CIDR.
+	m := NewMonitor(Config{
+		Window: time.Minute, RPSThreshold: 10, ErrThreshold: 1000, Cooldown: time.Hour,
+		Allowlist: []string{"5.5.5.5", "6.6.6.0/24"},
+	}, notifier, nil)
+
+	// Allowlisted exact IP: trips the threshold but no notification fires.
+	for i := 0; i < 10; i++ {
+		m.Observe(line("5.5.5.5", 200, ""))
+	}
+	// Allowlisted via CIDR.
+	for i := 0; i < 10; i++ {
+		m.Observe(line("6.6.6.42", 200, ""))
+	}
+	if len(notifier.calls) != 0 {
+		t.Fatalf("notifier calls = %d, want 0 for allowlisted IPs (%v)", len(notifier.calls), notifier.calls)
+	}
+
+	// But the anomalies are still recorded and flagged as suppressed.
+	anomalies := m.Snapshot(10).RecentAnomalies
+	if len(anomalies) != 2 {
+		t.Fatalf("recent anomalies = %d, want 2 (still recorded)", len(anomalies))
+	}
+	for _, a := range anomalies {
+		if !a.Suppressed {
+			t.Errorf("anomaly %s not flagged suppressed", a.IP)
+		}
+	}
+
+	// A non-allowlisted IP still pages.
+	for i := 0; i < 10; i++ {
+		m.Observe(line("7.7.7.7", 200, ""))
+	}
+	if len(notifier.calls) != 1 {
+		t.Errorf("notifier calls = %d, want 1 for non-allowlisted IP", len(notifier.calls))
+	}
+}
+
 func TestMonitor_LRUCap(t *testing.T) {
 	m := NewMonitor(Config{Window: time.Hour, RPSThreshold: 1e9, ErrThreshold: 1e9}, nil, nil)
 	// Feed more distinct IPs than the cap; the table must stay bounded.

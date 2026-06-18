@@ -28,12 +28,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { NotificationBar } from '@/components/common/notification-bar'
 import { DeployKeyCard } from '@/features/app-detail/deploy-key-card'
+import { DnsRecordPreview } from '@/features/settings/dns-record-preview'
 import { BuildSourcePicker, type BuildSourceValue } from '@/features/apps/build-source'
 import { appsApi, useApps, useCreateApp } from '@/lib/api/apps'
+import { domainsApi } from '@/lib/api/domains'
 import { envApi, type EnvVarInput } from '@/lib/api/env'
 import { deploymentsApi } from '@/lib/api/deployments'
 import { ApiError } from '@/lib/api/client'
 import { isSensitiveKey, isValidEnvKey, parseEnvEntries } from '@/lib/env-parse'
+import { isValidHostname } from '@/lib/hostname'
 import { cn } from '@/lib/utils'
 import { RISE, transition } from '@/lib/motion'
 import type { App, CreateAppInput, TestConnectionResult } from '@/types/api'
@@ -115,6 +118,11 @@ function Wizard() {
   const [regUser, setRegUser] = useState('')
   const [regPass, setRegPass] = useState('')
   const [build, setBuild] = useState<BuildSourceValue>({ build_kind: 'auto', build_config: {} })
+  // Optional custom domain. There's no service to bind it to until the first
+  // deploy, so the wizard pre-registers it *unassigned* (DNS verification starts
+  // now, records propagate while the build runs) and the operator binds it to a
+  // service from the Domains hub afterwards. See finishCreate.
+  const [domain, setDomain] = useState('')
   const [envRows, setEnvRows] = useState<WizardEnvRow[]>([])
   const [applyingEnv, setApplyingEnv] = useState(false)
   const [created, setCreated] = useState<App | null>(null)
@@ -280,6 +288,19 @@ function Wizard() {
       }
       setApplyingEnv(false)
     }
+    // Pre-register the custom domain, if one was entered. No service exists yet
+    // (it's created by the first deploy), so the domain goes in unassigned —
+    // DNS verification can start while the build runs, and the operator binds it
+    // to a service from the Domains hub once the app is live. Best-effort: a
+    // failure here is surfaced but never blocks creation or the deploy.
+    const host = domain.trim()
+    if (host) {
+      try {
+        await domainsApi.add(host)
+      } catch (e) {
+        toast.warning(e instanceof Error ? e.message : t('new.domain.addFailed'))
+      }
+    }
     toast.success(t('new.toast.created'))
     // When deploying immediately we redirect to the deploys page, so skip the
     // "created" review panel entirely — otherwise its connection-test card
@@ -393,7 +414,7 @@ function Wizard() {
               </div>
             ) : null}
 
-            {step === 2 ? <DomainStep /> : null}
+            {step === 2 ? <DomainStep hostname={domain} setHostname={setDomain} /> : null}
 
             {step === 3 ? (
               <EnvStep gitUrl={gitUrl} branch={branch} rows={envRows} setRows={setEnvRows} />
@@ -409,6 +430,7 @@ function Wizard() {
                 imageRef={imageRef}
                 port={port}
                 build={build}
+                domain={domain.trim()}
                 envCount={envInputs().length}
                 ssh={ssh}
                 connectionOk={connectionOk}
@@ -901,24 +923,53 @@ function RegistryDisclosure({
   )
 }
 
-// Informational step: a custom domain can't be attached until the app has a
-// running service to bind to, so this explains the post-deploy workflow rather
-// than offering an input that silently wouldn't be applied.
-function DomainStep() {
+// Optional Domain step. A custom domain can't be *bound* to a service until the
+// first deploy creates one, but the DNS record it needs is knowable now — so we
+// let the operator enter the hostname, show the exact record to create (so DNS
+// can propagate during the build), and pre-register it unassigned on submit.
+// Binding to a service happens later from the Domains hub.
+function DomainStep({
+  hostname,
+  setHostname,
+}: {
+  hostname: string
+  setHostname: (v: string) => void
+}) {
   const { t } = useTranslation('apps')
+  const trimmed = hostname.trim()
+  const invalid = trimmed !== '' && !isValidHostname(trimmed)
   return (
     <div>
       <StepHeading title={t('new.domain.title')} subtitle={t('new.domain.subtitle')} />
-      <p className="rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
-        <Trans
-          t={t}
-          i18nKey="new.domain.note"
-          components={[
-            <span className="font-mono text-foreground" />,
-            <span className="font-medium" />,
-          ]}
-        />
-      </p>
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-2">
+          <Label htmlFor="domain">{t('new.domain.label')}</Label>
+          <Input
+            id="domain"
+            value={hostname}
+            onChange={(e) => setHostname(e.target.value)}
+            placeholder="app.example.com"
+            aria-invalid={invalid}
+            className={cn('font-mono text-xs', invalid && 'border-err-border')}
+          />
+          {invalid ? (
+            <p className="text-2xs text-err-foreground">{t('new.domain.invalid')}</p>
+          ) : (
+            <p className="text-2xs text-muted-foreground">{t('new.domain.hint')}</p>
+          )}
+        </div>
+
+        {trimmed && !invalid ? (
+          <div className="flex flex-col gap-3 rounded-md border bg-surface-1 p-3">
+            <DnsRecordPreview hostname={trimmed} />
+            <p className="text-2xs text-muted-foreground">{t('new.domain.bindNote')}</p>
+          </div>
+        ) : (
+          <p className="rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground">
+            {t('new.domain.skip')}
+          </p>
+        )}
+      </div>
     </div>
   )
 }
@@ -1216,6 +1267,7 @@ function ReviewDeployStep({
   imageRef,
   port,
   build,
+  domain,
   envCount,
   ssh,
   connectionOk,
@@ -1229,6 +1281,7 @@ function ReviewDeployStep({
   imageRef: string
   port: string
   build: BuildSourceValue
+  domain: string
   envCount: number
   ssh: boolean
   connectionOk: boolean
@@ -1254,6 +1307,7 @@ function ReviewDeployStep({
             <ReviewLine k={t('new.review.build')} v={buildSummary(build, t)} />
           </>
         )}
+        {domain ? <ReviewLine k={t('new.review.domain')} v={domain} mono /> : null}
         {envCount > 0 ? (
           <ReviewLine k={t('new.review.env')} v={t('new.review.envCount', { count: envCount })} />
         ) : null}

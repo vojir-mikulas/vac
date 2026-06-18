@@ -1,12 +1,9 @@
 import { CheckCircle2, RotateCw } from 'lucide-react'
-import { Trans, useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 
-import { CopyButton } from '@/components/common/copy-button'
 import { DomainCertPanel } from '@/features/settings/domain-cert-panel'
-import { RegistrarHostHint } from '@/features/settings/registrar-host-hint'
+import { DnsRecordPreview } from '@/features/settings/dns-record-preview'
 import { Button } from '@/components/ui/button'
-import { useHostStats } from '@/lib/api/metrics'
-import { useBaseDomain } from '@/lib/api/instance'
 import { useRefreshDomainStatus } from '@/lib/api/domains'
 import { relativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -19,14 +16,8 @@ import type { Domain } from '@/types/api'
  */
 export function DomainConfigPanel({ domain }: { domain: Domain }) {
   const { t } = useTranslation('settings')
-  const { data: host } = useHostStats()
-  const { data: base } = useBaseDomain()
   const refresh = useRefreshDomainStatus()
-  const ip = host?.host_ip || ''
-  const baseHost = base?.effective || ''
 
-  const labels = domain.hostname.split('.').filter(Boolean).length
-  const isApex = labels <= 2
   const active = domain.status === 'active'
 
   return (
@@ -43,50 +34,10 @@ export function DomainConfigPanel({ domain }: { domain: Domain }) {
         </div>
       ) : (
         <>
-          <p className="text-xs text-muted-foreground">
-            <Trans
-              t={t}
-              i18nKey="domains.config.createRecord"
-              values={{ hostname: domain.hostname }}
-              components={[<span className="font-mono" />]}
-            />
-            {isApex ? ` ${t('domains.config.apexNote')}` : ''}
-          </p>
-
-          <div className="overflow-hidden rounded-md border">
-            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b bg-surface-2 px-3 py-1.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-              <span>{t('domains.dnsRecord.type')}</span>
-              <span>{t('domains.dnsRecord.name')}</span>
-              <span>{t('domains.dnsRecord.value')}</span>
-            </div>
-            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-2 font-mono text-xs">
-              <span className="rounded bg-surface-2 px-1.5 py-0.5">A</span>
-              <span className="truncate">{domain.hostname}</span>
-              <span className="flex items-center gap-2">
-                <span className="truncate">{ip || '—'}</span>
-                {ip ? <CopyButton value={ip} label="" /> : null}
-              </span>
-            </div>
-          </div>
-
-          <RegistrarHostHint hostname={domain.hostname} />
-
-          {!isApex && baseHost ? (
-            <p className="text-2xs text-muted-foreground">
-              <Trans
-                t={t}
-                i18nKey="domains.config.cnameAlt"
-                values={{ hostname: domain.hostname, baseHost }}
-                components={[<span className="font-mono" />]}
-              />
-            </p>
-          ) : null}
-
+          <DnsRecordPreview hostname={domain.hostname} />
           {domain.status_detail ? (
             <p className="text-2xs text-warn-foreground">{domain.status_detail}</p>
           ) : null}
-
-          <p className="text-2xs text-muted-foreground">{t('domains.config.propagation')}</p>
         </>
       )}
 

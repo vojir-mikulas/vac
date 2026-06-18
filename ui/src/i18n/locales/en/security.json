@@ -54,7 +54,9 @@
       "empty": {
         "title": "No anomalies",
         "description": "No traffic anomalies detected."
-      }
+      },
+      "notAlerted": "Not alerted",
+      "notAlertedTitle": "This source is allowlisted, so the breach is shown here but no notification was sent."
     },
     "recentRequests": {
       "heading": "Recent Requests",
