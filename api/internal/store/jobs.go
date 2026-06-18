@@ -219,6 +219,18 @@ func (s *Store) FinishJobRun(ctx context.Context, runID, status string, exitCode
 	return nil
 }
 
+// DeleteJobRunsOlderThan prunes user-cron run history beyond the retention
+// window. Without it a frequently-running job grows job_runs unbounded (a
+// per-minute job is ~8 GB/year at the 16 KB output cap); the nightly retention
+// pass calls this. Returns the number of rows deleted.
+func (s *Store) DeleteJobRunsOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM job_runs WHERE started_at < $1`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ListJobRuns returns the most recent runs for a job, newest first.
 func (s *Store) ListJobRuns(ctx context.Context, jobID string, limit int) ([]JobRun, error) {
 	if limit <= 0 || limit > 200 {

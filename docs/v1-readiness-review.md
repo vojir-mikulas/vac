@@ -19,6 +19,27 @@ What stands between this and a confident v1 is a short punch list — mostly aut
 one-liners, two real bugs, and one process gap (no CI). None are architectural. Estimated a
 day or two of work.
 
+## Status — addressed 2026-06-18
+
+All five must-fix blockers are **fixed**, plus two of the should-fix items (goroutine
+panic-recovery and the route-sync mutex). Full `go test -race ./...` and the UI typecheck pass.
+Remaining items below are tagged **deferred** with the reason — each needs a design/UX call
+rather than a mechanical edit.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | CI gate (`.github/workflows/ci.yml`) | ✅ fixed |
+| 2 | `netguard` tests | ✅ fixed |
+| 3 | Step-up on restart-control-plane / stop-all-apps | ✅ fixed |
+| 4 | Enqueue-strand on all four deploy paths | ✅ fixed |
+| 5 | `job_runs` pruning | ✅ fixed |
+| — | Goroutine panic-recovery (should-fix) | ✅ fixed |
+| — | Route-sync mutex (should-fix) | ✅ fixed |
+| — | `X-Forwarded-For` trusted proxy | ⏸ deferred — needs a trust-boundary decision |
+| — | Shell exec step-up (L1) | ⏸ deferred — WS 403 would need UI step-up handling |
+| — | Backup-command gating (L2) | ⏸ deferred — changes create-backup UX |
+| — | Cancel-vs-pipeline terminal-status guard | ⏸ deferred — cosmetic |
+
 ## Must-fix before tagging v1
 
 ### 1. No CI gate — releases ship unverified

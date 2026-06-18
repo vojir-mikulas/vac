@@ -209,6 +209,40 @@ func (s *Store) RejectDeployment(ctx context.Context, appID, id string) (Deploym
 	return d, err
 }
 
+// FailQueuedDeployment settles a deployment that was queued (status flip done)
+// but could not be handed to the worker — e.g. Enqueue returned ErrQueueFull —
+// as terminal `error`. Without this the row stays `queued`, which counts in the
+// per-app uniqueness guard (migration 00062) and so blocks the app's only deploy
+// lane until the reaper settles it ~30 min later. Scoped to `queued` so it can
+// never clobber a deploy a worker has already picked up. Used for freshly created
+// manual/rollback deploys, which have no earlier state to revert to.
+func (s *Store) FailQueuedDeployment(ctx context.Context, id, reason string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE deployments SET status = 'error', error = $2, finished_at = NOW()
+		 WHERE id = $1 AND status = 'queued'`, id, reason)
+	return err
+}
+
+// UnqueueApproval reverts an approved-but-not-enqueued deploy back to
+// `pending-approval` (the inverse of ApproveDeployment) so the operator can retry
+// the approval after a transient queue-full, rather than the row stranding the
+// app's deploy lane. Scoped to `queued` + app so it can't touch a running deploy.
+func (s *Store) UnqueueApproval(ctx context.Context, appID, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE deployments SET status = 'pending-approval'
+		 WHERE id = $1 AND app_id = $2 AND status = 'queued'`, id, appID)
+	return err
+}
+
+// UnqueueScheduled reverts a released-but-not-enqueued parked deploy back to
+// `scheduled` (the inverse of ReleaseScheduledDeployment) so the window sweeper
+// retries it on its next tick instead of leaving it stranded as `queued`.
+func (s *Store) UnqueueScheduled(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE deployments SET status = 'scheduled' WHERE id = $1 AND status = 'queued'`, id)
+	return err
+}
+
 // ErrRollbackSourceInvalid is returned when a rollback names a source
 // deployment that isn't a successful deploy of the same app.
 var ErrRollbackSourceInvalid = errors.New("store: rollback source is not a successful deployment of this app")

@@ -286,8 +286,10 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				r.Get("/onboarding", handler.GetOnboarding(s))
 				r.Post("/onboarding/dismiss", handler.DismissOnboarding(s))
 				if docker != nil {
-					r.Post("/restart-control-plane", handler.RestartControlPlane(docker))
-					r.Post("/stop-all-apps", handler.StopAllApps(s, docker, proxyMgr))
+					// Both kill the control plane / every app — a full outage. Gate on
+					// fresh 2FA like the other destructive instance ops (/reset below).
+					r.With(middleware.RequireStepUp).Post("/restart-control-plane", handler.RestartControlPlane(docker))
+					r.With(middleware.RequireStepUp).Post("/stop-all-apps", handler.StopAllApps(s, docker, proxyMgr))
 					// Disk maintenance: report docker disk usage and reclaim it on
 					// demand (dangling images + unused build cache). Safe — never
 					// removes a service's live or rollback image.

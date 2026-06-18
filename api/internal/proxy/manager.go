@@ -99,6 +99,15 @@ type Manager struct {
 	certSource CertSource    // uploaded-cert lister; nil disables BYO certs
 	keyOpener  KeyOpener     // decrypts sealed private keys; nil disables BYO certs
 
+	// routeMu serializes Caddy route/cert mutations. A PutRoute is a non-atomic
+	// delete-then-append on a shared @id, and Sync/Teardown/InstallWakeRoutes/
+	// Reconcile/SyncCerts can be driven concurrently for the same app (a deploy,
+	// a domain edit, a scale-to-zero wake, a cert upload). Without this lock two
+	// such operations can interleave their delete/append and leave a duplicate or
+	// dropped route. Held only by the leaf public mutators below; MaintainOn/Off
+	// delegate to Sync (which locks), so they must NOT take it themselves.
+	routeMu sync.Mutex
+
 	mu                 sync.RWMutex
 	baseDomainOverride string // runtime override from instance_settings; "" = use cfg.BaseDomain
 	hasOverride        bool
@@ -215,6 +224,8 @@ func (m *Manager) pushCerts(ctx context.Context) error {
 // an unassigned domain with no app to Sync — so the change reaches Caddy
 // immediately rather than waiting for the next deploy.
 func (m *Manager) SyncCerts(ctx context.Context) error {
+	m.routeMu.Lock()
+	defer m.routeMu.Unlock()
 	m.ensureBaseConfig(ctx)
 	return m.pushCerts(ctx)
 }
@@ -526,6 +537,8 @@ func portOr(p *int) int {
 // vac-edge) and prunes any Caddy routes no longer backed by a domain row or a
 // derived auto host.
 func (m *Manager) Sync(ctx context.Context, appID string) error {
+	m.routeMu.Lock()
+	defer m.routeMu.Unlock()
 	if err := m.EnsureNetwork(ctx); err != nil {
 		m.logger.Warn("proxy: ensure network", "err", err)
 	}
@@ -755,6 +768,8 @@ func (m *Manager) IsControlDomain(host string) bool {
 // stop so a stopped app returns a clean 502/503 instead of proxying to a dead
 // upstream.
 func (m *Manager) Teardown(ctx context.Context, appID string) error {
+	m.routeMu.Lock()
+	defer m.routeMu.Unlock()
 	app, err := m.store.GetApp(ctx, appID)
 	if err != nil {
 		return err
@@ -791,6 +806,8 @@ func (m *Manager) Teardown(ctx context.Context, appID string) error {
 // untouched. Mirrors applyApp's suspended branch but as a focused delta — no
 // orphan prune or cert push needed for a stop.
 func (m *Manager) InstallWakeRoutes(ctx context.Context, appID string) error {
+	m.routeMu.Lock()
+	defer m.routeMu.Unlock()
 	m.ensureBaseConfig(ctx)
 	app, err := m.store.GetApp(ctx, appID)
 	if err != nil {
@@ -827,6 +844,8 @@ func (m *Manager) InstallWakeRoutes(ctx context.Context, appID string) error {
 // the DB on boot, then prunes orphans. It enumerates every app (not just those
 // with custom domains) so derived auto hosts are routed too. Idempotent.
 func (m *Manager) Reconcile(ctx context.Context) error {
+	m.routeMu.Lock()
+	defer m.routeMu.Unlock()
 	if err := m.EnsureNetwork(ctx); err != nil {
 		m.logger.Warn("proxy: reconcile ensure network", "err", err)
 	}

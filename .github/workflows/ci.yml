@@ -1,0 +1,78 @@
+name: CI
+
+# Gate every push and PR before code can reach a release tag: lint, typecheck,
+# unit tests (Go with the race detector + vitest), and a build of both halves.
+# Integration tests (testcontainers) are intentionally out of scope here — they
+# need Docker and run via `make test-integration`.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+# A new push to a branch/PR cancels the in-flight run for it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (vet, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - name: go vet
+        working-directory: api
+        run: go vet ./...
+      - name: go test (race, unit only)
+        working-directory: api
+        run: go test -race ./...
+      - name: go build (no embed)
+        working-directory: api
+        run: go build ./...
+
+  golangci:
+    name: Lint (golangci-lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: api
+
+  frontend:
+    name: Frontend (typecheck, lint, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm --filter ui typecheck
+      - name: Lint (ESLint + Prettier + i18n catalog)
+        run: |
+          pnpm --filter ui lint
+          pnpm --filter ui format:check
+          pnpm --filter ui i18n:check
+      - name: Unit tests (vitest)
+        run: pnpm --filter ui test
+      - name: Build UI
+        run: pnpm --filter ui build

@@ -233,7 +233,7 @@ func main() {
 	// Deploy-window sweeper (maintenance-mode-and-deploy-gates.md, Phase 3):
 	// releases deploys parked outside their app's window when a window opens. One
 	// cheap goroutine — a no-op tick when nothing is parked.
-	go deploy.NewWindowSweeper(st, worker, slog.Default()).Run(ctx)
+	superviseDaemon(ctx, "deploy-window-sweeper", deploy.NewWindowSweeper(st, worker, slog.Default()).Run)
 
 	// Add-on catalog (Track D / D3). The embedded registry doubles as the deploy
 	// pipeline's template materializer (the clone-step seam), so it's wired even
@@ -298,9 +298,9 @@ func main() {
 	})
 	if secMonitor != nil {
 		collector.SetObserver(secMonitor.Observe)
-		go secMonitor.Run(ctx)
+		superviseDaemon(ctx, "security-monitor", secMonitor.Run)
 	}
-	go collector.Run(ctx)
+	superviseDaemon(ctx, "reqmetrics-collector", collector.Run)
 
 	// Real-time stats: per-service collectors (subscriber-gated via the hub's
 	// subscribe hooks) plus host vitals. The host request-rate field reuses the
@@ -314,7 +314,7 @@ func main() {
 	// One docker-events stream fans out to the crash-loop monitor and the
 	// runtime-log supervisor (rather than each opening its own).
 	eventBus := dockerevents.NewBus(docker, slog.Default())
-	go eventBus.Run(ctx)
+	superviseDaemon(ctx, "docker-event-bus", eventBus.Run)
 
 	monitor := crashloop.New(eventBus, docker, st, crashloop.Config{
 		Threshold: cfg.CrashLoopThreshold,
@@ -322,7 +322,7 @@ func main() {
 	}, slog.Default())
 	monitor.SetNotifier(notifier)
 	monitor.SetInspector(docker)
-	go monitor.Run(ctx)
+	superviseDaemon(ctx, "crashloop-monitor", monitor.Run)
 
 	// Runtime-log capture: one follower per running container, writing to the
 	// DB ring buffer and teeing to the hub. Reconciles on deploy/lifecycle, on
@@ -330,7 +330,7 @@ func main() {
 	logSup := logstream.New(docker, st, st, hub, eventBus, logstream.Config{
 		RingBuffer: cfg.LogRingBuffer,
 	}, slog.Default())
-	go logSup.Run(ctx)
+	superviseDaemon(ctx, "logstream-supervisor", logSup.Run)
 	pipeline.Reconciler = logSup
 
 	pruner := retention.New(st, docker, retention.Config{
@@ -343,7 +343,7 @@ func main() {
 		BuildCacheMaxBytes:  buildCacheMaxBytes(cfg),
 		HourOfDay:           3,
 	}, slog.Default())
-	go pruner.Run(ctx)
+	superviseDaemon(ctx, "retention-pruner", pruner.Run)
 
 	// Cert-expiry notification (plan 03). Reads each managed host's real TLS
 	// expiry by handshaking the proxy with the host's SNI, and alerts once when a
@@ -351,7 +351,7 @@ func main() {
 	certChecker := certcheck.New(st, notifier, certProbeAddr(cfg), 10*time.Second, certcheck.Config{
 		Threshold: time.Duration(cfg.CertExpiryDays) * 24 * time.Hour,
 	}, slog.Default())
-	go certChecker.Run(ctx)
+	superviseDaemon(ctx, "cert-checker", certChecker.Run)
 
 	// Volume usage & storage alerts. A slow timer samples each app's volume sizes
 	// (named volumes via `docker system df -v`, bind mounts via an opt-in bounded
@@ -368,7 +368,7 @@ func main() {
 		AlertPercent: cfg.DiskAlertPercent,
 		ScanBinds:    cfg.DiskScanBinds,
 	}, slog.Default())
-	go diskCollector.Run(ctx)
+	superviseDaemon(ctx, "disk-collector", diskCollector.Run)
 
 	// Preview deployments (docs/plans/preview-deployments.md). The lifecycle
 	// service reuses the deploy worker (enqueue + interrupt), the proxy manager
@@ -380,7 +380,7 @@ func main() {
 		MaxPreviews: cfg.MaxPreviews,
 		TTL:         cfg.PreviewTTL,
 	}, slog.Default())
-	go previewSvc.RunExpirer(ctx)
+	superviseDaemon(ctx, "preview-expirer", previewSvc.RunExpirer)
 
 	// Track D (managed services). The backup engine is always constructed so the
 	// manual "Back up now" endpoint works the moment the flag is on; the
@@ -395,7 +395,7 @@ func main() {
 		if n, err := st.CountBackupConfigs(ctx); err != nil {
 			slog.Warn("backup: could not count configs; scheduler not started", "err", err)
 		} else if n > 0 {
-			go backup.NewScheduler(st, backupEngine, slog.Default()).Run(ctx)
+			superviseDaemon(ctx, "backup-scheduler", backup.NewScheduler(st, backupEngine, slog.Default()).Run)
 			slog.Info("backup scheduler started", "configs", n)
 		}
 
@@ -422,7 +422,7 @@ func main() {
 		// only starts when ≥1 config exists, so idle footprint stays zero.
 		backupVerifier = backup.NewVerifier(st, docker, box, cfg.WorkDir, dbProvisioner, notifier, slog.Default())
 		if n, err := st.CountBackupConfigs(ctx); err == nil && n > 0 {
-			go backup.NewVerifyScheduler(st, backupVerifier, slog.Default()).Run(ctx)
+			superviseDaemon(ctx, "backup-verify-scheduler", backup.NewVerifyScheduler(st, backupVerifier, slog.Default()).Run)
 		}
 	}
 
@@ -435,7 +435,7 @@ func main() {
 	if n, err := st.CountScheduledJobs(ctx); err != nil {
 		slog.Warn("jobs: could not count jobs; scheduler not started", "err", err)
 	} else if n > 0 {
-		go jobs.NewScheduler(st, jobsEngine, slog.Default()).Run(ctx)
+		superviseDaemon(ctx, "jobs-scheduler", jobs.NewScheduler(st, jobsEngine, slog.Default()).Run)
 		slog.Info("job scheduler started", "jobs", n)
 	}
 
@@ -450,7 +450,7 @@ func main() {
 		if n, err := st.CountIdleSuspendApps(ctx); err != nil {
 			slog.Warn("scaletozero: could not count opted-in apps; sweeper not started", "err", err)
 		} else if n > 0 {
-			go scaletozero.NewSweeper(st, waker, cfg.IdleSweepInterval, cfg.IdleTimeout, slog.Default()).Run(ctx)
+			superviseDaemon(ctx, "scale-to-zero-sweeper", scaletozero.NewSweeper(st, waker, cfg.IdleSweepInterval, cfg.IdleTimeout, slog.Default()).Run)
 			slog.Info("idle-suspend sweeper started", "apps", n)
 		}
 	}
@@ -477,7 +477,7 @@ func main() {
 		Logger:    slog.Default(),
 	})
 	proxyMgr.SetStatusEngine(statusEngine)
-	go statusEngine.Run(ctx)
+	superviseDaemon(ctx, "domain-status-engine", statusEngine.Run)
 
 	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, backupVerifier, jobsEngine, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost, previewSvc, waker)
 	if err != nil {
@@ -715,4 +715,35 @@ func controlDBName(databaseURL string) string {
 		return name
 	}
 	return "vac"
+}
+
+// superviseDaemon runs a long-lived background loop that survives a panic. An
+// unrecovered panic in any goroutine crashes the entire control plane, so every
+// always-on daemon is launched through here: on panic it logs the stack and
+// restarts the loop after a short backoff; on a clean return (the normal path is
+// ctx cancellation) it exits. name labels the daemon in logs.
+func superviseDaemon(ctx context.Context, name string, run func(context.Context)) {
+	go func() {
+		for ctx.Err() == nil {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("daemon panicked; restarting after backoff",
+							"daemon", name, "panic", r, "stack", string(debug.Stack()))
+					}
+				}()
+				run(ctx)
+			}()
+			// run returned: clean shutdown if ctx is done, else a recovered panic —
+			// back off before relaunching so a tight panic loop can't spin the CPU.
+			if ctx.Err() != nil {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(2 * time.Second):
+			}
+		}
+	}()
 }

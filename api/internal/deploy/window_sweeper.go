@@ -13,6 +13,7 @@ import (
 type WindowStore interface {
 	ListScheduledDeployments(ctx context.Context) ([]store.ScheduledDeploy, error)
 	ReleaseScheduledDeployment(ctx context.Context, id string) error
+	UnqueueScheduled(ctx context.Context, id string) error
 }
 
 // WindowEnqueuer hands a released deployment to the worker pool. Satisfied by
@@ -90,6 +91,11 @@ func (s *WindowSweeper) sweep(ctx context.Context) {
 			continue
 		}
 		if err := s.enqueue.Enqueue(d.DeploymentID); err != nil {
+			// Revert the released row to `scheduled` so it isn't stranded as `queued`
+			// (which blocks the app's deploy lane); the next tick retries it.
+			if rerr := s.store.UnqueueScheduled(ctx, d.DeploymentID); rerr != nil {
+				s.logger.Warn("deploy window: revert unenqueued deploy", "deployment", d.DeploymentID, "err", rerr)
+			}
 			s.logger.Warn("deploy window: enqueue released deploy", "deployment", d.DeploymentID, "err", err)
 			continue
 		}

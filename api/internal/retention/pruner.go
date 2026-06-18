@@ -19,6 +19,7 @@ type PruneStore interface {
 	DeleteRequestMetricsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteAuditLogOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteSecurityEventsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
+	DeleteJobRunsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 	ListRuntimeLogServices(ctx context.Context) ([]struct{ AppID, ServiceName string }, error)
 	TrimRuntimeLogsToRingBuffer(ctx context.Context, appID, serviceName string, keepN int) (int64, error)
 	// Image prune (P2.3) + deployment retention (P2.4).
@@ -155,6 +156,15 @@ func (p *Pruner) PruneOnce(ctx context.Context) error {
 		return err
 	}
 	p.logger.Info("retention: pruned security events", "deleted", sn, "cutoff", auditCutoff.Format(time.RFC3339))
+
+	// User-cron run history shares the activity window — it's the same kind of
+	// operational history as the audit log, and without this a frequently-running
+	// job grows job_runs without bound.
+	jn, err := p.store.DeleteJobRunsOlderThan(ctx, auditCutoff)
+	if err != nil {
+		return err
+	}
+	p.logger.Info("retention: pruned job runs", "deleted", jn, "cutoff", auditCutoff.Format(time.RFC3339))
 
 	// Ring-buffer cap per (app, service) — catches services whose live
 	// follower isn't running to trim them continuously.

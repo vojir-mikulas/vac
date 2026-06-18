@@ -27,6 +27,13 @@ type DeploymentCanceller interface {
 	NotifyChanged()
 }
 
+// detachedCtx returns a short-lived context independent of the request, for
+// best-effort cleanup (settling a stranded `queued` row after a failed Enqueue)
+// that must run even if the client disconnected at that instant.
+func detachedCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 5*time.Second)
+}
+
 type deploymentDTO struct {
 	ID             string     `json:"id"`
 	AppID          string     `json:"app_id"`
@@ -84,6 +91,11 @@ func TriggerDeployment(s *store.Store, w DeploymentEnqueuer) http.HandlerFunc {
 			return
 		}
 		if err := w.Enqueue(d.ID); err != nil {
+			// The row is already `queued`; settle it so a transient queue-full doesn't
+			// strand the app's only deploy lane until the reaper settles it (~30 min).
+			cctx, cancel := detachedCtx()
+			_ = s.FailQueuedDeployment(cctx, d.ID, "deploy queue full at enqueue")
+			cancel()
 			if errors.Is(err, deploy.ErrQueueFull) {
 				WriteError(rw, http.StatusServiceUnavailable, "deploy queue full — retry shortly")
 				return
@@ -132,6 +144,11 @@ func RollbackDeployment(s *store.Store, w DeploymentEnqueuer) http.HandlerFunc {
 			return
 		}
 		if err := w.Enqueue(d.ID); err != nil {
+			// Settle the just-queued rollback row so a transient queue-full doesn't
+			// strand the app's deploy lane (see TriggerDeployment).
+			cctx, cancel := detachedCtx()
+			_ = s.FailQueuedDeployment(cctx, d.ID, "deploy queue full at enqueue")
+			cancel()
 			if errors.Is(err, deploy.ErrQueueFull) {
 				WriteError(rw, http.StatusServiceUnavailable, "deploy queue full — retry shortly")
 				return

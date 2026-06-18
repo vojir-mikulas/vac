@@ -20,6 +20,8 @@ type fakeStore struct {
 	auditLast  time.Time
 	secCalls   atomic.Int64
 	secLast    time.Time
+	jobCalls   atomic.Int64
+	jobLast    time.Time
 	trimCalls  atomic.Int64
 	trimKeep   int
 
@@ -50,6 +52,12 @@ func (f *fakeStore) DeleteSecurityEventsOlderThan(_ context.Context, cutoff time
 	f.secCalls.Add(1)
 	f.secLast = cutoff
 	return 2, nil
+}
+
+func (f *fakeStore) DeleteJobRunsOlderThan(_ context.Context, cutoff time.Time) (int64, error) {
+	f.jobCalls.Add(1)
+	f.jobLast = cutoff
+	return 1, nil
 }
 
 func (f *fakeStore) ListRuntimeLogServices(_ context.Context) ([]struct{ AppID, ServiceName string }, error) {
@@ -100,6 +108,13 @@ func TestPruneOnce_ComputesAuditCutoffFromActivityDays(t *testing.T) {
 	diff := time.Since(s.auditLast)
 	if diff < (30*24*time.Hour-time.Minute) || diff > (30*24*time.Hour+time.Minute) {
 		t.Errorf("audit cutoff diff = %v, want ~30 days", diff)
+	}
+	// Job-run history shares the activity window — same call, same cutoff.
+	if s.jobCalls.Load() != 1 {
+		t.Errorf("job-run delete calls = %d, want 1", s.jobCalls.Load())
+	}
+	if !s.jobLast.Equal(s.auditLast) {
+		t.Errorf("job-run cutoff = %v, want = audit cutoff %v", s.jobLast, s.auditLast)
 	}
 }
 

@@ -50,6 +50,12 @@ func ApproveDeployment(s *store.Store, worker DeploymentEnqueuer) http.HandlerFu
 			return
 		}
 		if err := worker.Enqueue(d.ID); err != nil {
+			// The deploy was flipped to `queued`; revert it to `pending-approval` so a
+			// transient queue-full doesn't strand the app's deploy lane and the
+			// operator can simply re-approve.
+			cctx, cancel := detachedCtx()
+			_ = s.UnqueueApproval(cctx, appID, d.ID)
+			cancel()
 			if errors.Is(err, deploy.ErrQueueFull) {
 				WriteError(w, http.StatusServiceUnavailable, "deploy queue full — retry shortly")
 				return
