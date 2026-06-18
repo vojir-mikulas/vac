@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { HardDrive } from 'lucide-react'
+import { HardDrive, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -152,6 +152,14 @@ function AppsByStorage({ apps }: { apps: AppStorage[] }) {
           icon={HardDrive}
           title={t('empty.title')}
           description={t('empty.description')}
+          action={
+            <Button variant="brand" asChild>
+              <Link to="/apps/new">
+                <Plus className="size-4" />
+                {t('empty.action')}
+              </Link>
+            </Button>
+          }
         />
       </section>
     )

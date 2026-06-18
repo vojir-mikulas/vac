@@ -455,7 +455,8 @@
     "actions": "Actions",
     "restart": "Restart",
     "restarting": "Restarting {{service}}",
-    "restartCount": "↻ {{count}}"
+    "restartCount": "↻ {{count}}",
+    "restartUnavailable": "Service isn't running — start it from the Services tab"
   },
   "stackControls": {
     "start": "Start",

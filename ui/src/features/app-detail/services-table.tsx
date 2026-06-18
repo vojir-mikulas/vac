@@ -76,7 +76,12 @@ export function ServicesTable({ appId, services }: { appId: string; services: Se
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={restart.isPending}
+                    // Restart only makes sense for a running container; a stopped
+                    // service has nothing to restart (use the Services tab to start).
+                    disabled={restart.isPending || svc.status !== 'running'}
+                    title={
+                      svc.status !== 'running' ? t('servicesTable.restartUnavailable') : undefined
+                    }
                     onClick={() =>
                       restart.mutate(svc.name, {
                         onSuccess: () =>

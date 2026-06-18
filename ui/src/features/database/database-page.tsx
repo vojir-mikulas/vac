@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Database, HardDrive, Info, ShieldCheck } from 'lucide-react'
+import { Blocks, Database, HardDrive, Info, ShieldCheck } from 'lucide-react'
 import { Trans, useTranslation } from 'react-i18next'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
@@ -12,6 +12,7 @@ import { ListSkeleton } from '@/components/common/list-skeleton'
 import { StatStripSkeleton } from '@/components/common/stat-strip-skeleton'
 import { SwapFade } from '@/components/common/swap-fade'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Meter } from '@/components/common/meter'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -136,7 +137,19 @@ function InventoryView() {
       </StatStrip>
 
       {engines.length === 0 ? (
-        <EmptyState icon={Database} title={t('empty.title')} description={t('empty.description')} />
+        <EmptyState
+          icon={Database}
+          title={t('empty.title')}
+          description={t('empty.description')}
+          action={
+            <Button variant="brand" asChild>
+              <Link to="/addons">
+                <Blocks className="size-4" />
+                {t('empty.action')}
+              </Link>
+            </Button>
+          }
+        />
       ) : (
         <Tabs defaultValue={engines[0]?.engine}>
           <TabsList>

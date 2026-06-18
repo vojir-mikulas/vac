@@ -250,17 +250,6 @@
   }
 }
 
-/* Pulsing dot for "building" status (matches prototype vacPulse) */
-@keyframes vac-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-}
-
 /* Scrollbars */
 ::-webkit-scrollbar {
   width: 10px;

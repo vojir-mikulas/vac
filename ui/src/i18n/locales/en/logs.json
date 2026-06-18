@@ -6,6 +6,8 @@
     "jumpToLatestAria": "Jump to latest log line"
   },
   "panel": {
+    "searchPlaceholder": "Search logs…",
+    "searchAria": "Search log messages",
     "allServices": "All services",
     "levels": {
       "all": "All levels",

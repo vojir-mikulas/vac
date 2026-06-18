@@ -138,6 +138,11 @@ export function AppsDashboard() {
     return { total: rows.length, queued, building: rows.length - queued, lastAt }
   }, [active, list])
 
+  // On a fresh box (loaded, no apps) the stat strip, filters, and budget panel
+  // are all "—"/empty noise around the one thing that matters — creating an app.
+  // Suppress them and let the onboarding checklist + empty-state CTA lead.
+  const noApps = !isLoading && !isError && list.length === 0
+
   return (
     <PageContainer>
       <PageHeader
@@ -163,123 +168,127 @@ export function AppsDashboard() {
 
       <OnboardingChecklist />
 
-      <div className="mb-6">
-        <StatStrip>
-          {/* Health first: a click jumps the table to the issues filter. */}
-          <StatTile
-            label={t('dashboard.stats.needsAttention')}
-            value={String(counts.issues)}
-            sub={
-              counts.issues > 0
-                ? t('dashboard.stats.issuesSub', { count: counts.issues })
-                : t('dashboard.stats.allHealthy')
-            }
-            tone={counts.issues > 0 ? 'err' : 'ok'}
-            icon={counts.issues > 0 ? TriangleAlert : CircleCheck}
-            onClick={() => setFilter('issues')}
-            ariaLabel={t('dashboard.stats.needsAttention')}
-          />
-          <StatTile
-            label={t('dashboard.stats.hostCpu')}
-            value={host ? formatPercent(host.cpu_percent, 0) : '—'}
-            sub={t('dashboard.stats.allCores')}
-            tone={host && host.cpu_percent >= 80 ? 'warn' : undefined}
-            icon={Cpu}
-            chart={
-              <Sparkline
-                data={cpuHistory}
-                color="var(--color-brand)"
-                ariaLabel={t('dashboard.stats.cpuTrendAria')}
-                formatValue={(v) => formatPercent(v, 0)}
-              />
-            }
-          />
-          <StatTile
-            label={t('dashboard.stats.traffic24h')}
-            value={trafficSummary.hasData ? formatNumber(trafficSummary.requests) : '—'}
-            sub={
-              trafficSummary.hasData
-                ? t('dashboard.stats.trafficSub', {
-                    errPct: formatPercent(
-                      trafficSummary.errPct,
-                      trafficSummary.errPct < 10 ? 1 : 0,
-                    ),
-                    egress: formatBytes(trafficSummary.bytesOut),
-                  })
-                : t('dashboard.stats.noTraffic')
-            }
-            tone={
-              trafficSummary.errPct >= 5 ? 'err' : trafficSummary.errPct >= 1 ? 'warn' : undefined
-            }
-            icon={Activity}
-            chart={
-              <Sparkline
-                data={trafficSummary.points}
-                color="var(--color-chart-3)"
-                ariaLabel={t('dashboard.stats.trafficTrendAria')}
-                formatValue={(v) =>
-                  t('dashboard.stats.trafficTrendValue', { count: v, value: formatNumber(v) })
-                }
-              />
-            }
-          />
-          <StatTile
-            label={t('dashboard.stats.deploys')}
-            value={String(deploys.total)}
-            sub={
-              deploys.total > 0
-                ? t('dashboard.stats.deploysSub', {
-                    building: deploys.building,
-                    queued: deploys.queued,
-                  })
-                : t('dashboard.stats.lastDeploy', { time: relativeTime(deploys.lastAt) })
-            }
-            tone={deploys.total > 0 ? 'brand' : undefined}
-            icon={Rocket}
-          />
-        </StatStrip>
-      </div>
+      {!noApps ? (
+        <div className="mb-6">
+          <StatStrip>
+            {/* Health first: a click jumps the table to the issues filter. */}
+            <StatTile
+              label={t('dashboard.stats.needsAttention')}
+              value={String(counts.issues)}
+              sub={
+                counts.issues > 0
+                  ? t('dashboard.stats.issuesSub', { count: counts.issues })
+                  : t('dashboard.stats.allHealthy')
+              }
+              tone={counts.issues > 0 ? 'err' : 'ok'}
+              icon={counts.issues > 0 ? TriangleAlert : CircleCheck}
+              onClick={() => setFilter('issues')}
+              ariaLabel={t('dashboard.stats.needsAttention')}
+            />
+            <StatTile
+              label={t('dashboard.stats.hostCpu')}
+              value={host ? formatPercent(host.cpu_percent, 0) : '—'}
+              sub={t('dashboard.stats.allCores')}
+              tone={host && host.cpu_percent >= 80 ? 'warn' : undefined}
+              icon={Cpu}
+              chart={
+                <Sparkline
+                  data={cpuHistory}
+                  color="var(--color-brand)"
+                  ariaLabel={t('dashboard.stats.cpuTrendAria')}
+                  formatValue={(v) => formatPercent(v, 0)}
+                />
+              }
+            />
+            <StatTile
+              label={t('dashboard.stats.traffic24h')}
+              value={trafficSummary.hasData ? formatNumber(trafficSummary.requests) : '—'}
+              sub={
+                trafficSummary.hasData
+                  ? t('dashboard.stats.trafficSub', {
+                      errPct: formatPercent(
+                        trafficSummary.errPct,
+                        trafficSummary.errPct < 10 ? 1 : 0,
+                      ),
+                      egress: formatBytes(trafficSummary.bytesOut),
+                    })
+                  : t('dashboard.stats.noTraffic')
+              }
+              tone={
+                trafficSummary.errPct >= 5 ? 'err' : trafficSummary.errPct >= 1 ? 'warn' : undefined
+              }
+              icon={Activity}
+              chart={
+                <Sparkline
+                  data={trafficSummary.points}
+                  color="var(--color-chart-3)"
+                  ariaLabel={t('dashboard.stats.trafficTrendAria')}
+                  formatValue={(v) =>
+                    t('dashboard.stats.trafficTrendValue', { count: v, value: formatNumber(v) })
+                  }
+                />
+              }
+            />
+            <StatTile
+              label={t('dashboard.stats.deploys')}
+              value={String(deploys.total)}
+              sub={
+                deploys.total > 0
+                  ? t('dashboard.stats.deploysSub', {
+                      building: deploys.building,
+                      queued: deploys.queued,
+                    })
+                  : t('dashboard.stats.lastDeploy', { time: relativeTime(deploys.lastAt) })
+              }
+              tone={deploys.total > 0 ? 'brand' : undefined}
+              icon={Rocket}
+            />
+          </StatStrip>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-5 lg:flex-row">
         <div className="min-w-0 flex-1">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex h-9 max-w-80 flex-1 basis-60 items-center gap-2 rounded-md border bg-background px-3">
-              <Search className="size-3.5 text-muted-foreground" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('dashboard.filterPlaceholder')}
-                aria-label={t('dashboard.filterAria')}
-                className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-              />
+          {!noApps ? (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex h-9 max-w-80 flex-1 basis-60 items-center gap-2 rounded-md border bg-background px-3">
+                <Search className="size-3.5 text-muted-foreground" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t('dashboard.filterPlaceholder')}
+                  aria-label={t('dashboard.filterAria')}
+                  className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <FilterChip
+                  label={t('dashboard.filters.all')}
+                  count={counts.all}
+                  active={filter === 'all'}
+                  onClick={() => setFilter('all')}
+                />
+                <FilterChip
+                  label={t('dashboard.filters.running')}
+                  count={counts.running}
+                  active={filter === 'running'}
+                  onClick={() => setFilter('running')}
+                />
+                <FilterChip
+                  label={t('dashboard.filters.issues')}
+                  count={counts.issues}
+                  active={filter === 'issues'}
+                  onClick={() => setFilter('issues')}
+                />
+                <FilterChip
+                  label={t('dashboard.filters.stopped')}
+                  count={counts.stopped}
+                  active={filter === 'stopped'}
+                  onClick={() => setFilter('stopped')}
+                />
+              </div>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              <FilterChip
-                label={t('dashboard.filters.all')}
-                count={counts.all}
-                active={filter === 'all'}
-                onClick={() => setFilter('all')}
-              />
-              <FilterChip
-                label={t('dashboard.filters.running')}
-                count={counts.running}
-                active={filter === 'running'}
-                onClick={() => setFilter('running')}
-              />
-              <FilterChip
-                label={t('dashboard.filters.issues')}
-                count={counts.issues}
-                active={filter === 'issues'}
-                onClick={() => setFilter('issues')}
-              />
-              <FilterChip
-                label={t('dashboard.filters.stopped')}
-                count={counts.stopped}
-                active={filter === 'stopped'}
-                onClick={() => setFilter('stopped')}
-              />
-            </div>
-          </div>
+          ) : null}
 
           <SwapFade
             id={isLoading ? 'loading' : isError ? 'error' : list.length === 0 ? 'empty' : 'table'}
@@ -349,57 +358,59 @@ export function AppsDashboard() {
           </SwapFade>
         </div>
 
-        <div className="lg:w-80 lg:shrink-0">
-          <SectionHeader>{t('dashboard.budget.heading')}</SectionHeader>
-          <Card className="gap-0 p-5">
-            <div className="flex flex-col gap-3.5">
-              <RunningAppsRow running={counts.running} all={counts.all} issues={counts.issues} />
-              {host ? (
-                <>
+        {!noApps ? (
+          <div className="lg:w-80 lg:shrink-0">
+            <SectionHeader>{t('dashboard.budget.heading')}</SectionHeader>
+            <Card className="gap-0 p-5">
+              <div className="flex flex-col gap-3.5">
+                <RunningAppsRow running={counts.running} all={counts.all} issues={counts.issues} />
+                {host ? (
+                  <>
+                    <BudgetRow
+                      label={t('dashboard.budget.hostRam')}
+                      current={host.mem_used_bytes}
+                      total={host.mem_total_bytes}
+                      bytes
+                    />
+                    <BudgetRow
+                      label={t('dashboard.budget.disk')}
+                      current={host.disk_used_bytes}
+                      total={host.disk_total_bytes}
+                      bytes
+                    />
+                  </>
+                ) : null}
+                {budget && budget.total_ram_mb > 0 ? (
                   <BudgetRow
-                    label={t('dashboard.budget.hostRam')}
-                    current={host.mem_used_bytes}
-                    total={host.mem_total_bytes}
-                    bytes
+                    label={t('dashboard.budget.allocatedRam')}
+                    current={budget.allocated_mb}
+                    total={budget.total_ram_mb}
+                    unit="MiB"
                   />
-                  <BudgetRow
-                    label={t('dashboard.budget.disk')}
-                    current={host.disk_used_bytes}
-                    total={host.disk_total_bytes}
-                    bytes
-                  />
-                </>
-              ) : null}
-              {budget && budget.total_ram_mb > 0 ? (
-                <BudgetRow
-                  label={t('dashboard.budget.allocatedRam')}
-                  current={budget.allocated_mb}
-                  total={budget.total_ram_mb}
-                  unit="MiB"
-                />
-              ) : null}
-            </div>
-            {budget?.over_committed ? (
-              <p className="mt-3 text-2xs text-err">{t('dashboard.budget.overCommitted')}</p>
-            ) : budget && budget.apps_total > budget.apps_with_limit ? (
-              <Badge variant="info" className="mt-3 text-2xs">
-                <Info className="size-3" aria-hidden />
-                {t('dashboard.budget.unbudgeted', {
-                  count: budget.apps_total - budget.apps_with_limit,
-                })}
-              </Badge>
-            ) : null}
-            {budget && budget.apps_total > 0 ? <CapacityBreakdown /> : null}
-            {host ? (
-              <div className="mt-4 flex items-center justify-between border-t pt-3.5 text-xs text-muted-foreground">
-                <span>{t('dashboard.budget.requestRate')}</span>
-                <span className="font-mono text-foreground">
-                  {t('dashboard.budget.reqPerSecond', { rate: host.request_rate.toFixed(1) })}
-                </span>
+                ) : null}
               </div>
-            ) : null}
-          </Card>
-        </div>
+              {budget?.over_committed ? (
+                <p className="mt-3 text-2xs text-err">{t('dashboard.budget.overCommitted')}</p>
+              ) : budget && budget.apps_total > budget.apps_with_limit ? (
+                <Badge variant="info" className="mt-3 text-2xs">
+                  <Info className="size-3" aria-hidden />
+                  {t('dashboard.budget.unbudgeted', {
+                    count: budget.apps_total - budget.apps_with_limit,
+                  })}
+                </Badge>
+              ) : null}
+              {budget && budget.apps_total > 0 ? <CapacityBreakdown /> : null}
+              {host ? (
+                <div className="mt-4 flex items-center justify-between border-t pt-3.5 text-xs text-muted-foreground">
+                  <span>{t('dashboard.budget.requestRate')}</span>
+                  <span className="font-mono text-foreground">
+                    {t('dashboard.budget.reqPerSecond', { rate: host.request_rate.toFixed(1) })}
+                  </span>
+                </div>
+              ) : null}
+            </Card>
+          </div>
+        ) : null}
       </div>
     </PageContainer>
   )

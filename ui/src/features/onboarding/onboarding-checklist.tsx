@@ -1,11 +1,19 @@
 import { Link } from '@tanstack/react-router'
-import { CheckCircle2, Circle, Rocket, Settings as SettingsIcon, X } from 'lucide-react'
+import {
+  CheckCircle2,
+  Circle,
+  Rocket,
+  Settings as SettingsIcon,
+  ShieldCheck,
+  X,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { CopyButton } from '@/components/common/copy-button'
 import { useApps } from '@/lib/api/apps'
+import { useMe } from '@/lib/api/auth'
 import { useBaseDomain, useDismissOnboarding, useOnboarding } from '@/lib/api/instance'
 import { useHostStats } from '@/lib/api/metrics'
 
@@ -19,15 +27,18 @@ export function OnboardingChecklist() {
   const { data: apps } = useApps()
   const { data: baseDomain } = useBaseDomain()
   const { data: host } = useHostStats()
+  const { data: me } = useMe()
   const dismiss = useDismissOnboarding()
 
   const hasBaseDomain = Boolean(baseDomain?.effective)
   const hasApp = (apps?.length ?? 0) > 0
-  const done = [hasBaseDomain, hasApp].filter(Boolean).length
+  const has2fa = Boolean(me?.totp_enabled)
+  const TOTAL = 3
+  const done = [hasBaseDomain, hasApp, has2fa].filter(Boolean).length
 
   // Hide once dismissed, fully complete, or before state has loaded. Don't flash
   // the card for an established instance while queries are still resolving.
-  if (onboarding?.dismissed || done === 2 || !onboarding || !apps || !baseDomain) {
+  if (onboarding?.dismissed || done === TOTAL || !onboarding || !apps || !baseDomain || !me) {
     return null
   }
 
@@ -36,7 +47,7 @@ export function OnboardingChecklist() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold">{t('heading')}</h2>
-          <p className="text-xs text-muted-foreground">{t('subheading', { done, total: 2 })}</p>
+          <p className="text-xs text-muted-foreground">{t('subheading', { done, total: TOTAL })}</p>
         </div>
         <Button
           variant="ghost"
@@ -82,6 +93,20 @@ export function OnboardingChecklist() {
               <Link to="/apps/new">
                 <Rocket className="size-3.5" />
                 {t('steps.firstApp.action')}
+              </Link>
+            </Button>
+          }
+        />
+
+        <Step
+          done={has2fa}
+          title={t('steps.twoFactor.title')}
+          description={t('steps.twoFactor.description')}
+          action={
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/settings/account">
+                <ShieldCheck className="size-3.5" />
+                {t('steps.twoFactor.action')}
               </Link>
             </Button>
           }

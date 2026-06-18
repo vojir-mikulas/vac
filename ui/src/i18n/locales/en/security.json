@@ -31,6 +31,7 @@
     "live": "live",
     "you": "You",
     "youTitle": "This is the IP you're connected from",
+    "filterByIp": "Show only this IP's recent requests",
     "stats": {
       "trackedIps": "Tracked IPs",
       "requests": "Requests",
@@ -62,6 +63,10 @@
       "hostPath": "Host / path",
       "sourceIp": "Source IP",
       "when": "When",
+      "filtered_one": "Showing {{count}} request from <0>{{ip}}</0>",
+      "filtered_other": "Showing {{count}} requests from <0>{{ip}}</0>",
+      "clearFilter": "Clear",
+      "noneForIp": "No recent requests from this IP in the current window.",
       "empty": {
         "title": "No requests yet",
         "description": "No requests have hit the proxy yet. If this stays empty, check that Caddy's access log is enabled (see the Posture panel)."

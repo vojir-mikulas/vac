@@ -34,4 +34,13 @@ void i18next
     returnNull: false,
   })
 
+// Keep <html lang> in sync with the active language so screen readers and
+// hyphenation use the right locale (index.html ships a static "en"). Runs once
+// the detector resolves, and again whenever the language is switched.
+function syncDocumentLang(lng: string) {
+  if (typeof document !== 'undefined') document.documentElement.lang = lng
+}
+syncDocumentLang(i18next.resolvedLanguage ?? 'en')
+i18next.on('languageChanged', syncDocumentLang)
+
 export default i18next

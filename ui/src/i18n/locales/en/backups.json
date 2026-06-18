@@ -34,7 +34,8 @@
   "lastRunNever": "never",
   "empty": {
     "title": "No backups configured",
-    "description": "Schedule a dump for a stateful service from its app's Backups tab — it'll show up here."
+    "description": "Schedule a dump for a stateful service from its app's Backups tab — it'll show up here.",
+    "action": "Go to your apps"
   },
   "uncovered": {
     "title": "Unprotected services",

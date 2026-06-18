@@ -1,5 +1,5 @@
 import { useDeferredValue, useMemo, useState } from 'react'
-import { Download } from 'lucide-react'
+import { Download, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -42,20 +42,35 @@ export function LogPanel({
   const [autoScroll, setAutoScroll] = useState(true)
   const [level, setLevel] = useState('all')
   const [service, setService] = useState(initialService ?? 'all')
+  const [search, setSearch] = useState('')
   const deferredLines = useDeferredValue(lines)
+  const deferredSearch = useDeferredValue(search)
 
   const filtered = useMemo(() => {
     const minRank = level === 'all' ? -1 : LEVEL_RANK[level as LogLevel]
+    const q = deferredSearch.trim().toLowerCase()
     return deferredLines.filter((l) => {
       if (service !== 'all' && l.service !== service) return false
       if (minRank >= 0 && LEVEL_RANK[l.level] < minRank) return false
+      if (q && !l.message.toLowerCase().includes(q)) return false
       return true
     })
-  }, [deferredLines, level, service])
+  }, [deferredLines, level, service, deferredSearch])
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-3">
+        <div className="flex h-8 max-w-64 flex-1 basis-48 items-center gap-2 rounded-md border bg-background px-3">
+          <Search className="size-3.5 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('panel.searchPlaceholder')}
+            aria-label={t('panel.searchAria')}
+            className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+          />
+        </div>
+
         {services && services.length > 0 ? (
           <Select value={service} onValueChange={setService}>
             <SelectTrigger size="sm" className="w-40">

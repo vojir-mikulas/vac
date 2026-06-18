@@ -29,7 +29,8 @@
   },
   "empty": {
     "title": "No volume usage yet",
-    "description": "Once apps with volumes are deployed and sampled, their disk usage shows up here."
+    "description": "Once apps with volumes are deployed and sampled, their disk usage shows up here.",
+    "action": "Create an app"
   },
   "loadError": "Couldn't read storage usage."
 }

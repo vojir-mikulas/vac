@@ -14,6 +14,11 @@
       "title": "Deploy your first app",
       "description": "Paste a repo URL, pick a branch and domain, and hit deploy.",
       "action": "New app"
+    },
+    "twoFactor": {
+      "title": "Secure your account with 2FA",
+      "description": "Add a time-based one-time code on top of your password — recommended for an internet-facing box.",
+      "action": "Enable 2FA"
     }
   }
 }

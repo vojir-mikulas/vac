@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
-import { Download, Pencil, Play } from 'lucide-react'
+import { Boxes, Download, Pencil, Play } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
@@ -87,7 +87,18 @@ export function BackupsPage() {
         ) : isError ? (
           <ErrorState onRetry={() => refetch()} />
         ) : configs.length === 0 ? (
-          <EmptyState title={t('empty.title')} description={t('empty.description')} />
+          <EmptyState
+            title={t('empty.title')}
+            description={t('empty.description')}
+            action={
+              <Button variant="brand" asChild>
+                <Link to="/apps">
+                  <Boxes className="size-4" />
+                  {t('empty.action')}
+                </Link>
+              </Button>
+            }
+          />
         ) : (
           <Card className="gap-0 overflow-hidden p-0">
             <Table>

@@ -21,7 +21,15 @@ import {
   useSecurityTraffic,
 } from '@/lib/api/security'
 import { relativeTime } from '@/lib/format'
-import type { PostureFinding, RecentRequest, SecuritySeverity, TopTalker } from '@/types/api'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import type {
+  PostureFinding,
+  RecentRequest,
+  SecuritySeverity,
+  TopTalker,
+  TrafficAnomaly,
+} from '@/types/api'
 
 export function SecurityPage() {
   const { t } = useTranslation('security')
@@ -229,6 +237,11 @@ function severityIcon(s: SecuritySeverity) {
 function TrafficPanel() {
   const { t } = useTranslation('security')
   const { data, isLoading, isError, refetch } = useSecurityTraffic()
+  // Drill-down: clicking an IP anywhere in the panel filters the recent-requests
+  // list to that source, so an operator can see exactly what a top talker or
+  // anomaly is doing. Click again (or Clear) to drop the filter.
+  const [selectedIp, setSelectedIp] = useState<string | null>(null)
+  const toggleIp = (ip: string) => setSelectedIp((cur) => (cur === ip ? null : ip))
   const windowLabel = data
     ? t('traffic.windowLabel', { seconds: data.window_seconds })
     : t('traffic.live')
@@ -273,17 +286,33 @@ function TrafficPanel() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div>
               <SectionHeader>{t('traffic.topTalkers.heading')}</SectionHeader>
-              <TopTalkersTable talkers={data?.top_talkers ?? []} yourIp={data?.your_ip} />
+              <TopTalkersTable
+                talkers={data?.top_talkers ?? []}
+                yourIp={data?.your_ip}
+                selectedIp={selectedIp}
+                onSelectIp={toggleIp}
+              />
             </div>
             <div>
               <SectionHeader>{t('traffic.anomalies.heading')}</SectionHeader>
-              <AnomaliesList anomalies={data?.recent_anomalies ?? []} yourIp={data?.your_ip} />
+              <AnomaliesList
+                anomalies={data?.recent_anomalies ?? []}
+                yourIp={data?.your_ip}
+                selectedIp={selectedIp}
+                onSelectIp={toggleIp}
+              />
             </div>
           </div>
 
           <div className="mt-6">
             <SectionHeader>{t('traffic.recentRequests.heading')}</SectionHeader>
-            <RecentRequestsTable requests={data?.recent_requests ?? []} yourIp={data?.your_ip} />
+            <RecentRequestsTable
+              requests={data?.recent_requests ?? []}
+              yourIp={data?.your_ip}
+              selectedIp={selectedIp}
+              onSelectIp={toggleIp}
+              onClear={() => setSelectedIp(null)}
+            />
           </div>
         </>
       )}
@@ -291,8 +320,51 @@ function TrafficPanel() {
   )
 }
 
-function RecentRequestsTable({ requests, yourIp }: { requests: RecentRequest[]; yourIp?: string }) {
+// IpButton renders a source IP as a toggle that filters the recent-requests
+// list. Selected state is underlined; click again to clear.
+function IpButton({
+  ip,
+  selected,
+  onSelect,
+}: {
+  ip: string
+  selected: boolean
+  onSelect: (ip: string) => void
+}) {
   const { t } = useTranslation('security')
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(ip)}
+      title={t('traffic.filterByIp')}
+      aria-pressed={selected}
+      className={cn(
+        'cursor-pointer rounded font-mono transition-colors hover:text-foreground hover:underline',
+        selected && 'text-foreground underline',
+      )}
+    >
+      {ip}
+    </button>
+  )
+}
+
+function RecentRequestsTable({
+  requests,
+  yourIp,
+  selectedIp,
+  onSelectIp,
+  onClear,
+}: {
+  requests: RecentRequest[]
+  yourIp?: string
+  selectedIp: string | null
+  onSelectIp: (ip: string) => void
+  onClear: () => void
+}) {
+  const { t } = useTranslation('security')
+  const shown = selectedIp
+    ? requests.filter((r) => normalizeIP(r.ip) === normalizeIP(selectedIp))
+    : requests
   if (requests.length === 0) {
     return (
       <EmptyState
@@ -303,6 +375,21 @@ function RecentRequestsTable({ requests, yourIp }: { requests: RecentRequest[]; 
   }
   return (
     <Card className="gap-0 overflow-hidden p-0">
+      {selectedIp ? (
+        <div className="flex items-center justify-between gap-3 border-b bg-surface-1 px-5 py-2 text-xs">
+          <span className="min-w-0 truncate text-muted-foreground">
+            <Trans
+              t={t}
+              i18nKey="traffic.recentRequests.filtered"
+              values={{ count: shown.length, ip: selectedIp }}
+              components={[<span className="font-mono text-foreground" />]}
+            />
+          </span>
+          <Button variant="ghost" size="xs" onClick={onClear} className="shrink-0">
+            {t('traffic.recentRequests.clearFilter')}
+          </Button>
+        </div>
+      ) : null}
       <div className="flex items-center gap-3 border-b px-5 py-2.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         <span className="w-14 shrink-0">{t('traffic.recentRequests.status')}</span>
         <span className="w-14 shrink-0">{t('traffic.recentRequests.method')}</span>
@@ -311,7 +398,12 @@ function RecentRequestsTable({ requests, yourIp }: { requests: RecentRequest[]; 
         <span className="w-16 shrink-0 text-right">{t('traffic.recentRequests.when')}</span>
       </div>
       <ScrollArea className="max-h-96">
-        {requests.map((r, i) => (
+        {shown.length === 0 ? (
+          <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+            {t('traffic.recentRequests.noneForIp')}
+          </p>
+        ) : null}
+        {shown.map((r, i) => (
           <div
             key={r.at + r.ip + r.path + i}
             className={`flex items-center gap-3 px-5 py-2 ${i > 0 ? 'border-t' : ''}`}
@@ -332,7 +424,11 @@ function RecentRequestsTable({ requests, yourIp }: { requests: RecentRequest[]; 
             </div>
             <span className="flex w-28 shrink-0 items-center justify-end gap-1.5 truncate text-right font-mono text-2xs text-muted-foreground">
               {isYou(r.ip, yourIp) ? <YouBadge /> : null}
-              {r.ip}
+              <IpButton
+                ip={r.ip}
+                selected={!!selectedIp && normalizeIP(selectedIp) === normalizeIP(r.ip)}
+                onSelect={onSelectIp}
+              />
             </span>
             <span className="w-16 shrink-0 text-right text-2xs text-muted-foreground">
               {relativeTime(r.at)}
@@ -377,7 +473,17 @@ function statusTone(status: number): string {
   return 'text-ok'
 }
 
-function TopTalkersTable({ talkers, yourIp }: { talkers: TopTalker[]; yourIp?: string }) {
+function TopTalkersTable({
+  talkers,
+  yourIp,
+  selectedIp,
+  onSelectIp,
+}: {
+  talkers: TopTalker[]
+  yourIp?: string
+  selectedIp: string | null
+  onSelectIp: (ip: string) => void
+}) {
   const { t } = useTranslation('security')
   if (talkers.length === 0) {
     return (
@@ -394,24 +500,35 @@ function TopTalkersTable({ talkers, yourIp }: { talkers: TopTalker[]; yourIp?: s
         <span className="w-16 shrink-0 text-right">{t('traffic.topTalkers.reqs')}</span>
         <span className="w-16 shrink-0 text-right">{t('traffic.topTalkers.errors')}</span>
       </div>
-      {talkers.map((t, i) => (
-        <div key={t.ip} className={`flex items-center gap-4 px-5 py-3 ${i > 0 ? 'border-t' : ''}`}>
+      {talkers.map((talker, i) => (
+        <div
+          key={talker.ip}
+          className={cn(
+            'flex items-center gap-4 px-5 py-3',
+            i > 0 && 'border-t',
+            !!selectedIp && normalizeIP(selectedIp) === normalizeIP(talker.ip) && 'bg-surface-1',
+          )}
+        >
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 truncate font-mono text-xs font-medium">
-              {t.ip}
-              {isYou(t.ip, yourIp) ? <YouBadge /> : null}
+            <div className="flex items-center gap-1.5 truncate text-xs font-medium">
+              <IpButton
+                ip={talker.ip}
+                selected={!!selectedIp && normalizeIP(selectedIp) === normalizeIP(talker.ip)}
+                onSelect={onSelectIp}
+              />
+              {isYou(talker.ip, yourIp) ? <YouBadge /> : null}
             </div>
-            {t.user_agent ? (
-              <div className="truncate text-2xs text-muted-foreground">{t.user_agent}</div>
+            {talker.user_agent ? (
+              <div className="truncate text-2xs text-muted-foreground">{talker.user_agent}</div>
             ) : null}
           </div>
           <span className="w-16 shrink-0 text-right font-mono text-sm tabular-nums">
-            {t.requests}
+            {talker.requests}
           </span>
           <span
-            className={`w-16 shrink-0 text-right font-mono text-sm tabular-nums ${t.errors > 0 ? 'text-err' : 'text-muted-foreground'}`}
+            className={`w-16 shrink-0 text-right font-mono text-sm tabular-nums ${talker.errors > 0 ? 'text-err' : 'text-muted-foreground'}`}
           >
-            {t.errors}
+            {talker.errors}
           </span>
         </div>
       ))}
@@ -422,9 +539,13 @@ function TopTalkersTable({ talkers, yourIp }: { talkers: TopTalker[]; yourIp?: s
 function AnomaliesList({
   anomalies,
   yourIp,
+  selectedIp,
+  onSelectIp,
 }: {
-  anomalies: { at: string; ip: string; kind: string; detail: string }[]
+  anomalies: TrafficAnomaly[]
   yourIp?: string
+  selectedIp: string | null
+  onSelectIp: (ip: string) => void
 }) {
   const { t } = useTranslation('security')
   if (anomalies.length === 0) {
@@ -450,6 +571,13 @@ function AnomaliesList({
               <span className="text-2xs text-muted-foreground">{relativeTime(a.at)}</span>
             </div>
             <p className="mt-0.5 text-sm text-muted-foreground">{a.detail}</p>
+            <div className="mt-1 text-2xs text-muted-foreground">
+              <IpButton
+                ip={a.ip}
+                selected={!!selectedIp && normalizeIP(selectedIp) === normalizeIP(a.ip)}
+                onSelect={onSelectIp}
+              />
+            </div>
           </div>
         </div>
       ))}

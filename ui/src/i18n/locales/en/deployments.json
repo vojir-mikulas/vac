@@ -13,6 +13,7 @@
       "inProgressSub": "running now"
     },
     "timeline": "Timeline",
+    "timelineTruncated": "Showing the latest {{shown}} of {{total}} deployments.",
     "table": {
       "app": "App",
       "commit": "Commit",

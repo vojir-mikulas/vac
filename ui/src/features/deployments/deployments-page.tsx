@@ -85,7 +85,7 @@ export function DeploymentsPage() {
           />
           <StatTile
             label={t('page.stats.successRate')}
-            value={`${metrics.successRate}%`}
+            value={metrics.successRate === null ? '—' : `${metrics.successRate}%`}
             sub={t('page.stats.successRateSub')}
           />
           <StatTile
@@ -148,6 +148,11 @@ export function DeploymentsPage() {
                 <StatusPill status={d.status} size="sm" />
               </m.div>
             ))}
+            {rows.length > 50 ? (
+              <div className="border-t px-5 py-2.5 text-center text-2xs text-muted-foreground">
+                {t('page.timelineTruncated', { shown: 50, total: rows.length })}
+              </div>
+            ) : null}
           </Card>
         )}
       </SwapFade>
@@ -183,7 +188,9 @@ function computeMetrics(rows: Row[]) {
 
   return {
     today,
-    successRate: terminal > 0 ? Math.round((success / terminal) * 100) : 100,
+    // null (rendered as "—") when nothing has finished yet, so a brand-new box
+    // doesn't misleadingly read "100% success" having never deployed.
+    successRate: terminal > 0 ? Math.round((success / terminal) * 100) : null,
     avgBuild: buildCount > 0 ? formatDuration(buildTotal / buildCount / 1000) : '—',
   }
 }

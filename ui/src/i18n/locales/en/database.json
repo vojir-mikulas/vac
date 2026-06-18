@@ -15,7 +15,8 @@
   },
   "empty": {
     "title": "No managed databases",
-    "description": "Add a database from any app's Databases tab — VAC provisions it, injects the connection string, and schedules a nightly backup."
+    "description": "Add a database from any app's Databases tab — VAC provisions it, injects the connection string, and schedules a nightly backup.",
+    "action": "Browse add-ons"
   },
   "engine": {
     "totalDisk": "Total disk:",
