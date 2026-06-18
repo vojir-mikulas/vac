@@ -183,6 +183,17 @@ func Webhook(s *store.Store, box *crypto.Box, worker DeploymentEnqueuer, preview
 		}
 		kind, name := webhook.ParseRef(ref)
 
+		// Manual branch entry points validate against gitRefRe; the webhook ref is
+		// equally attacker-influenceable (anyone who can push a branch / holds the
+		// secret), and `name` flows into preview branch storage → git fetch. Reject
+		// refs that don't match the accepted charset so a `-`-leading or otherwise
+		// hostile ref can't reach git as an argument.
+		if !gitRefRe.MatchString(name) {
+			auditWebhookEntry(s, r, appID, "ignored "+kind+" with unsupported ref name for "+app.Slug, http.StatusOK)
+			WriteJSON(w, http.StatusOK, map[string]string{"status": "ignored", "reason": "unsupported ref name"})
+			return
+		}
+
 		triggers, err := s.ListDeployTriggers(r.Context(), appID)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "could not load triggers")

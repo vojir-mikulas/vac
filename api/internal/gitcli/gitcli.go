@@ -89,7 +89,9 @@ func Clone(ctx context.Context, gitURL, dest, branch, sshKeyPath string) error {
 // edits in the working tree are not preserved across deploys.
 func Pull(ctx context.Context, dest, branch, sshKeyPath string) error {
 	env := buildEnv(sshKeyPath)
-	if out, err := run(ctx, env, "-C", dest, "fetch", "origin", branch); err != nil {
+	// `--` stops git from parsing a `-`-leading branch as an option flag
+	// (defense-in-depth; callers also validate against gitRefRe).
+	if out, err := run(ctx, env, "-C", dest, "fetch", "origin", "--", branch); err != nil {
 		return classify(err, out, true)
 	}
 	if out, err := run(ctx, env, "-C", dest, "reset", "--hard", "origin/"+branch); err != nil {
@@ -110,7 +112,7 @@ func Pull(ctx context.Context, dest, branch, sshKeyPath string) error {
 // deepen is a harmless no-op on an already-complete repo.
 func FetchCommit(ctx context.Context, dest, sha, sshKeyPath string) error {
 	env := buildEnv(sshKeyPath)
-	if _, err := run(ctx, env, "-C", dest, "fetch", "--depth=1", "origin", sha); err != nil {
+	if _, err := run(ctx, env, "-C", dest, "fetch", "--depth=1", "origin", "--", sha); err != nil {
 		if out, err := run(ctx, env, "-C", dest, "fetch", "--depth=2147483647", "origin"); err != nil {
 			return classify(err, out, false)
 		}

@@ -42,6 +42,21 @@ export function registerStepUpHandler(fn: StepUpHandler | null): void {
   stepUpHandler = fn
 }
 
+// An unexpected 401 means the session expired or was revoked mid-session. The
+// route gate only redirects on navigation, so without this a 401 on an in-page
+// query/mutation leaves stale data on screen with no way back to login.
+export type UnauthorizedHandler = () => void
+let unauthorizedHandler: UnauthorizedHandler | null = null
+
+// registerUnauthorizedHandler wires the global session-expiry handler (clears
+// caches + redirects to /login). Passing null clears it. The pre-auth login and
+// TOTP endpoints are exempt — a failed login is not a session expiry.
+export function registerUnauthorizedHandler(fn: UnauthorizedHandler | null): void {
+  unauthorizedHandler = fn
+}
+
+const PREAUTH_PATHS = new Set(['auth/login', 'auth/totp'])
+
 function readCookie(name: string): string | null {
   const prefix = name + '='
   const parts = document.cookie ? document.cookie.split('; ') : []
@@ -103,6 +118,12 @@ async function request<T>(path: string, opts: RequestOptions = {}, retried = fal
       if (parsed?.error) message = parsed.error
     } catch {
       // non-JSON error body — keep status text
+    }
+    // Session expired/revoked mid-session: hand off to the global handler so the
+    // UI redirects to login instead of stranding the user on stale data. Skip
+    // the pre-auth endpoints (a failed login/TOTP is not an expiry).
+    if (res.status === 401 && unauthorizedHandler && !PREAUTH_PATHS.has(path)) {
+      unauthorizedHandler()
     }
     // Step-up: the action needs fresh 2FA. Prompt once, then replay the request.
     // If the user cancels (handler rejects), surface the original error so the

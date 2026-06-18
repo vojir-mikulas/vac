@@ -277,6 +277,42 @@ func TestPreflightRules(t *testing.T) {
 			code: CodeDockerSocketMount, want: false,
 		},
 		{
+			name: "docker socket parent dir mount detected (/var/run)",
+			compose: `services:
+  app:
+    image: myapp
+    volumes:
+      - /var/run:/host-run`,
+			code: CodeDockerSocketMount, want: true,
+		},
+		{
+			name: "docker socket parent dir mount detected (/run)",
+			compose: `services:
+  app:
+    image: myapp
+    volumes:
+      - /run/:/host-run`,
+			code: CodeDockerSocketMount, want: true,
+		},
+		{
+			name: "root mount detected",
+			compose: `services:
+  app:
+    image: myapp
+    volumes:
+      - /:/host`,
+			code: CodeDockerSocketMount, want: true,
+		},
+		{
+			name: "unrelated abs dir mount is fine",
+			compose: `services:
+  app:
+    image: myapp
+    volumes:
+      - /var/lib/myapp:/data`,
+			code: CodeDockerSocketMount, want: false,
+		},
+		{
 			name: "privileged detected",
 			compose: `services:
   app:
@@ -309,6 +345,40 @@ func TestPreflightRules(t *testing.T) {
     cap_add:
       - NET_ADMIN`,
 			code: CodePrivilegedOrHostNet, want: false,
+		},
+		{
+			name: "cap_add SYS_PTRACE detected",
+			compose: `services:
+  app:
+    image: myapp
+    cap_add:
+      - SYS_PTRACE`,
+			code: CodePrivilegedOrHostNet, want: true,
+		},
+		{
+			name: "pid host detected",
+			compose: `services:
+  app:
+    image: myapp
+    pid: host`,
+			code: CodePrivilegedOrHostNet, want: true,
+		},
+		{
+			name: "userns_mode host detected",
+			compose: `services:
+  app:
+    image: myapp
+    userns_mode: host`,
+			code: CodePrivilegedOrHostNet, want: true,
+		},
+		{
+			name: "security_opt unconfined detected",
+			compose: `services:
+  app:
+    image: myapp
+    security_opt:
+      - seccomp:unconfined`,
+			code: CodePrivilegedOrHostNet, want: true,
 		},
 		{
 			name: "host port publish warns",

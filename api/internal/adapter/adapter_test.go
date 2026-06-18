@@ -137,6 +137,19 @@ func TestStaticAdapter_Prepare_SPAFallback(t *testing.T) {
 	}
 }
 
+func TestStaticAdapter_Prepare_RejectsUnsafeDir(t *testing.T) {
+	t.Parallel()
+	// A StaticDir with a ':' could inject extra fields into the generated
+	// compose volume line; reject it before it reaches the template.
+	for _, dir := range []string{"pub:lic", "pub\"lic", "pub\nlic"} {
+		d := t.TempDir()
+		ad, _ := adapter.For(adapter.KindStatic, d)
+		if _, err := ad.Prepare(context.Background(), d, adapter.BuildConfig{StaticDir: dir}); err == nil {
+			t.Errorf("StaticDir %q should be rejected", dir)
+		}
+	}
+}
+
 func TestStaticAdapter_Prepare_No404Fallback(t *testing.T) {
 	t.Parallel()
 	d := t.TempDir()

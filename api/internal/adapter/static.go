@@ -26,8 +26,8 @@ services:
     ports:
       - "80"
     volumes:
-      - %s:/usr/share/nginx/html:ro
-      - %s:/etc/nginx/conf.d/default.conf:ro
+      - "%s:/usr/share/nginx/html:ro"
+      - "%s:/etc/nginx/conf.d/default.conf:ro"
 `
 
 const staticNginxConfName = "vac-static.conf"
@@ -36,6 +36,13 @@ func (staticAdapter) Prepare(_ context.Context, repoDir string, cfg BuildConfig)
 	dir := strings.TrimSpace(cfg.StaticDir)
 	if dir == "" {
 		dir = "."
+	}
+	// The dir is interpolated into a quoted compose volume line; reject the
+	// characters that could break out of the quoted scalar or inject extra
+	// volume fields (`:` separates source/target/opts; quotes/newlines escape
+	// the YAML string). safeRepoPath already blocks traversal/absolute paths.
+	if strings.ContainsAny(dir, ":\"'\n\r\t") {
+		return "", fmt.Errorf("adapter: static directory %q contains unsupported characters", dir)
 	}
 	full, err := safeRepoPath(repoDir, dir)
 	if err != nil {

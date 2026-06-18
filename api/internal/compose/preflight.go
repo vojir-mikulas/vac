@@ -86,6 +86,24 @@ var (
 	proxyImageBases    = map[string]bool{"traefik": true, "caddy": true}
 	daemonImageNeedles = []string{"watchtower", "ouroboros"}
 	edgePorts          = map[int]bool{80: true, 443: true}
+
+	// dangerousCaps are Linux capabilities that, added to a container, enable a
+	// host escape or a bypass of VAC's isolation. cap_add of any of these blocks
+	// the deploy (alongside privileged / host pid|net|userns).
+	// Excludes capabilities that have common legitimate uses inside a bridged
+	// netns and don't directly escape (e.g. NET_ADMIN, NET_RAW), to avoid false
+	// positives that would block benign apps.
+	dangerousCaps = map[string]bool{
+		"ALL":             true,
+		"SYS_ADMIN":       true, // mount, many escape primitives
+		"SYS_MODULE":      true, // load kernel modules
+		"SYS_PTRACE":      true, // inspect/escape other processes
+		"SYS_RAWIO":       true, // raw I/O port / memory access
+		"SYS_BOOT":        true, // reboot the host
+		"DAC_READ_SEARCH": true, // bypass file read perms (open_by_handle_at escape)
+		"DAC_OVERRIDE":    true, // bypass all file perm checks
+		"BPF":             true, // load BPF programs
+	}
 )
 
 // Preflight reads the compose file at path and lints it. Prefer PreflightBytes
@@ -180,13 +198,39 @@ func ServicesWithVolumes(path string) (map[string]bool, error) {
 }
 
 // volumeIsDockerSocket reports whether a raw compose volume entry
-// (source[:target[:opts]]) mounts the Docker socket.
+// (source[:target[:opts]]) mounts the Docker socket. Used to exclude the
+// control-plane socket bind from the "is this service stateful" heuristic.
 func volumeIsDockerSocket(vol string) bool {
 	src := vol
 	if i := strings.IndexByte(src, ':'); i >= 0 {
 		src = src[:i]
 	}
 	return strings.HasSuffix(strings.TrimSpace(src), "docker.sock")
+}
+
+// volumeExposesDockerSocket reports whether a raw compose volume entry grants
+// access to the Docker socket — either by binding the socket directly OR by
+// binding a parent directory that contains it (e.g. /var/run, /run, /). The
+// suffix check alone (volumeIsDockerSocket) is bypassable via the parent dir,
+// so the security lint uses this stricter test.
+func volumeExposesDockerSocket(vol string) bool {
+	src := vol
+	if i := strings.IndexByte(src, ':'); i >= 0 {
+		src = src[:i]
+	}
+	src = strings.TrimRight(strings.TrimSpace(src), "/")
+	if src == "" {
+		src = "/" // a bare "/" bind, trimmed to empty above
+	}
+	if strings.HasSuffix(src, "docker.sock") {
+		return true
+	}
+	// Any ancestor directory of the canonical socket paths exposes it.
+	switch src {
+	case "/", "/run", "/var", "/var/run":
+		return true
+	}
+	return false
 }
 
 // ---- richer parse pass (kept private; Service stays lean) ----
@@ -208,7 +252,10 @@ type preflightView struct {
 	containerName string
 	privileged    bool
 	networkMode   string
+	pidMode       string
+	usernsMode    string
 	capAdd        []string
+	securityOpt   []string
 }
 
 func parsePreflight(path string) ([]preflightView, error) {
@@ -254,7 +301,14 @@ func parsePreflightBytes(raw []byte) ([]preflightView, error) {
 		if nm, ok := bodyMap["network_mode"].(string); ok {
 			v.networkMode = nm
 		}
+		if pm, ok := bodyMap["pid"].(string); ok {
+			v.pidMode = pm
+		}
+		if um, ok := bodyMap["userns_mode"].(string); ok {
+			v.usernsMode = um
+		}
 		v.capAdd = asStringSlice(bodyMap["cap_add"])
+		v.securityOpt = asStringSlice(bodyMap["security_opt"])
 		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
@@ -340,15 +394,15 @@ func (v preflightView) findings() []Finding {
 			"service %q looks like a bundled reverse proxy/edge — VAC is the edge; remove the bundled proxy/ACME and let VAC route and terminate TLS.", v.name))
 	}
 
-	// Docker socket mount.
+	// Docker socket mount (directly, or via a parent dir that contains it).
 	for _, vol := range v.volumes {
-		if volumeIsDockerSocket(vol) {
+		if volumeExposesDockerSocket(vol) {
 			src := vol
 			if i := strings.IndexByte(src, ':'); i >= 0 {
 				src = src[:i]
 			}
 			add(SeverityError, CodeDockerSocketMount, fmt.Sprintf(
-				"service %q mounts the Docker socket (%s) — this grants host-root to app code on the control box; remove the docker.sock mount.", v.name, strings.TrimSpace(src)))
+				"service %q mounts the Docker socket or a directory containing it (%s) — this grants host-root to app code on the control box; remove the mount.", v.name, strings.TrimSpace(src)))
 			break
 		}
 	}
@@ -361,10 +415,23 @@ func (v preflightView) findings() []Finding {
 	if v.networkMode == "host" {
 		escalations = append(escalations, "network_mode: host")
 	}
+	if v.pidMode == "host" {
+		escalations = append(escalations, "pid: host")
+	}
+	if v.usernsMode == "host" {
+		escalations = append(escalations, "userns_mode: host")
+	}
 	for _, c := range v.capAdd {
-		switch strings.ToUpper(strings.TrimSpace(c)) {
-		case "SYS_ADMIN", "ALL":
-			escalations = append(escalations, "cap_add: "+strings.ToUpper(strings.TrimSpace(c)))
+		capName := strings.ToUpper(strings.TrimSpace(c))
+		if dangerousCaps[capName] {
+			escalations = append(escalations, "cap_add: "+capName)
+		}
+	}
+	for _, so := range v.securityOpt {
+		s := strings.ToLower(strings.TrimSpace(so))
+		if strings.Contains(s, "unconfined") || strings.Contains(s, "seccomp=unconfined") ||
+			strings.Contains(s, "apparmor=unconfined") || strings.Contains(s, "label:disable") {
+			escalations = append(escalations, "security_opt: "+strings.TrimSpace(so))
 		}
 	}
 	if len(escalations) > 0 {

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
@@ -34,7 +35,7 @@ type AutoHostChecker interface {
 // network. An optional shared-secret header adds defence in depth.
 func CaddyAsk(s *store.Store, token string, ctrl ControlDomainChecker, auto AutoHostChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if token != "" && r.Header.Get("X-Caddy-Ask-Token") != token {
+		if token != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Caddy-Ask-Token")), []byte(token)) != 1 {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}

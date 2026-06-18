@@ -379,7 +379,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Get("/{id}/backups", handler.ListBackups(s, backupRestorer))
 					r.Post("/{id}/backups", handler.CreateBackup(s, box))
 					r.Put("/{id}/backups/{cid}", handler.UpdateBackup(s, box))
-					r.Delete("/{id}/backups/{cid}", handler.DeleteBackup(s))
+					// Deleting a backup config discards its run history and artifacts —
+					// destructive like restore, so it gets the same fresh-2FA gate.
+					r.With(middleware.RequireStepUp).Delete("/{id}/backups/{cid}", handler.DeleteBackup(s))
 					r.Get("/{id}/backups/{cid}/runs", handler.ListBackupRuns(s))
 					r.Get("/{id}/backups/runs/{rid}/download", handler.DownloadBackup(s, box, cfg.WorkDir))
 					if backupEngine != nil {
@@ -400,7 +402,9 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Get("/{id}/databases", handler.ListDatabases(s, dbHandler))
 					r.Get("/{id}/databases/engines", handler.ListDatabaseEngines(dbHandler))
 					r.Post("/{id}/databases", handler.AddDatabase(s, dbHandler))
-					r.Delete("/{id}/databases/{dbid}", handler.RemoveDatabase(s, dbHandler))
+					// Dropping a managed database destroys its data with no rollback —
+					// gate it behind fresh 2FA like delete-app/restore.
+					r.With(middleware.RequireStepUp).Delete("/{id}/databases/{dbid}", handler.RemoveDatabase(s, dbHandler))
 				}
 
 				if docker != nil {

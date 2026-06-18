@@ -10,6 +10,7 @@ import './index.css'
 // loads once additional languages ship.
 import './i18n'
 import { routeTree } from './routeTree.gen'
+import { registerUnauthorizedHandler } from '@/lib/api/client'
 import { ThemeProvider } from '@/components/theme/theme-provider'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
@@ -47,6 +48,16 @@ declare module '@tanstack/react-router' {
     router: typeof router
   }
 }
+
+// A 401 on any in-page request means the session lapsed: drop cached data (so no
+// stale authed content lingers) and route to login. Guarded against redundant
+// navigations when already on the login/setup screens.
+registerUnauthorizedHandler(() => {
+  const path = router.state.location.pathname
+  if (path === '/login' || path === '/setup') return
+  queryClient.clear()
+  void router.navigate({ to: '/login' })
+})
 
 async function bootstrap() {
   // Mock backend: when VITE_MOCK is set, intercept fetch/WebSocket so the whole
