@@ -86,96 +86,110 @@ export function LogExplorer() {
     <PageContainer>
       <PageHeader title={t('explorer.title')} description={t('explorer.description')} />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex h-8 max-w-72 flex-1 basis-56 items-center gap-2 rounded-md border bg-background px-3">
-          <Search className="size-3.5 text-muted-foreground" />
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t('explorer.searchPlaceholder')}
-            aria-label={t('explorer.searchAria')}
-            className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-          />
-        </div>
+      {/* The toolbar and the console read as a single window: one rounded,
+          bordered card with the filters as a topbar and the dark log surface
+          flush beneath it (its own border/rounding stripped, corners clipped
+          by overflow-hidden). */}
+      <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 border-b bg-surface-1/60 px-3 py-2.5">
+          <div className="flex h-8 min-w-0 max-w-72 flex-1 basis-56 items-center gap-2 rounded-md border bg-background px-3 transition-colors focus-within:border-ring/60 focus-within:ring-[3px] focus-within:ring-ring/20">
+            <Search className="size-3.5 shrink-0 text-muted-foreground" />
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder={t('explorer.searchPlaceholder')}
+              aria-label={t('explorer.searchAria')}
+              className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+            />
+          </div>
 
-        <Select value={app} onValueChange={onAppChange}>
-          <SelectTrigger size="sm" className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>{t('explorer.allApps')}</SelectItem>
-            {apps.map((a) => (
-              <SelectItem key={a.id} value={a.id}>
-                {a.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {appId && (servicesQuery.data?.length ?? 0) > 0 ? (
-          <Select value={service} onValueChange={setService}>
-            <SelectTrigger size="sm" className="w-40">
+          <Select value={app} onValueChange={onAppChange}>
+            <SelectTrigger size="sm" className="w-44 bg-background">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>{t('explorer.allServices')}</SelectItem>
-              {servicesQuery.data!.map((s) => (
-                <SelectItem key={s.id} value={s.name}>
-                  {s.name}
+              <SelectItem value={ALL}>{t('explorer.allApps')}</SelectItem>
+              {apps.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        ) : null}
 
-        <Select value={stream} onValueChange={setStream}>
-          <SelectTrigger size="sm" className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {STREAMS.map((s) => (
-              <SelectItem key={s} value={s}>
-                {t(`explorer.streams.${s}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <span className="ml-auto font-mono text-2xs text-muted-foreground">
-          {t('explorer.matchCount', { count: lines.length })}
-        </span>
-      </div>
-
-      {isError ? (
-        <ErrorState message={t('explorer.error')} onRetry={() => refetch()} />
-      ) : isLoading ? (
-        <Skeleton className="h-112 w-full rounded-xl" />
-      ) : (
-        <div className="flex flex-col gap-3">
-          {hasNextPage ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="self-center"
-              disabled={isFetchingNextPage}
-              onClick={() => fetchNextPage()}
-            >
-              {isFetchingNextPage ? t('explorer.loadingOlder') : t('explorer.loadOlder')}
-            </Button>
-          ) : lines.length > 0 ? (
-            <span className="self-center text-2xs text-muted-foreground">
-              {t('explorer.noMore')}
-            </span>
+          {appId && (servicesQuery.data?.length ?? 0) > 0 ? (
+            <Select value={service} onValueChange={setService}>
+              <SelectTrigger size="sm" className="w-40 bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>{t('explorer.allServices')}</SelectItem>
+                {servicesQuery.data!.map((s) => (
+                  <SelectItem key={s.id} value={s.name}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : null}
 
-          <LogViewer
-            lines={lines}
-            autoScroll={false}
-            label={t('explorer.viewerLabel')}
-            emptyLabel={query || appId ? t('explorer.empty') : t('explorer.emptyHint')}
-          />
+          <Select value={stream} onValueChange={setStream}>
+            <SelectTrigger size="sm" className="w-36 bg-background">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STREAMS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {t(`explorer.streams.${s}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <span className="ml-auto pl-1 font-mono text-2xs text-muted-foreground">
+            {t('explorer.matchCount', { count: lines.length })}
+          </span>
         </div>
-      )}
+
+        {isError ? (
+          <ErrorState
+            className="rounded-none border-0"
+            message={t('explorer.error')}
+            onRetry={() => refetch()}
+          />
+        ) : isLoading ? (
+          <Skeleton className="h-112 w-full rounded-none" />
+        ) : (
+          <div className="relative">
+            {/* Older entries sit above, so the pagination control floats at the
+                top of the console — mirroring the viewer's own jump-to-latest
+                pill at the bottom. */}
+            {hasNextPage ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute left-1/2 top-3 z-10 h-7 -translate-x-1/2 rounded-full px-3 text-2xs shadow-sm"
+                disabled={isFetchingNextPage}
+                onClick={() => fetchNextPage()}
+              >
+                {isFetchingNextPage ? t('explorer.loadingOlder') : t('explorer.loadOlder')}
+              </Button>
+            ) : lines.length > 0 ? (
+              <span className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full bg-surface-2/70 px-3 py-1 text-2xs text-console-muted">
+                {t('explorer.noMore')}
+              </span>
+            ) : null}
+
+            <LogViewer
+              className="h-112 rounded-none border-0"
+              lines={lines}
+              autoScroll={false}
+              label={t('explorer.viewerLabel')}
+              emptyLabel={query || appId ? t('explorer.empty') : t('explorer.emptyHint')}
+            />
+          </div>
+        )}
+      </div>
     </PageContainer>
   )
 }
