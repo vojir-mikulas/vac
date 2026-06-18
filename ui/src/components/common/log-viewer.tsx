@@ -8,11 +8,14 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { serviceColorVar } from '@/lib/service-color'
 import type { LogLevel, LogLine } from '@/lib/ws/use-log-stream'
 
+// The console surface is always dark (both themes), so log text uses
+// console-scoped colors that stay light-on-dark rather than theme-relative
+// foregrounds (which go dark in light mode → dark-on-dark, unreadable).
 const LEVEL_CLASS: Record<LogLevel, string> = {
-  info: 'text-foreground',
-  ok: 'text-ok-foreground',
-  warn: 'text-warn-foreground',
-  error: 'text-err-foreground',
+  info: 'text-console-foreground',
+  ok: 'text-console-ok',
+  warn: 'text-console-warn',
+  error: 'text-console-err',
 }
 
 // Distance from the bottom (px) within which we consider the viewport "pinned"
