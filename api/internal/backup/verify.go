@@ -106,9 +106,14 @@ func (v *Verifier) VerifyOnce(ctx context.Context, cfg store.BackupConfig) error
 		return ErrNoArtifact
 	}
 
-	// One verification at a time per config — the row is the guard.
-	if latest, err := v.store.LatestVerification(ctx, cfg.ID); err == nil && latest.Status == "running" {
+	// One verification at a time per config — the row is the guard. Fail closed on
+	// any lookup error other than "no prior run" so a transient DB error isn't
+	// read as "nothing running".
+	switch latest, err := v.store.LatestVerification(ctx, cfg.ID); {
+	case err == nil && latest.Status == "running":
 		return ErrVerifyInProgress
+	case err != nil && !errors.Is(err, store.ErrNotFound):
+		return fmt.Errorf("backup: check for in-progress verification: %w", err)
 	}
 
 	rec, err := v.store.CreateVerification(ctx, cfg.ID, run.ID)

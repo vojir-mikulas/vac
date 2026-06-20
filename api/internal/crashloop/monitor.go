@@ -162,6 +162,15 @@ func (m *Monitor) handle(ctx context.Context, ev dockercli.Event) {
 	// single OOM kill is worth surfacing even before a service trips the loop.
 	m.maybeHandleOOM(ctx, project, service, ev)
 
+	// A clean exit (code 0) is not a crash: a short-lived process that the runtime
+	// restarts under `restart: always`, or the graceful half of an operator-issued
+	// restart, exits 0 and must not count toward the threshold — otherwise normal
+	// restarts trip the loop. Only abnormal exits accumulate. A missing/unparsable
+	// code is treated as abnormal (conservative).
+	if ec := parseExitCode(ev.Actor.Attributes["exitCode"]); ec != nil && *ec == 0 {
+		return
+	}
+
 	m.mu.Lock()
 	if m.tripped[key] {
 		m.mu.Unlock()
@@ -290,14 +299,41 @@ func (m *Monitor) SetNotifier(n Notifier) { m.notifier = n }
 func (m *Monitor) SetInspector(i Inspector) { m.inspector = i }
 
 // Reset clears the crash-loop flag for a service so the next sequence of
-// deaths can re-trip. Called by the lifecycle restart handler once the
-// user explicitly recovers a stopped service.
+// deaths can re-trip. Called by the lifecycle start/restart handlers once the
+// operator explicitly recovers a service: without it the in-memory trip flag
+// persists and the monitor stays blind to the service (ignoring its die events)
+// until a redeploy destroys the container.
 func (m *Monitor) Reset(projectName, service string) {
 	key := projectName + "/" + service
 	m.mu.Lock()
 	delete(m.tripped, key)
 	delete(m.windows, key)
 	delete(m.oomNotified, key)
+	m.mu.Unlock()
+}
+
+// ResetProject clears the crash-loop state for every service in a project,
+// re-arming monitoring after a whole-stack start/restart. Equivalent to calling
+// Reset for each of the project's services without the handler having to
+// enumerate them.
+func (m *Monitor) ResetProject(projectName string) {
+	prefix := projectName + "/"
+	m.mu.Lock()
+	for key := range m.tripped {
+		if strings.HasPrefix(key, prefix) {
+			delete(m.tripped, key)
+		}
+	}
+	for key := range m.windows {
+		if strings.HasPrefix(key, prefix) {
+			delete(m.windows, key)
+		}
+	}
+	for key := range m.oomNotified {
+		if strings.HasPrefix(key, prefix) {
+			delete(m.oomNotified, key)
+		}
+	}
 	m.mu.Unlock()
 }
 

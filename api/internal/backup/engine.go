@@ -60,6 +60,11 @@ func NewEngine(s EngineStore, exec ExecRunner, box *crypto.Box, workDir string, 
 	}
 }
 
+// defaultBackupTimeout bounds a single backup run (command exec + upload). The
+// scheduler runs configs serially, so without a cap one hung pg_dump or a
+// stalled S3 PUT would block every other config's backup indefinitely.
+const defaultBackupTimeout = 30 * time.Minute
+
 // RunOnce executes one backup for cfg. It records a backup_runs row (running →
 // success/failed), prunes old artifacts on success, and fires BackupFailed on
 // failure. The returned error mirrors the recorded failure (nil on success).
@@ -86,18 +91,23 @@ func (e *Engine) RunOnce(ctx context.Context, cfg store.BackupConfig) error {
 
 	key := artifactKey(app.Slug, cfg.ServiceName, e.now())
 
+	// Hard per-run cap covering the command exec and the upload. On expiry the
+	// exec is killed and Put unblocks, surfacing as the run's failure.
+	runCtx, cancel := context.WithTimeout(ctx, defaultBackupTimeout)
+	defer cancel()
+
 	// Bridge the exec writer to the destination reader with a pipe so nothing is
 	// buffered in full. A non-zero exit closes the pipe with that error, which
 	// surfaces through Put.
 	pr, pw := io.Pipe()
 	execErrCh := make(chan error, 1)
 	go func() {
-		execErr := e.exec.Exec(ctx, containerID, []string{cfg.Command}, pw)
+		execErr := e.exec.Exec(runCtx, containerID, []string{cfg.Command}, pw)
 		_ = pw.CloseWithError(execErr)
 		execErrCh <- execErr
 	}()
 
-	size, putErr := dest.Put(ctx, key, pr)
+	size, putErr := dest.Put(runCtx, key, pr)
 	// Drain anything Put left unread so the exec goroutine can't block, then wait
 	// for its exit status.
 	_, _ = io.Copy(io.Discard, pr)

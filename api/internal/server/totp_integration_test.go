@@ -84,7 +84,7 @@ func setupServerWithKey(t *testing.T) (http.Handler, config.Config) {
 	// requests are not HTTPS, but Go's cookie jar still records them.
 	// The login_integration_test already relies on this.
 
-	srv, err := server.New(t.Context(), cfg, store.New(pool), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	srv, err := server.New(t.Context(), cfg, store.New(pool), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("server.New: %v", err)
 	}

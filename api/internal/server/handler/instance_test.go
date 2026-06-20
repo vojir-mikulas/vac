@@ -100,7 +100,7 @@ func TestResetInstanceRejectsWrongConfirmation(t *testing.T) {
 	// dependencies are safe here.
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/instance/reset", strings.NewReader(`{"confirm":"nope"}`))
-	ResetInstance(nil, nil, nil)(rr, req)
+	ResetInstance(nil, nil, nil, "")(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d; want 400 for a mismatched confirmation", rr.Code)

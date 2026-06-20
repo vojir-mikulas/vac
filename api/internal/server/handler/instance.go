@@ -410,7 +410,7 @@ const resetConfirmation = "RESET"
 // by a typed confirmation echoed in the body.
 //
 // POST /api/instance/reset
-func ResetInstance(s *store.Store, ctrl AppStackController, pm ProxyManager) http.HandlerFunc {
+func ResetInstance(s *store.Store, ctrl AppStackController, pm ProxyManager, workDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req resetRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -444,6 +444,7 @@ func ResetInstance(s *store.Store, ctrl AppStackController, pm ProxyManager) htt
 				failed++
 				continue
 			}
+			removeAppWorkDir(workDir, app.Slug)
 			removed++
 		}
 		slog.Warn("instance: RESET complete", "removed", removed, "failed", failed)

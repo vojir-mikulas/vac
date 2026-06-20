@@ -120,9 +120,15 @@ func (rr *Restorer) Restore(ctx context.Context, cfg store.BackupConfig, sourceR
 	}
 
 	// One restore at a time per config (decision #5). The row is the guard; a
-	// narrow race is acceptable for a single-operator box.
-	if latest, err := rr.store.LatestRestoreRun(ctx, cfg.ID); err == nil && latest.Status == "running" {
+	// narrow race is acceptable for a single-operator box. Fail closed on any
+	// lookup error other than "no prior run": a transient DB error must not be
+	// read as "nothing running" and let a second destructive, non-atomic restore
+	// proceed against the same database.
+	switch latest, err := rr.store.LatestRestoreRun(ctx, cfg.ID); {
+	case err == nil && latest.Status == "running":
 		return ErrRestoreInProgress
+	case err != nil && !errors.Is(err, store.ErrNotFound):
+		return fmt.Errorf("backup: check for in-progress restore: %w", err)
 	}
 
 	rec, err := rr.store.CreateRestoreRun(ctx, cfg.ID, sourceRunID)

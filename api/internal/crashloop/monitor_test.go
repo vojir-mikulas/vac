@@ -203,6 +203,53 @@ func TestMonitor_NonOOMExitNotInspected(t *testing.T) {
 	}
 }
 
+func TestMonitor_CleanExitDoesNotCount(t *testing.T) {
+	stop := &fakeStopper{}
+	st := &fakeStore{app: store.App{ID: "app-1", Slug: "myapp"}}
+	m := crashloop.New(nil, stop, st, crashloop.Config{Threshold: 3, Window: time.Minute}, nil)
+
+	// Real docker emits exitCode="0" on a clean exit; a process that exits 0 and
+	// is restarted (restart: always, or an operator restart) is not a crash and
+	// must not accumulate toward the threshold.
+	now := time.Now()
+	for i := 0; i < 5; i++ {
+		m.Handle(context.Background(), dieEventExit("vac-myapp", "web", "0", now.Add(time.Duration(i)*time.Second)))
+	}
+	if stop.calls.Load() != 0 {
+		t.Errorf("clean (exit 0) deaths tripped the loop: stop calls = %d, want 0", stop.calls.Load())
+	}
+}
+
+func TestMonitor_ResetProjectReArms(t *testing.T) {
+	stop := &fakeStopper{}
+	st := &fakeStore{app: store.App{ID: "app-1", Slug: "myapp"}}
+	m := crashloop.New(nil, stop, st, crashloop.Config{Threshold: 2, Window: time.Minute}, nil)
+
+	now := time.Now()
+	for i := 0; i < 2; i++ {
+		m.Handle(context.Background(), dieEvent("vac-myapp", "web", 1, now.Add(time.Duration(i)*time.Second)))
+	}
+	if stop.calls.Load() != 1 {
+		t.Fatalf("expected one trip, got %d", stop.calls.Load())
+	}
+	// A whole-stack operator recovery clears the project's trip state.
+	m.ResetProject("vac-myapp")
+	for i := 0; i < 2; i++ {
+		m.Handle(context.Background(), dieEvent("vac-myapp", "web", 1, now.Add(time.Duration(10+i)*time.Second)))
+	}
+	if stop.calls.Load() != 2 {
+		t.Errorf("after ResetProject stop calls = %d, want 2", stop.calls.Load())
+	}
+}
+
+// dieEventExit builds a die event carrying an explicit exitCode attribute (the
+// shared dieEvent helper omits it for code 0, which docker never does).
+func dieEventExit(project, service, exitCode string, at time.Time) dockercli.Event {
+	ev := dieEvent(project, service, 1, at)
+	ev.Actor.Attributes["exitCode"] = exitCode
+	return ev
+}
+
 func dieEvent(project, service string, exitCode int, at time.Time) dockercli.Event {
 	attrs := map[string]string{
 		"com.docker.compose.project": project,

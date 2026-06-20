@@ -38,7 +38,7 @@ import (
 // background goroutines (rate limit eviction) — cancel it on shutdown.
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
-func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, backupVerifier handler.BackupVerifier, jobsEngine handler.JobRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost, previewSvc *preview.Service, waker handler.Waker) (*http.Server, error) {
+func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, backupVerifier handler.BackupVerifier, jobsEngine handler.JobRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost, previewSvc *preview.Service, waker handler.Waker, crashReset handler.CrashLoopResetter) (*http.Server, error) {
 	// Gate X-Forwarded-Proto trust (cookie Secure decision) on config — the
 	// bundled vac-proxy sets the header; a raw-HTTP box can disable trusting it.
 	handler.SetTrustForwardedProto(cfg.TrustProxyHeaders)
@@ -303,7 +303,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					r.Get("/storage", handler.InstanceStorage(s, docker))
 					// Irreversible box-wide wipe — gate on fresh 2FA (on top of
 					// the typed "RESET" confirmation the handler enforces).
-					r.With(middleware.RequireStepUp).Post("/reset", handler.ResetInstance(s, docker, proxyMgr))
+					r.With(middleware.RequireStepUp).Post("/reset", handler.ResetInstance(s, docker, proxyMgr, cfg.WorkDir))
 				}
 			})
 
@@ -355,7 +355,7 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				if worker != nil {
 					deployInterrupter = worker
 				}
-				r.With(middleware.RequireStepUp).Delete("/{id}", handler.DeleteApp(s, proxyMgr, dbDeprov, docker, deployInterrupter))
+				r.With(middleware.RequireStepUp).Delete("/{id}", handler.DeleteApp(s, proxyMgr, dbDeprov, docker, deployInterrupter, cfg.WorkDir))
 
 				r.Get("/{id}/ssh-key", handler.GetAppSSHKey(s, keys))
 				r.Post("/{id}/ssh-key/regenerate", handler.RegenerateAppSSHKey(s, keys))
@@ -495,12 +495,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				}
 
 				if docker != nil {
-					r.Post("/{id}/start", handler.StartApp(s, docker, proxyMgr))
+					r.Post("/{id}/start", handler.StartApp(s, docker, proxyMgr, crashReset))
 					r.Post("/{id}/stop", handler.StopApp(s, docker, proxyMgr))
-					r.Post("/{id}/restart", handler.RestartApp(s, docker, proxyMgr))
-					r.Post("/{id}/services/{name}/restart", handler.RestartService(s, docker, proxyMgr))
+					r.Post("/{id}/restart", handler.RestartApp(s, docker, proxyMgr, crashReset))
+					r.Post("/{id}/services/{name}/restart", handler.RestartService(s, docker, proxyMgr, crashReset))
 					r.Post("/{id}/services/{name}/stop", handler.StopService(s, docker, proxyMgr))
-					r.Post("/{id}/services/{name}/start", handler.StartService(s, docker, proxyMgr))
+					r.Post("/{id}/services/{name}/start", handler.StartService(s, docker, proxyMgr, crashReset))
 				}
 
 				// Per-app real-time streams (Phase 4). Server-push only.

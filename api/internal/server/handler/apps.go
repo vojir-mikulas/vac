@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -468,7 +470,28 @@ type DeployInterrupter interface {
 	NotifyChanged()
 }
 
-func DeleteApp(s *store.Store, pm ProxyManager, dbDeprov AppDBDeprovisioner, ctrl AppStackController, worker DeployInterrupter) http.HandlerFunc {
+// removeAppWorkDir deletes an app's on-disk working tree ({workDir}/{slug}: the
+// git clone + build context). Called on app delete / instance reset so a removed
+// app doesn't leak its checkout on disk forever — the principal unbounded
+// disk-growth vector on a single box. Best-effort and defensive: it refuses to
+// act on an empty workDir/slug and confirms the target is a direct child of the
+// work root, so a misconfigured path or a crafted slug can't escalate into
+// wiping something outside it.
+func removeAppWorkDir(workDir, slug string) {
+	if workDir == "" || slug == "" {
+		return
+	}
+	dir := filepath.Join(workDir, slug)
+	if filepath.Dir(dir) != filepath.Clean(workDir) {
+		slog.Warn("delete: refusing to remove work dir outside work root", "slug", slug, "dir", dir)
+		return
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		slog.Warn("delete: could not remove app work dir", "slug", slug, "err", err)
+	}
+}
+
+func DeleteApp(s *store.Store, pm ProxyManager, dbDeprov AppDBDeprovisioner, ctrl AppStackController, worker DeployInterrupter, workDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		app, err := s.GetApp(r.Context(), id)
@@ -518,6 +541,10 @@ func DeleteApp(s *store.Store, pm ProxyManager, dbDeprov AppDBDeprovisioner, ctr
 			WriteError(w, http.StatusInternalServerError, "could not delete app")
 			return
 		}
+		// Reclaim the on-disk clone/build context now that the stack is down and
+		// the row is gone. Best-effort: a failure here only leaks disk, it must not
+		// fail the delete the operator already sees as done.
+		removeAppWorkDir(workDir, app.Slug)
 		// The interrupted deploy left the queue panel; nudge live subscribers so it
 		// drops off without waiting for the next worker tick.
 		if worker != nil {

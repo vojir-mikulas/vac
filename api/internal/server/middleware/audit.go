@@ -98,30 +98,47 @@ func Audit(ctx context.Context, rec AuditRecorder) func(http.Handler) http.Handl
 			ctx := audit.WithRecord(r.Context(), record)
 			ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
 
+			// persist builds and enqueues the row for the given status. Run exactly
+			// once, from the defer below, so it fires whether the handler returned
+			// normally or panicked.
+			var persisted bool
+			persist := func(status int) {
+				if persisted || record.Skip {
+					return
+				}
+				persisted = true
+				if status == 0 {
+					status = http.StatusOK // handler wrote a body without WriteHeader
+				}
+				// An unauthenticated mutation that failed is not operator activity —
+				// it's a failed login or a scanner POSTing to a bogus path. Divert it
+				// to security_events so it surfaces as a probe rather than burying the
+				// real feed. (Anonymous 2xx, e.g. a successful login, stays in the
+				// audit log: it's a legitimate, attributable-to-no-user action.)
+				if actorType, _ := resolveActor(r.Context()); actorType == store.ActorAnonymous && status >= 400 {
+					ev := buildSecurityEvent(r, status)
+					enqueue("security:"+ev.Method+" "+ev.Path, func() { persistSecurity(rec, ev) })
+					return
+				}
+				entry := buildEntry(r, record, status)
+				enqueue(entry.Action, func() { persistAudit(rec, entry) })
+			}
+
+			// Persist in a defer so a panicking handler still produces an audit row.
+			// chimw.Recoverer sits *outside* this middleware and turns the panic into
+			// a 500 only after unwinding past here, so without the defer the
+			// highest-severity failures — a destructive handler that crashes — would
+			// leave no trace. On a panic we record the inferred 500, then re-panic so
+			// Recoverer still does its job.
+			defer func() {
+				if rv := recover(); rv != nil {
+					persist(http.StatusInternalServerError)
+					panic(rv)
+				}
+				persist(ww.Status())
+			}()
+
 			next.ServeHTTP(ww, r.WithContext(ctx))
-
-			if record.Skip {
-				return
-			}
-
-			status := ww.Status()
-			if status == 0 {
-				status = http.StatusOK // handler wrote a body without WriteHeader
-			}
-
-			// An unauthenticated mutation that failed is not operator activity —
-			// it's a failed login or a scanner POSTing to a bogus path. Divert it
-			// to security_events so it surfaces as a probe rather than burying the
-			// real feed. (Anonymous 2xx, e.g. a successful login, stays in the
-			// audit log: it's a legitimate, attributable-to-no-user action.)
-			if actorType, _ := resolveActor(r.Context()); actorType == store.ActorAnonymous && status >= 400 {
-				ev := buildSecurityEvent(r, status)
-				enqueue("security:"+ev.Method+" "+ev.Path, func() { persistSecurity(rec, ev) })
-				return
-			}
-
-			entry := buildEntry(r, record, status)
-			enqueue(entry.Action, func() { persistAudit(rec, entry) })
 		})
 	}
 }

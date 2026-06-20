@@ -481,7 +481,7 @@ func main() {
 	proxyMgr.SetStatusEngine(statusEngine)
 	superviseDaemon(ctx, "domain-status-engine", statusEngine.Run)
 
-	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, backupVerifier, jobsEngine, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost, previewSvc, waker)
+	srv, err := server.New(ctx, cfg, st, worker, docker, proxyMgr, hub, statsMgr, notifier, backupEngine, backupRestorer, backupVerifier, jobsEngine, dbProvisioner, addonRegistry, addonInstaller, statusEngine, secPosture, secTraffic, secHost, previewSvc, waker, monitor)
 	if err != nil {
 		slog.Error("server init failed", "err", err)
 		os.Exit(1)
