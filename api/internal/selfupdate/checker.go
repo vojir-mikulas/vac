@@ -103,7 +103,7 @@ func (c *Checker) fetch(ctx context.Context) Result {
 		res.Error = "could not reach the update server"
 		return res
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		res.Error = fmt.Sprintf("update server returned %d", resp.StatusCode)
 		return res

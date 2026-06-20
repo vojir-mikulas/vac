@@ -31,6 +31,7 @@ func (f *fakeCatalog) List() []addon.Template {
 	}
 	return out
 }
+
 func (f *fakeCatalog) Get(id string) (addon.Template, bool) {
 	t, ok := f.templates[id]
 	return t, ok

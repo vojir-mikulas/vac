@@ -31,7 +31,7 @@ func ptrI64(v int64) *int64 { return &v }
 func ptrInt(v int) *int     { return &v }
 
 func TestInstanceStorage_AggregatesAndSorts(t *testing.T) {
-	measured := func(v int64) *int64 { return ptrI64(v) }
+	measured := ptrI64
 	reader := fakeStorageReader{
 		apps: []store.App{
 			{ID: "a1", Name: "Blog", Slug: "blog", DiskLimitMB: ptrInt(100)}, // 100 MiB limit

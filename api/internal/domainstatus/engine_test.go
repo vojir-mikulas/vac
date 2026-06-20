@@ -181,8 +181,10 @@ func TestErrorOverlayPrecedence(t *testing.T) {
 func TestReconcileEnrollsAndEvicts(t *testing.T) {
 	r := &fakeResolver{hosts: map[string][]string{"a.example.com": {vpsIP}}}
 	src := &fakeSource{hosts: []string{"a.example.com"}}
-	e := New(Config{Resolver: r, VPSIP: vpsIP, Source: src,
-		CertProbe: trustedProbe(time.Now().Add(time.Hour))})
+	e := New(Config{
+		Resolver: r, VPSIP: vpsIP, Source: src,
+		CertProbe: trustedProbe(time.Now().Add(time.Hour)),
+	})
 	e.reconcile(context.Background())
 	if st, ok := e.Get("a.example.com"); !ok || st.State != StateActive {
 		t.Fatalf("after reconcile, a.example.com = %+v ok=%v", st, ok)
@@ -198,11 +200,13 @@ func TestReconcileEnrollsAndEvicts(t *testing.T) {
 func TestRefreshCacheWindow(t *testing.T) {
 	r := &fakeResolver{hosts: map[string][]string{"app.example.com": {vpsIP}}}
 	var probeCount int
-	e := New(Config{Resolver: r, VPSIP: vpsIP, CacheWindow: time.Minute,
+	e := New(Config{
+		Resolver: r, VPSIP: vpsIP, CacheWindow: time.Minute,
 		CertProbe: func(context.Context, string) (certprobe.Result, error) {
 			probeCount++
 			return certprobe.Result{NotAfter: time.Now().Add(time.Hour), Trusted: true}, nil
-		}})
+		},
+	})
 	// Enroll once.
 	e.entries["app.example.com"] = &entry{status: e.probe(context.Background(), "app.example.com")}
 	before := probeCount

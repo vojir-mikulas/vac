@@ -120,61 +120,83 @@ func (p *Posture) Check(ctx context.Context) []PostureFinding {
 
 	// --- Config / crypto posture ---
 	if p.cfg.MasterKeyPresent {
-		out = append(out, PostureFinding{Severity: SeverityOK, Code: "master_key_present",
+		out = append(out, PostureFinding{
+			Severity: SeverityOK, Code: "master_key_present",
 			Title:   "Master key configured",
-			Message: "VAC_MASTER_KEY is set; secrets (env vars, SSH keys, TOTP, webhook URLs) are encrypted at rest."})
+			Message: "VAC_MASTER_KEY is set; secrets (env vars, SSH keys, TOTP, webhook URLs) are encrypted at rest.",
+		})
 	} else {
-		out = append(out, PostureFinding{Severity: SeverityError, Code: "master_key_present",
+		out = append(out, PostureFinding{
+			Severity: SeverityError, Code: "master_key_present",
 			Title:   "Master key missing",
-			Message: "VAC_MASTER_KEY is not set — encryption is disabled and app creation is blocked. Set a 32-byte hex key."})
+			Message: "VAC_MASTER_KEY is not set — encryption is disabled and app creation is blocked. Set a 32-byte hex key.",
+		})
 	}
 
 	if p.cfg.MetricsTokenSet {
-		out = append(out, PostureFinding{Severity: SeverityOK, Code: "metrics_token_set",
+		out = append(out, PostureFinding{
+			Severity: SeverityOK, Code: "metrics_token_set",
 			Title:   "Metrics endpoint token set",
-			Message: "VAC_METRICS_TOKEN gates /metrics and /debug/*, which leak instance topology and runtime internals."})
+			Message: "VAC_METRICS_TOKEN gates /metrics and /debug/*, which leak instance topology and runtime internals.",
+		})
 	} else {
-		out = append(out, PostureFinding{Severity: SeverityWarn, Code: "metrics_token_set",
+		out = append(out, PostureFinding{
+			Severity: SeverityWarn, Code: "metrics_token_set",
 			Title:   "Metrics endpoint token unset",
-			Message: "VAC_METRICS_TOKEN is unset, so /metrics and /debug/* return 404 (default-closed). Set it if you scrape metrics; leave unset otherwise."})
+			Message: "VAC_METRICS_TOKEN is unset, so /metrics and /debug/* return 404 (default-closed). Set it if you scrape metrics; leave unset otherwise.",
+		})
 	}
 
 	if p.cfg.Exposure == "public" {
-		out = append(out, PostureFinding{Severity: SeverityOK, Code: "exposure_mode",
+		out = append(out, PostureFinding{
+			Severity: SeverityOK, Code: "exposure_mode",
 			Title:   "Public exposure with HTTPS",
-			Message: "Exposure is public; session cookies carry the Secure flag and the dashboard is fronted by Caddy TLS."})
+			Message: "Exposure is public; session cookies carry the Secure flag and the dashboard is fronted by Caddy TLS.",
+		})
 	} else {
-		out = append(out, PostureFinding{Severity: SeverityWarn, Code: "exposure_mode",
+		out = append(out, PostureFinding{
+			Severity: SeverityWarn, Code: "exposure_mode",
 			Title:   "Local exposure mode",
-			Message: "Exposure is local — intended for VPN / SSH-tunnel access. Cookies are not marked Secure; do not expose this box directly to the internet."})
+			Message: "Exposure is local — intended for VPN / SSH-tunnel access. Cookies are not marked Secure; do not expose this box directly to the internet.",
+		})
 	}
 
 	if p.cfg.BaseDomainSet {
-		out = append(out, PostureFinding{Severity: SeverityOK, Code: "base_domain",
+		out = append(out, PostureFinding{
+			Severity: SeverityOK, Code: "base_domain",
 			Title:   "Base domain configured",
-			Message: "A base domain is set; the dashboard is served over HTTPS and apps get automatic per-subdomain TLS via Caddy."})
+			Message: "A base domain is set; the dashboard is served over HTTPS and apps get automatic per-subdomain TLS via Caddy.",
+		})
 	} else {
-		out = append(out, PostureFinding{Severity: SeverityWarn, Code: "base_domain",
+		out = append(out, PostureFinding{
+			Severity: SeverityWarn, Code: "base_domain",
 			Title:   "No base domain",
-			Message: "No base domain is set, so the dashboard is reachable only over plain HTTP by IP. Set one with `vac set-domain <domain>` to enable HTTPS and per-app subdomains."})
+			Message: "No base domain is set, so the dashboard is reachable only over plain HTTP by IP. Set one with `vac set-domain <domain>` to enable HTTPS and per-app subdomains.",
+		})
 	}
 
 	if p.cfg.AccessLogEnabled {
-		out = append(out, PostureFinding{Severity: SeverityOK, Code: "access_log",
+		out = append(out, PostureFinding{
+			Severity: SeverityOK, Code: "access_log",
 			Title:   "Request monitoring active",
-			Message: "Caddy's JSON access log is configured; the traffic panel and anomaly detector see every request."})
+			Message: "Caddy's JSON access log is configured; the traffic panel and anomaly detector see every request.",
+		})
 	} else {
-		out = append(out, PostureFinding{Severity: SeverityWarn, Code: "access_log",
+		out = append(out, PostureFinding{
+			Severity: SeverityWarn, Code: "access_log",
 			Title:   "Request monitoring disabled",
-			Message: "No Caddy access log is configured (VAC_CADDY_ACCESS_LOG), so the traffic panel stays empty and anomaly detection is off."})
+			Message: "No Caddy access log is configured (VAC_CADDY_ACCESS_LOG), so the traffic panel stays empty and anomaly detection is off.",
+		})
 	}
 
 	// --- App posture (store-backed) ---
 	apps, err := p.store.ListApps(ctx)
 	if err != nil {
-		out = append(out, PostureFinding{Severity: SeverityWarn, Code: "app_scan",
+		out = append(out, PostureFinding{
+			Severity: SeverityWarn, Code: "app_scan",
 			Title:   "App posture unavailable",
-			Message: "Could not read the app list to scan for host-port publishing: " + err.Error()})
+			Message: "Could not read the app list to scan for host-port publishing: " + err.Error(),
+		})
 		return out
 	}
 
@@ -190,18 +212,22 @@ func (p *Posture) Check(ctx context.Context) []PostureFinding {
 			// what VAC's DNS-alias routing exists to avoid.
 			if svc.ExposedPort != nil && *svc.ExposedPort != 0 {
 				hostPortApps++
-				out = append(out, PostureFinding{Severity: SeverityWarn, Code: "host_port_publish",
+				out = append(out, PostureFinding{
+					Severity: SeverityWarn, Code: "host_port_publish",
 					Title: "Service published on a host port",
 					App:   app.Slug, Service: svc.ServiceName,
-					Message: "This service publishes a host port, bypassing Caddy and the vac-edge isolation. Prefer letting VAC route it over the edge network unless the port must be reachable directly."})
+					Message: "This service publishes a host port, bypassing Caddy and the vac-edge isolation. Prefer letting VAC route it over the edge network unless the port must be reachable directly.",
+				})
 			}
 		}
 	}
 
 	if hostPortApps == 0 {
-		out = append(out, PostureFinding{Severity: SeverityOK, Code: "host_port_publish",
+		out = append(out, PostureFinding{
+			Severity: SeverityOK, Code: "host_port_publish",
 			Title:   "No services on host ports",
-			Message: "No app publishes a host port; all HTTP traffic is fronted by Caddy over the isolated vac-edge network."})
+			Message: "No app publishes a host port; all HTTP traffic is fronted by Caddy over the isolated vac-edge network.",
+		})
 	}
 
 	return out
@@ -221,27 +247,37 @@ func (p *Posture) firewallFinding(ctx context.Context) PostureFinding {
 		return p.hostMonitorOff("firewall", "firewall")
 	}
 	if !p.cfg.ExpectFirewall {
-		return PostureFinding{Severity: SeverityOK, Code: "firewall",
+		return PostureFinding{
+			Severity: SeverityOK, Code: "firewall",
 			Title:   "Firewall check disabled",
-			Message: "Firewall checking is turned off (`vac security-check firewall off`). VAC won't warn about a missing host firewall."}
+			Message: "Firewall checking is turned off (`vac security-check firewall off`). VAC won't warn about a missing host firewall.",
+		}
 	}
 	switch {
 	case fw.Stale:
-		return PostureFinding{Severity: SeverityWarn, Code: "firewall",
+		return PostureFinding{
+			Severity: SeverityWarn, Code: "firewall",
 			Title:   "Firewall state stale",
-			Message: "The host security agent hasn't reported recently, so firewall state may be out of date. Check that the vac-security-agent timer is running on the host."}
+			Message: "The host security agent hasn't reported recently, so firewall state may be out of date. Check that the vac-security-agent timer is running on the host.",
+		}
 	case !fw.Detected:
-		return PostureFinding{Severity: SeverityError, Code: "firewall",
+		return PostureFinding{
+			Severity: SeverityError, Code: "firewall",
 			Title:   "No firewall detected",
-			Message: "No ufw or nftables ruleset was found on the host. Running an internet-facing box without a firewall is dangerous — install and enable ufw (`ufw enable`) or nftables. Opt out with `vac security-check firewall off` if this is intentional."}
+			Message: "No ufw or nftables ruleset was found on the host. Running an internet-facing box without a firewall is dangerous — install and enable ufw (`ufw enable`) or nftables. Opt out with `vac security-check firewall off` if this is intentional.",
+		}
 	case !fw.Active:
-		return PostureFinding{Severity: SeverityError, Code: "firewall",
+		return PostureFinding{
+			Severity: SeverityError, Code: "firewall",
 			Title:   "Firewall installed but inactive",
-			Message: "A " + fw.Backend + " ruleset exists but the firewall is not active. Enable it (e.g. `ufw enable`) so the rules take effect."}
+			Message: "A " + fw.Backend + " ruleset exists but the firewall is not active. Enable it (e.g. `ufw enable`) so the rules take effect.",
+		}
 	default:
-		return PostureFinding{Severity: SeverityOK, Code: "firewall",
+		return PostureFinding{
+			Severity: SeverityOK, Code: "firewall",
 			Title:   "Firewall active",
-			Message: "Host firewall (" + fw.Backend + ") is active and filtering traffic."}
+			Message: "Host firewall (" + fw.Backend + ") is active and filtering traffic.",
+		}
 	}
 }
 
@@ -257,27 +293,37 @@ func (p *Posture) fail2banFinding(ctx context.Context) PostureFinding {
 		return p.hostMonitorOff("fail2ban", "fail2ban")
 	}
 	if !p.cfg.ExpectFail2ban {
-		return PostureFinding{Severity: SeverityOK, Code: "fail2ban",
+		return PostureFinding{
+			Severity: SeverityOK, Code: "fail2ban",
 			Title:   "fail2ban check disabled",
-			Message: "fail2ban checking is turned off (`vac security-check fail2ban off`). VAC won't warn about a missing fail2ban."}
+			Message: "fail2ban checking is turned off (`vac security-check fail2ban off`). VAC won't warn about a missing fail2ban.",
+		}
 	}
 	switch {
 	case f2b.Stale:
-		return PostureFinding{Severity: SeverityWarn, Code: "fail2ban",
+		return PostureFinding{
+			Severity: SeverityWarn, Code: "fail2ban",
 			Title:   "fail2ban state stale",
-			Message: "The host security agent hasn't reported recently, so fail2ban state may be out of date. Check that the vac-security-agent timer is running on the host."}
+			Message: "The host security agent hasn't reported recently, so fail2ban state may be out of date. Check that the vac-security-agent timer is running on the host.",
+		}
 	case !f2b.Detected:
-		return PostureFinding{Severity: SeverityWarn, Code: "fail2ban",
+		return PostureFinding{
+			Severity: SeverityWarn, Code: "fail2ban",
 			Title:   "fail2ban not detected",
-			Message: "fail2ban isn't installed or readable on the host. It bans IPs that brute-force SSH and other services — recommended on an internet-facing box. Opt out with `vac security-check fail2ban off` if this is intentional."}
+			Message: "fail2ban isn't installed or readable on the host. It bans IPs that brute-force SSH and other services — recommended on an internet-facing box. Opt out with `vac security-check fail2ban off` if this is intentional.",
+		}
 	case len(f2b.Jails) == 0:
-		return PostureFinding{Severity: SeverityWarn, Code: "fail2ban",
+		return PostureFinding{
+			Severity: SeverityWarn, Code: "fail2ban",
 			Title:   "fail2ban running with no jails",
-			Message: "fail2ban is running but has no active jails, so nothing is being protected. Enable at least the sshd jail."}
+			Message: "fail2ban is running but has no active jails, so nothing is being protected. Enable at least the sshd jail.",
+		}
 	default:
-		return PostureFinding{Severity: SeverityOK, Code: "fail2ban",
+		return PostureFinding{
+			Severity: SeverityOK, Code: "fail2ban",
 			Title:   "fail2ban active",
-			Message: "fail2ban is running with active jails, banning abusive IPs."}
+			Message: "fail2ban is running with active jails, banning abusive IPs.",
+		}
 	}
 }
 
@@ -287,11 +333,15 @@ func (p *Posture) fail2banFinding(ctx context.Context) PostureFinding {
 // operator who deliberately didn't install the agent isn't nagged.
 func (p *Posture) hostMonitorOff(code, what string) PostureFinding {
 	if p.cfg.HostAgentEnabled {
-		return PostureFinding{Severity: SeverityWarn, Code: code,
+		return PostureFinding{
+			Severity: SeverityWarn, Code: code,
 			Title:   what + " state unavailable",
-			Message: "The host security agent is enabled but hasn't reported yet. Check that the vac-security-agent timer is running on the host."}
+			Message: "The host security agent is enabled but hasn't reported yet. Check that the vac-security-agent timer is running on the host.",
+		}
 	}
-	return PostureFinding{Severity: SeverityOK, Code: code,
+	return PostureFinding{
+		Severity: SeverityOK, Code: code,
 		Title:   what + " monitoring off",
-		Message: "Host " + what + " monitoring is off. Enable the read-only host agent with `vac security-agent on` to surface " + what + " status here."}
+		Message: "Host " + what + " monitoring is off. Enable the read-only host agent with `vac security-agent on` to surface " + what + " status here.",
+	}
 }

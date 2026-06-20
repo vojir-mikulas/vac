@@ -30,10 +30,12 @@ func (e *fakeEngine) EnsureRunning(context.Context) error { return e.ensureErr }
 func (e *fakeEngine) Provision(context.Context, string, string, string) error {
 	return e.provErr
 }
+
 func (e *fakeEngine) Deprovision(context.Context, string, string) error {
 	e.deprovCalled = true
 	return nil
 }
+
 func (e *fakeEngine) SizeBytes(_ context.Context, dbNames []string) (map[string]int64, error) {
 	out := make(map[string]int64, len(dbNames))
 	for i, n := range dbNames {
@@ -41,6 +43,7 @@ func (e *fakeEngine) SizeBytes(_ context.Context, dbNames []string) (map[string]
 	}
 	return out, nil
 }
+
 func (e *fakeEngine) ConnString(db, role, pw string) string {
 	return "proto://" + role + ":" + pw + "@host/" + db
 }
@@ -83,10 +86,12 @@ func (s *fakeProvStore) CreateManagedDatabase(_ context.Context, appID, engine, 
 	s.statuses[m.ID] = "provisioning"
 	return m, nil
 }
+
 func (s *fakeProvStore) SetManagedDatabaseStatus(_ context.Context, id, status string, _ *string) error {
 	s.statuses[id] = status
 	return nil
 }
+
 func (s *fakeProvStore) GetManagedDatabase(_ context.Context, id string) (store.ManagedDatabase, error) {
 	m, ok := s.dbs[id]
 	if !ok {
@@ -94,6 +99,7 @@ func (s *fakeProvStore) GetManagedDatabase(_ context.Context, id string) (store.
 	}
 	return m, nil
 }
+
 func (s *fakeProvStore) ListManagedDatabasesForApp(_ context.Context, appID string) ([]store.ManagedDatabase, error) {
 	var out []store.ManagedDatabase
 	for _, m := range s.dbs {
@@ -103,10 +109,12 @@ func (s *fakeProvStore) ListManagedDatabasesForApp(_ context.Context, appID stri
 	}
 	return out, nil
 }
+
 func (s *fakeProvStore) DeleteManagedDatabase(_ context.Context, _, id string) error {
 	delete(s.dbs, id)
 	return nil
 }
+
 func (s *fakeProvStore) ListAllManagedDatabases(_ context.Context) ([]store.ManagedDatabaseWithApp, error) {
 	var out []store.ManagedDatabaseWithApp
 	for _, m := range s.dbs {
@@ -114,6 +122,7 @@ func (s *fakeProvStore) ListAllManagedDatabases(_ context.Context) ([]store.Mana
 	}
 	return out, nil
 }
+
 func (s *fakeProvStore) GetBackupConfigForService(_ context.Context, _, service string) (store.BackupConfig, error) {
 	in, ok := s.backupCfgByService[service]
 	if !ok {
@@ -121,17 +130,21 @@ func (s *fakeProvStore) GetBackupConfigForService(_ context.Context, _, service 
 	}
 	return store.BackupConfig{ID: "cfg-" + service, ServiceName: in.ServiceName, ContainerName: in.ContainerName, Command: in.Command}, nil
 }
+
 func (s *fakeProvStore) LatestBackupRun(_ context.Context, _ string) (store.BackupRun, error) {
 	return store.BackupRun{}, store.ErrNotFound
 }
+
 func (s *fakeProvStore) UpsertEnvVar(_ context.Context, _, key string, value []byte, _ bool) error {
 	s.envVars[key] = value
 	return nil
 }
+
 func (s *fakeProvStore) DeleteEnvVar(_ context.Context, _, key string) error {
 	delete(s.envVars, key)
 	return nil
 }
+
 func (s *fakeProvStore) CreateBackupConfig(_ context.Context, _ string, in store.BackupConfigInput) (store.BackupConfig, error) {
 	if _, exists := s.backupCfgByService[in.ServiceName]; exists {
 		return store.BackupConfig{}, store.ErrConflict
@@ -140,6 +153,7 @@ func (s *fakeProvStore) CreateBackupConfig(_ context.Context, _ string, in store
 	s.backupCfgByService[in.ServiceName] = in
 	return store.BackupConfig{ID: "cfg-" + in.ServiceName, ServiceName: in.ServiceName, ContainerName: in.ContainerName}, nil
 }
+
 func (s *fakeProvStore) DeleteBackupConfigForService(_ context.Context, _, service string) error {
 	delete(s.backupCfgByService, service)
 	return nil

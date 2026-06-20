@@ -161,7 +161,10 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	r.Use(chimw.RequestID)
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Logger)
-	r.Use(chimw.Timeout(60 * time.Second))
+	// Per-request timeout that deliberately skips WebSocket upgrades — chi's
+	// stock Timeout would cancel the long-lived WS streams (logs/stats/deploys/
+	// exec) once the budget elapsed. See middleware.Timeout.
+	r.Use(middleware.Timeout(60 * time.Second))
 	r.Use(middleware.SecurityHeaders)
 
 	r.Get("/health", handler.Health(s, caddyPin))

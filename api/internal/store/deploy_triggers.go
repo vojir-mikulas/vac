@@ -38,7 +38,8 @@ const deployTriggerColumns = `id, app_id, event, filter, require_approval, creat
 
 func scanDeployTrigger(row interface {
 	Scan(dest ...any) error
-}, t *DeployTrigger) error {
+}, t *DeployTrigger,
+) error {
 	return row.Scan(&t.ID, &t.AppID, &t.Event, &t.Filter, &t.RequireApproval, &t.CreatedAt)
 }
 

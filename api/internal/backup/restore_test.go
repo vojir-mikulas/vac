@@ -48,16 +48,20 @@ func (f *fakeRestoreStore) GetApp(context.Context, string) (store.App, error) { 
 func (f *fakeRestoreStore) GetService(context.Context, string, string) (store.Service, error) {
 	return f.svc, f.svcErr
 }
+
 func (f *fakeRestoreStore) GetBackupRun(context.Context, string) (store.BackupRun, error) {
 	return f.run, f.runErr
 }
+
 func (f *fakeRestoreStore) CreateRestoreRun(_ context.Context, configID, sourceRunID string) (store.BackupRestore, error) {
 	return store.BackupRestore{ID: "restore1", ConfigID: configID, SourceRunID: sourceRunID, Status: "running"}, nil
 }
+
 func (f *fakeRestoreStore) FinishRestoreRun(_ context.Context, _, status string, errMsg *string) error {
 	f.recorded = append(f.recorded, recordedRestore{status: status, errMsg: errMsg})
 	return nil
 }
+
 func (f *fakeRestoreStore) LatestRestoreRun(context.Context, string) (store.BackupRestore, error) {
 	return f.latest, f.latestErr
 }

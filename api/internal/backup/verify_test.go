@@ -29,16 +29,20 @@ func (f *fakeVerifyStore) GetApp(context.Context, string) (store.App, error) { r
 func (f *fakeVerifyStore) GetService(context.Context, string, string) (store.Service, error) {
 	return f.svc, f.svcErr
 }
+
 func (f *fakeVerifyStore) LatestBackupRun(context.Context, string) (store.BackupRun, error) {
 	return f.run, f.runErr
 }
+
 func (f *fakeVerifyStore) CreateVerification(_ context.Context, configID, sourceRunID string) (store.BackupVerification, error) {
 	return store.BackupVerification{ID: "verify1", ConfigID: configID, SourceRunID: sourceRunID, Status: "running"}, nil
 }
+
 func (f *fakeVerifyStore) FinishVerification(_ context.Context, _, status string, errMsg *string) error {
 	f.recorded = append(f.recorded, recordedVerification{status: status, errMsg: errMsg})
 	return nil
 }
+
 func (f *fakeVerifyStore) LatestVerification(context.Context, string) (store.BackupVerification, error) {
 	return f.latest, f.latestErr
 }

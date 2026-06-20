@@ -31,24 +31,29 @@ type fakeStore struct {
 func (f *fakeStore) GetAuditLog(_ context.Context, _ string) (store.AuditLog, error) {
 	return f.entry, f.getErr
 }
+
 func (f *fakeStore) MarkAuditReverted(_ context.Context, id string) error {
 	f.marked = id
 	return f.markErr
 }
+
 func (f *fakeStore) ReplaceEnvVars(_ context.Context, appID string, vars []store.EnvVarInput) error {
 	f.envAppID = appID
 	f.envApplied = vars
 	return f.replaceEnvErr
 }
+
 func (f *fakeStore) GetApp(_ context.Context, _ string) (store.App, error) {
 	return store.App{}, nil
 }
+
 func (f *fakeStore) UpdateApp(_ context.Context, _ string, name, _, _, _, _ *string, _ json.RawMessage, mem, _ *int) (store.App, error) {
 	f.appPatch = true
 	f.appName = name
 	f.appMem = mem
 	return store.App{}, f.updateErr
 }
+
 func (f *fakeStore) SetBaseDomain(_ context.Context, baseDomain string) error {
 	f.baseDomain = baseDomain
 	f.baseSet = true

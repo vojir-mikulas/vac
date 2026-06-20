@@ -61,17 +61,26 @@ func (m *Manager) WaitHealthy(ctx context.Context, appID string) error {
 	}
 	deadline := time.Now().Add(m.cfg.HealthTimeout)
 
+	// Sleep one interval *before* each read rather than after. An upstream
+	// appears in /reverse_proxy/upstreams with fails==0 the instant its route is
+	// installed — present in the pool, but not yet probed by Caddy's active
+	// health checker. Reading immediately (the old attempt-0 behaviour) would gate
+	// the deploy to `running` on that unverified zero: a container that merely
+	// accepts a TCP connection but is still booting or serving 500s passes. By
+	// waiting first, every acceptance reflects at least one completed active probe
+	// (interval == HealthTimeout/retries, normally ≥ the configured
+	// HealthInterval, so the checker has run by the time we trust its verdict).
 	for attempt := 0; ; attempt++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
 		if healthy, err := m.allHealthy(ctx, want); err == nil && healthy {
 			return nil
 		}
 		if attempt+1 >= retries || time.Now().After(deadline) {
 			break
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(interval):
 		}
 	}
 	return fmt.Errorf("%w: %s", ErrUnhealthy, joinKeys(want))

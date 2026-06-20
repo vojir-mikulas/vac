@@ -22,12 +22,15 @@ type diffFakeStore struct {
 func (f *diffFakeStore) GetAuditLog(_ context.Context, _ string) (store.AuditLog, error) {
 	return f.entry, f.getErr
 }
+
 func (f *diffFakeStore) ListEnvVarsForApp(_ context.Context, _ string) ([]store.EnvVar, error) {
 	return nil, nil
 }
+
 func (f *diffFakeStore) GetApp(_ context.Context, _ string) (store.App, error) {
 	return store.App{}, nil
 }
+
 func (f *diffFakeStore) GetInstanceSettings(_ context.Context) (store.InstanceSettings, error) {
 	return store.InstanceSettings{}, nil
 }

@@ -161,7 +161,7 @@ func ReadEnvExample(ctx context.Context, gitURL, branch, sshKeyPath string) (str
 		return "", nil, err
 	}
 	for _, name := range envExampleCandidates {
-		b, err := os.ReadFile(filepath.Join(repo, name))
+		b, err := os.ReadFile(filepath.Join(repo, name)) //nolint:gosec // name is from a fixed candidate list; repo is a freshly created temp clone dir
 		if err != nil {
 			continue
 		}

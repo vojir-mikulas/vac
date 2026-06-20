@@ -241,7 +241,7 @@ func ToApp(s Spec) (AppInputs, error) {
 		})
 	}
 	for _, t := range s.Deploy.Triggers {
-		in.Triggers = append(in.Triggers, TriggerInput{Event: t.Event, Filter: t.Filter})
+		in.Triggers = append(in.Triggers, TriggerInput(t))
 	}
 	in.Env = append(in.Env, s.Env...)
 

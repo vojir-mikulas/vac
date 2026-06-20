@@ -184,7 +184,6 @@ func TestBuildKinds_RoundTrip(t *testing.T) {
 		{"compose-unsafe", adapter.KindCompose, adapter.BuildConfig{AllowUnsafeCompose: true}},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			app := store.App{
@@ -323,7 +322,6 @@ func TestValidate_Rejects(t *testing.T) {
 		"dup service":       func(s *appspec.Spec) { s.Services = []appspec.Service{{Name: "w"}, {Name: "w"}} },
 	}
 	for name, mutate := range cases {
-		mutate := mutate
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			s := base()

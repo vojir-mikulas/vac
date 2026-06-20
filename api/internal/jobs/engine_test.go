@@ -28,9 +28,11 @@ func (f *fakeStore) GetApp(context.Context, string) (store.App, error) { return 
 func (f *fakeStore) GetService(context.Context, string, string) (store.Service, error) {
 	return f.service, f.serviceErr
 }
+
 func (f *fakeStore) CreateJobRun(context.Context, string) (store.JobRun, error) {
 	return store.JobRun{ID: "run-1"}, nil
 }
+
 func (f *fakeStore) FinishJobRun(_ context.Context, _ string, status string, exitCode *int, output, errMsg *string) error {
 	f.finishedStatus = status
 	f.finishedExit = exitCode
@@ -38,6 +40,7 @@ func (f *fakeStore) FinishJobRun(_ context.Context, _ string, status string, exi
 	f.finishedErr = errMsg
 	return nil
 }
+
 func (f *fakeStore) UpdateJobSchedule(context.Context, string, time.Time, time.Time) error {
 	f.scheduleRolled = true
 	return nil

@@ -62,7 +62,7 @@ COPY %s /etc/nginx/conf.d/default.conf
 // standalone → a minimal `node server.js` image; export → static `out/` via
 // nginx; default → a full `next start` server. All listen on 3000 (HOSTNAME
 // 0.0.0.0 so the container is reachable behind Caddy).
-func prepareNext(repoDir string, cfg BuildConfig) (string, error) {
+func prepareNext(repoDir string, _ BuildConfig) (string, error) {
 	switch detectNextMode(repoDir) {
 	case "export":
 		if err := writeNginxConf(repoDir, mpaNginxConf()); err != nil {

@@ -73,6 +73,17 @@ linters:
         text: G115
         linters:
           - gosec
+      # Same MemTotalBytes → int64 conversion as host_budget.go; fits comfortably.
+      - path: internal/server/handler/host_capacity.go
+        text: G115
+        linters:
+          - gosec
+      # Host disk/RAM byte counts and a 0–100 percentage; none overflow int/int64
+      # on a single-VPS footprint.
+      - path: internal/diskusage/collector.go
+        text: G115
+        linters:
+          - gosec
 
 formatters:
   enable:

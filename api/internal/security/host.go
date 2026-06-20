@@ -179,7 +179,7 @@ func (h *Host) Ban(ctx context.Context, jail, ip string) (queued bool, err error
 // to a temp file then renames so the agent never reads a half-written request;
 // the line format is "ban <jail> <ip>".
 func (h *Host) enqueueBan(jail, ip string) error {
-	if err := os.MkdirAll(h.cmdDir, 0o755); err != nil {
+	if err := os.MkdirAll(h.cmdDir, 0o755); err != nil { //nolint:gosec // shared IPC queue dir; the host-agent reads it as a separate (possibly different-uid) process
 		return err
 	}
 	f, err := os.CreateTemp(h.cmdDir, "ban-*.tmp")

@@ -34,6 +34,7 @@ func (f *fakeProvider) EnsureRecord(_ context.Context, zone, name, recordType, v
 	f.zone, f.name, f.recordType, f.value, f.proxied = zone, name, recordType, value, proxied
 	return f.ensureErr
 }
+
 func (f *fakeProvider) DeleteRecord(_ context.Context, _, _, _ string) error {
 	f.deleted = true
 	return nil

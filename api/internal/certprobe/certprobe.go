@@ -65,7 +65,7 @@ func New(proxyAddr string, timeout time.Duration) Func {
 		if err != nil {
 			return Result{}, err
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		state := conn.(*tls.Conn).ConnectionState()
 		if len(state.PeerCertificates) == 0 {
 			return Result{}, ErrNoPeerCert

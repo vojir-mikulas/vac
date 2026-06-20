@@ -96,13 +96,16 @@ func (f *fakeStore) TouchPreviewPush(_ context.Context, _ string) error { return
 func (f *fakeStore) HasActiveDeployment(_ context.Context, appID string) (bool, error) {
 	return f.active[appID], nil
 }
+
 func (f *fakeStore) CreateDeployment(_ context.Context, appID, _ string, _ *string) (store.Deployment, error) {
 	f.deployments = append(f.deployments, appID)
 	return store.Deployment{ID: "d-" + appID, AppID: appID}, nil
 }
+
 func (f *fakeStore) ActiveDeploymentIDsForApp(_ context.Context, _ string) ([]string, error) {
 	return nil, nil
 }
+
 func (f *fakeStore) DeleteApp(_ context.Context, id string) error {
 	f.deleted = append(f.deleted, id)
 	delete(f.apps, id)

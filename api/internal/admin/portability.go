@@ -141,7 +141,7 @@ func Apply(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if path == "-" {
 		data, err = io.ReadAll(stdin)
 	} else {
-		data, err = os.ReadFile(path)
+		data, err = os.ReadFile(path) //nolint:gosec // operator-supplied spec path for an admin CLI import; not user-facing input
 	}
 	if err != nil {
 		return fmt.Errorf("read spec: %w", err)

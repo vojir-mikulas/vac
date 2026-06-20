@@ -25,6 +25,7 @@ type fakeStore struct {
 func (f *fakeStore) GetAuditLog(_ context.Context, _ string) (store.AuditLog, error) {
 	return f.entry, f.getErr
 }
+
 func (f *fakeStore) ListEnvVarsForApp(_ context.Context, _ string) ([]store.EnvVar, error) {
 	return f.env, nil
 }

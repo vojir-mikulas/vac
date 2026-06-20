@@ -31,14 +31,17 @@ func newFakeStore(domains ...store.DomainCert) *fakeStore {
 func (f *fakeStore) ListDomainCerts(context.Context) ([]store.DomainCert, error) {
 	return f.domains, nil
 }
+
 func (f *fakeStore) SetCertNotAfter(_ context.Context, id string, na time.Time) error {
 	f.notAfter[id] = na
 	return f.setErr
 }
+
 func (f *fakeStore) MarkCertExpiryNotified(_ context.Context, id string, at time.Time) error {
 	f.notified[id] = at
 	return nil
 }
+
 func (f *fakeStore) ClearCertExpiryNotified(_ context.Context, id string) error {
 	f.cleared[id] = true
 	return nil

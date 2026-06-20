@@ -24,10 +24,12 @@ func (f *fakeStore) ListApps(context.Context) ([]store.App, error) { return f.ap
 func (f *fakeStore) ListServicesForApp(_ context.Context, appID string) ([]store.Service, error) {
 	return f.services[appID], nil
 }
+
 func (f *fakeStore) UpsertVolumeUsage(_ context.Context, v store.VolumeUsage) error {
 	f.upserts = append(f.upserts, v)
 	return nil
 }
+
 func (f *fakeStore) DeleteVolumeUsageForAppExcept(_ context.Context, appID string, keep []string) error {
 	if f.pruned == nil {
 		f.pruned = map[string][]string{}

@@ -69,7 +69,7 @@ func TestDialContext_RejectsPrivateLiteral(t *testing.T) {
 	} {
 		conn, err := dial(context.Background(), "tcp", addr)
 		if conn != nil {
-			conn.Close()
+			_ = conn.Close()
 			t.Fatalf("dial(%q): got a connection, want refusal", addr)
 		}
 		if !errors.Is(err, ErrPrivateAddress) {
@@ -88,7 +88,7 @@ func TestDialContext_AllowsPublic(t *testing.T) {
 	dial := DialContext(500*time.Millisecond, 0)
 	conn, err := dial(context.Background(), "tcp", "203.0.113.1:9") // discard port, no listener
 	if conn != nil {
-		conn.Close()
+		_ = conn.Close()
 	}
 	if errors.Is(err, ErrPrivateAddress) {
 		t.Fatalf("public TEST-NET-3 address wrongly rejected as private: %v", err)

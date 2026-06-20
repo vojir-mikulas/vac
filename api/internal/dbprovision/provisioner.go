@@ -78,7 +78,8 @@ type Provisioner struct {
 func New(s Store, box *crypto.Box, pool PGExecutor, docker interface {
 	NetAttacher
 	DockerController
-}, cfg Config, logger *slog.Logger) *Provisioner {
+}, cfg Config, logger *slog.Logger,
+) *Provisioner {
 	if logger == nil {
 		logger = slog.Default()
 	}

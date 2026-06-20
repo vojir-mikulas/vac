@@ -110,7 +110,7 @@ func sendEmail(ctx context.Context, cfg smtpConfig, allowPrivate bool, subject, 
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	var conn net.Conn
 	if cfg.tlsMode == tlsModeImplicit {
-		conn, err = tls.DialWithDialer(dialer, "tcp", dialAddr, &tls.Config{ServerName: cfg.host})
+		conn, err = tls.DialWithDialer(dialer, "tcp", dialAddr, &tls.Config{ServerName: cfg.host, MinVersion: tls.VersionTLS12})
 	} else {
 		conn, err = dialer.DialContext(ctx, "tcp", dialAddr)
 	}
@@ -124,10 +124,10 @@ func sendEmail(ctx context.Context, cfg smtpConfig, allowPrivate bool, subject, 
 		_ = conn.Close()
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if cfg.tlsMode == tlsModeStartTLS {
-		if err := client.StartTLS(&tls.Config{ServerName: cfg.host}); err != nil {
+		if err := client.StartTLS(&tls.Config{ServerName: cfg.host, MinVersion: tls.VersionTLS12}); err != nil {
 			return err
 		}
 	}

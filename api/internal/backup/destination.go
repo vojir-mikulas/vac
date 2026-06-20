@@ -85,7 +85,7 @@ func (l *LocalDestination) Put(ctx context.Context, key string, r io.Reader) (in
 	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return 0, err
 	}
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o640)
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) //nolint:gosec // dst is a backup key resolved under the configured base dir, not external input
 	if err != nil {
 		return 0, err
 	}

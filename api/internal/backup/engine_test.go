@@ -49,9 +49,11 @@ func (f *fakeStore) GetApp(context.Context, string) (store.App, error) { return 
 func (f *fakeStore) GetService(context.Context, string, string) (store.Service, error) {
 	return f.svc, f.svcErr
 }
+
 func (f *fakeStore) CreateBackupRun(context.Context, string) (store.BackupRun, error) {
 	return store.BackupRun{ID: f.runID}, nil
 }
+
 func (f *fakeStore) FinishBackupRun(_ context.Context, _ string, status string, size *int64, key *string, errMsg *string) error {
 	f.recorded = append(f.recorded, recordedRun{status: status, size: size, key: key, errMsg: errMsg})
 	return nil

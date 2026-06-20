@@ -72,7 +72,6 @@ func TestDetectFramework_Keys(t *testing.T) {
 		{"python django", map[string]string{"manage.py": "import django\n"}, adapter.KindFramework},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			d := t.TempDir()
