@@ -295,21 +295,32 @@ footprint on a box that uses none — the `<200 MB` claim holds.
   common one-DB-per-app case is fully covered; the rare case degrades gracefully (logged, not
   errored).
 
-### D2 — Engines shipped: Postgres + MariaDB; Mongo/Redis and isolated Postgres deferred
+### D2 — Engines shipped: Postgres + MariaDB + Redis; Mongo and isolated Postgres deferred
 
 - **Plan said:** Postgres (shared `vac-db`) plus a shared lazy daemon per engine for
   mariadb/mongo/redis, and a `VAC_MANAGED_DB_ISOLATED` opt-in for a second `vac-db-managed`.
-- **We do instead:** ship **Postgres** (pool DDL on `vac-db`, attached to vac-edge) and
-  **MariaDB** (shared, lazily `compose up`ed `vac-mariadb`, provisioned via `docker exec`) as the
-  worked SQL pair. The recipe framework (`Engine` interface + shared compose/exec helpers) is
-  generic — Mongo/Redis drop in as data. `VAC_MANAGED_DB_ISOLATED` is recognized but logs a
-  warning and falls back to shared (isolated instance not yet implemented).
-- **Why:** the `09` stub's own strategy gate ("build when users ask"); shipping two correct SQL
-  engines beats four half-tested ones. The shared admin password for a lazy engine is derived
-  from `VAC_MASTER_KEY` (stable across restarts without separate storage); MariaDB writes a root
-  `~/.my.cnf` so dumps carry no password on the command line.
+- **We do instead:** ship **Postgres** (pool DDL on `vac-db`, attached to vac-edge),
+  **MariaDB** (shared, lazily `compose up`ed `vac-mariadb`, provisioned via `docker exec`), and
+  **Redis** (shared, lazily `compose up`ed `vac-redis`, provisioned via `redis-cli` ACL). The
+  recipe framework (`Engine` interface + shared compose/exec helpers) is generic — Mongo drops in
+  as data. `VAC_MANAGED_DB_ISOLATED` is recognized but logs a warning and falls back to shared
+  (isolated instance not yet implemented).
+- **Why:** the `09` stub's own strategy gate ("build when users ask"). The shared admin password
+  for a lazy engine is derived from `VAC_MASTER_KEY` (stable across restarts without separate
+  storage); MariaDB writes a root `~/.my.cnf` so dumps carry no password on the command line.
+- **Redis specifics:** isolation is **by key prefix** (not a separate database/role like the SQL
+  engines, which Redis can't express): each app gets an ACL user locked to keys/channels under a
+  private `<dbName>:` prefix and denied `@dangerous` commands, with the prefix injected as a
+  second env var (`REDIS_PREFIX`) since a `redis://` URL can't carry it. ACL users persist to an
+  aclfile in the data volume; data persists via AOF. Redis **opts out of nightly logical backups**
+  (the `unbackuppable` optional interface) — its data can't round-trip through the
+  dump→stdin-restore pipeline, so VAC treats it as a managed cache rather than seeding a backup it
+  couldn't restore. Both behaviours hang off optional interfaces (`extraEnver`, `unbackuppable`),
+  so the SQL engines are untouched.
 - **Trade-off:** rotating `VAC_MASTER_KEY` rotates a running shared engine's admin password
-  (documented manual step); Mongo/Redis aren't offered in the picker yet.
+  (documented manual step); apps on managed Redis must namespace their keys under `REDIS_PREFIX`
+  (frameworks that use fixed key names won't work unprefixed); Mongo isn't offered in the picker
+  yet.
 
 ### D2 — Provisioning is asynchronous; status drives the UI
 

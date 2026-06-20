@@ -1,0 +1,17 @@
+{
+  "id": "minio",
+  "name": "MinIO",
+  "description": "S3-compatible object storage. Your add-on subdomain becomes the S3 endpoint (HTTPS, presigned URLs included); apps can also reach it in-cluster on port 9000. Manage buckets with the MinIO client (mc) or any S3 SDK using the root credentials below — shown once.",
+  "category": "storage",
+  "icon": "minio",
+  "footprint_mb": 200,
+  "depends_on_db": "",
+  "compose_file": "compose.yaml",
+  "default_env": {
+    "MINIO_ROOT_USER": "admin",
+    "MINIO_ROOT_PASSWORD": "@random"
+  },
+  "health_paths": {
+    "minio": "/minio/health/live"
+  }
+}

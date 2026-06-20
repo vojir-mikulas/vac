@@ -1,0 +1,27 @@
+# MinIO object-storage add-on. Deploys through VAC's normal pipeline as a user
+# app: upped, attached to vac-edge, and routed by Caddy to minio:9000 — the
+# S3 API. No host ports.
+#
+# MinIO serves the S3 API on 9000 (what apps and S3 SDKs talk to) and, on older
+# releases, an embedded web console on a second port. VAC routes a single port —
+# the first exposed one — so we expose only 9000 and route the S3 API: it has a
+# stable unauthenticated health endpoint (/minio/health/live), gives a real
+# public HTTPS S3 endpoint, and doesn't depend on the console, which newer MinIO
+# releases dropped. Manage buckets with `mc` or an S3 SDK against the root creds.
+#
+# The image is pinned for reproducibility; bump it deliberately.
+services:
+  minio:
+    image: minio/minio:RELEASE.2024-01-16T16-07-38Z
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-admin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
+    expose:
+      - "9000"
+    volumes:
+      - data:/data
+
+volumes:
+  data:

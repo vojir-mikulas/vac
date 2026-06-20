@@ -1,0 +1,22 @@
+# Umami analytics add-on. Deploys through VAC's normal pipeline as a user app:
+# upped, attached to vac-edge, and routed by Caddy to umami:3000. No host ports.
+#
+# DATABASE_URL is injected by VAC's managed-DB provisioner (depends_on_db:
+# "postgres" in the manifest): the connection string lands in the app's env once
+# the database is ready, and compose interpolates it into the container below.
+# Umami runs its Prisma migrations on boot against that fresh database. APP_SECRET
+# (a generated secret, used to sign sessions) comes from the install form.
+#
+# Umami's root path 302-redirects to /login when signed out — that fails Caddy's
+# 2xx-only active health check — so the manifest points the check at the
+# unauthenticated /api/heartbeat 200 endpoint instead.
+services:
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    restart: unless-stopped
+    environment:
+      DATABASE_TYPE: "postgresql"
+      DATABASE_URL: "${DATABASE_URL}"
+      APP_SECRET: "${APP_SECRET}"
+    expose:
+      - "3000"

@@ -1,0 +1,17 @@
+# Uptime Kuma add-on. Deploys through VAC's normal pipeline as a user app: upped,
+# attached to vac-edge, and routed by Caddy to uptime-kuma:3001. No host ports —
+# HTTP services are reached over vac-edge by alias. The dashboard, its config, and
+# the embedded SQLite database all live in the data volume, so there's no managed
+# DB to provision. Caddy's reverse proxy passes through the WebSocket (socket.io)
+# upgrade the live UI needs.
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    restart: unless-stopped
+    expose:
+      - "3001"
+    volumes:
+      - data:/app/data
+
+volumes:
+  data:

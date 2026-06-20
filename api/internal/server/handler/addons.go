@@ -77,6 +77,13 @@ var dbEngineAddonMeta = map[string]struct{ Name, Description string }{
 			"injects the connection string as an env var, and schedules nightly backups. " +
 			"One shared instance serves every app on this box.",
 	},
+	"redis": {
+		Name: "Redis",
+		Description: "Managed Redis cache. Add it to an app and VAC provisions an isolated keyspace — " +
+			"your keys live under a private prefix (injected as REDIS_PREFIX, with the connection URL " +
+			"as REDIS_URL) — served by one shared instance across every app on this box. It's treated " +
+			"as a cache: persisted across restarts, but not covered by VAC's nightly database backups.",
+	},
 }
 
 func dbEngineAddon(e dbprovision.EngineInfo) addonDTO {

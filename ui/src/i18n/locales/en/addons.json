@@ -4,6 +4,12 @@
     "description": "A curated catalog for this box: one-click apps that deploy with backups, routing, and HTTPS, plus managed databases you add to your apps.",
     "empty": "No add-ons available"
   },
+  "filter": {
+    "searchPlaceholder": "Search add-ons",
+    "searchAria": "Search add-ons by name or description",
+    "all": "All",
+    "noMatches": "No add-ons match your search"
+  },
   "card": {
     "installed": "Installed",
     "footprint": "~{{mb}} MB",

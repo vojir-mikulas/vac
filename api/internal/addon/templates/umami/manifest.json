@@ -1,0 +1,16 @@
+{
+  "id": "umami",
+  "name": "Umami",
+  "description": "Privacy-friendly, cookieless web analytics — a lightweight self-hosted alternative to Google Analytics. VAC provisions a managed Postgres database and wires it up automatically.",
+  "category": "analytics",
+  "icon": "umami",
+  "footprint_mb": 150,
+  "depends_on_db": "postgres",
+  "compose_file": "compose.yaml",
+  "default_env": {
+    "APP_SECRET": "@random"
+  },
+  "health_paths": {
+    "umami": "/api/heartbeat"
+  }
+}

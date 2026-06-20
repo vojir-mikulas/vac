@@ -1,5 +1,13 @@
 import { type IconType } from 'react-icons'
-import { SiGrafana, SiMariadb, SiPostgresql } from 'react-icons/si'
+import {
+  SiGrafana,
+  SiMariadb,
+  SiMinio,
+  SiPostgresql,
+  SiRedis,
+  SiUmami,
+  SiUptimekuma,
+} from 'react-icons/si'
 
 // Brand glyphs + colors for known add-on templates and managed-DB engines,
 // keyed by the template's manifest icon key (e.g. "grafana") or the engine name
@@ -10,6 +18,10 @@ const BRANDS: Record<string, { Icon: IconType; color: string }> = {
   postgres: { Icon: SiPostgresql, color: '#4169E1' },
   postgresql: { Icon: SiPostgresql, color: '#4169E1' },
   mariadb: { Icon: SiMariadb, color: '#003545' },
+  uptimekuma: { Icon: SiUptimekuma, color: '#5CDD8B' },
+  umami: { Icon: SiUmami, color: '#54B948' },
+  minio: { Icon: SiMinio, color: '#C72E49' },
+  redis: { Icon: SiRedis, color: '#FF4438' },
 }
 
 export function brandFor(key?: string | null) {

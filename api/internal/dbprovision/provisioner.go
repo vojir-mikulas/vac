@@ -72,9 +72,9 @@ type Provisioner struct {
 	sizeCache map[string]map[string]int64 // engine -> dbName -> bytes
 }
 
-// New builds a provisioner with the default engine set (Postgres + MariaDB).
-// Mongo/Redis are intentionally not registered in v1 — the recipe framework
-// supports adding them as data when demand appears (see docs/deviations.md).
+// New builds a provisioner with the default engine set (Postgres + MariaDB +
+// Redis). Mongo is intentionally not registered — the recipe framework supports
+// adding it as data when demand appears (see docs/deviations.md).
 func New(s Store, box *crypto.Box, pool PGExecutor, docker interface {
 	NetAttacher
 	DockerController
@@ -85,6 +85,7 @@ func New(s Store, box *crypto.Box, pool PGExecutor, docker interface {
 	engines := map[string]Engine{
 		"postgres": NewPostgresEngine(pool, docker, cfg),
 		"mariadb":  NewMariaDBEngine(docker, cfg),
+		"redis":    NewRedisEngine(docker, cfg),
 	}
 	ctrlDB := cfg.PostgresControlDB
 	if ctrlDB == "" {
@@ -254,6 +255,32 @@ func (p *Provisioner) provision(row store.ManagedDatabase, app store.App, eng En
 		p.fail(ctx, row.ID, err)
 		return
 	}
+	// Inject any engine-specific extra env (Redis's key prefix). Sealed at rest
+	// like everything else, but not marked sensitive — the prefix is config the
+	// operator should be able to see, not a secret.
+	if extra, ok := eng.(extraEnver); ok {
+		for k, v := range extra.ExtraEnv(row.EnvVarName, names) {
+			es, serr := p.box.Seal([]byte(v))
+			if serr != nil {
+				p.fail(ctx, row.ID, fmt.Errorf("seal env %s: %w", k, serr))
+				return
+			}
+			if err := p.store.UpsertEnvVar(ctx, app.ID, k, es, false); err != nil {
+				p.fail(ctx, row.ID, err)
+				return
+			}
+		}
+	}
+	// Engines whose data can't round-trip through the dump/restore pipeline (Redis)
+	// opt out of the seeded backup rather than have VAC claim a backup it couldn't
+	// restore. Flip to ready and stop here for them.
+	if nb, ok := eng.(unbackuppable); ok && nb.SkipsBackup() {
+		if err := p.store.SetManagedDatabaseStatus(ctx, row.ID, "ready", nil); err != nil {
+			p.logger.Warn("dbprovision: mark ready", "id", row.ID, "err", err)
+		}
+		p.logger.Info("dbprovision: provisioned (no backup)", "app", app.Slug, "engine", eng.Name(), "db", names.DBName)
+		return
+	}
 	// Seed a daily local backup so the DB is covered with no manual config. The
 	// config is keyed on (app, BackupContainer): a second managed DB of the same
 	// engine shares the container, so its seed conflicts. We surface that instead
@@ -309,6 +336,14 @@ func (p *Provisioner) Remove(ctx context.Context, appID, id string) error {
 			p.logger.Warn("dbprovision: engine deprovision", "id", id, "err", err)
 		}
 		_ = p.store.DeleteBackupConfigForService(ctx, appID, eng.BackupContainer())
+		// Remove any engine-specific extra env vars injected at provision (Redis's
+		// key prefix). The values don't matter here — only the keys, which are
+		// derived from the binding.
+		if extra, ok := eng.(extraEnver); ok {
+			for k := range extra.ExtraEnv(m.EnvVarName, GeneratedNames{DBName: m.DBName}) {
+				_ = p.store.DeleteEnvVar(ctx, appID, k)
+			}
+		}
 	}
 	_ = p.store.DeleteEnvVar(ctx, appID, m.EnvVarName)
 	return p.store.DeleteManagedDatabase(ctx, appID, id)

@@ -74,6 +74,22 @@ type Engine interface {
 	Shared() bool
 }
 
+// extraEnver is an optional Engine capability: env vars to inject for a provision
+// beyond the connection string. Redis implements it for the key prefix the app
+// must namespace under; the SQL engines don't. The injected keys are derived from
+// the binding so they're unique per managed DB and removable on deprovision.
+type extraEnver interface {
+	ExtraEnv(binding string, names GeneratedNames) map[string]string
+}
+
+// unbackuppable is an optional Engine capability: an engine that opts out of VAC's
+// nightly logical backups because its data can't round-trip through the
+// dump→stdin-restore pipeline (Redis). The provisioner skips seeding a backup
+// config for it.
+type unbackuppable interface {
+	SkipsBackup() bool
+}
+
 // Config wires the engines to their dependencies.
 type Config struct {
 	WorkDir     string // VAC work dir; shared-engine compose projects live under {WorkDir}/managed

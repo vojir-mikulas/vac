@@ -1,0 +1,11 @@
+{
+  "id": "uptime-kuma",
+  "name": "Uptime Kuma",
+  "description": "Self-hosted uptime monitoring: HTTP/TCP/ping/keyword checks, status pages, and alerts to Slack/Telegram/email. Stores everything in a local volume — no database to provision.",
+  "category": "observability",
+  "icon": "uptimekuma",
+  "footprint_mb": 150,
+  "depends_on_db": "",
+  "compose_file": "compose.yaml",
+  "default_env": {}
+}

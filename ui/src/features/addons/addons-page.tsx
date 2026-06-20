@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, Blocks, Database, Download, Trash2 } from 'lucide-react'
+import { AlertTriangle, Blocks, Database, Download, Search, SearchX, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
 import { BrandIcon, brandFor } from '@/components/common/brand-icon'
+import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 import { CopyButton } from '@/components/common/copy-button'
 import { EmptyState } from '@/components/common/empty-state'
 import { ErrorState } from '@/components/common/error-state'
@@ -51,22 +53,54 @@ export function AddonsPage() {
   const { data: apps } = useApps()
   const { data: inventory } = useDatabaseInventory()
 
+  const [query, setQuery] = useState('')
+  const [category, setCategory] = useState('all')
+  const deferredQuery = useDeferredValue(query)
+
   // Map template_id → the installed app so the catalog can offer Open instead of
   // Install for add-ons already running on this box.
-  const installed = new Map<string, App>()
-  for (const app of apps ?? []) {
-    if (app.source === 'template' && app.template_id && !installed.has(app.template_id)) {
-      installed.set(app.template_id, app)
+  const installed = useMemo(() => {
+    const m = new Map<string, App>()
+    for (const app of apps ?? []) {
+      if (app.source === 'template' && app.template_id && !m.has(app.template_id)) {
+        m.set(app.template_id, app)
+      }
     }
-  }
+    return m
+  }, [apps])
 
   // engine → number of managed databases provisioned on it (excluding the
   // pinned control-plane row), so a database add-on can show its live state.
-  const dbCounts = new Map<string, number>()
-  for (const g of inventory?.engines ?? []) {
-    const n = g.databases.filter((d) => !d.is_control_plane).length
-    if (n > 0) dbCounts.set(g.engine, n)
-  }
+  const dbCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const g of inventory?.engines ?? []) {
+      const n = g.databases.filter((d) => !d.is_control_plane).length
+      if (n > 0) m.set(g.engine, n)
+    }
+    return m
+  }, [inventory])
+
+  // Category chips, derived from the catalog with counts so a new add-on's
+  // category appears automatically. "All" leads.
+  const categories = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const a of addons ?? []) {
+      counts.set(a.category, (counts.get(a.category) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [addons])
+
+  const filtered = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase()
+    return (addons ?? []).filter(
+      (a) =>
+        (category === 'all' || a.category === category) &&
+        (!q ||
+          a.name.toLowerCase().includes(q) ||
+          a.description.toLowerCase().includes(q) ||
+          a.category.toLowerCase().includes(q)),
+    )
+  }, [addons, deferredQuery, category])
 
   return (
     <PageContainer>
@@ -80,18 +114,54 @@ export function AddonsPage() {
       ) : isError ? (
         <ErrorState onRetry={() => refetch()} />
       ) : addons && addons.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {addons.map((a) =>
-            a.kind === 'database' ? (
-              <DatabaseAddonCard
-                key={a.id}
-                addon={a}
-                count={dbCounts.get(a.id) ?? 0}
-                apps={apps ?? []}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex h-9 max-w-80 flex-1 basis-60 items-center gap-2 rounded-md border bg-background px-3">
+              <Search className="size-3.5 text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('filter.searchPlaceholder')}
+                aria-label={t('filter.searchAria')}
+                className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
               />
-            ) : (
-              <AddonCard key={a.id} addon={a} installedApp={installed.get(a.id)} />
-            ),
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <CategoryChip
+                label={t('filter.all')}
+                count={addons.length}
+                active={category === 'all'}
+                onClick={() => setCategory('all')}
+              />
+              {categories.map(([c, n]) => (
+                <CategoryChip
+                  key={c}
+                  label={categoryLabel(c)}
+                  count={n}
+                  active={category === c}
+                  onClick={() => setCategory(c)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {filtered.length > 0 ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((a) =>
+                a.kind === 'database' ? (
+                  <DatabaseAddonCard
+                    key={a.id}
+                    addon={a}
+                    count={dbCounts.get(a.id) ?? 0}
+                    apps={apps ?? []}
+                  />
+                ) : (
+                  <AddonCard key={a.id} addon={a} installedApp={installed.get(a.id)} />
+                ),
+              )}
+            </div>
+          ) : (
+            <EmptyState icon={SearchX} title={t('filter.noMatches')} />
           )}
         </div>
       ) : (
@@ -101,18 +171,63 @@ export function AddonsPage() {
   )
 }
 
+// categoryLabel title-cases a catalog category key for display ("observability"
+// → "Observability"; "Database" stays as-is). Categories are single-word data
+// keys, so a leading-letter capitalize is enough.
+function categoryLabel(category: string) {
+  if (!category) return 'Other'
+  return category.charAt(0).toUpperCase() + category.slice(1)
+}
+
+// CategoryChip is the catalog's category filter pill, mirroring the apps
+// dashboard's filter chips.
+function CategoryChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string
+  count: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors',
+        active
+          ? 'border-border-strong bg-surface-2 text-foreground'
+          : 'border-transparent text-muted-foreground hover:text-foreground',
+      )}
+    >
+      {label}
+      <span
+        className={cn(
+          'rounded px-1 font-mono text-2xs',
+          active ? 'bg-background' : 'bg-surface-2 text-muted-foreground',
+        )}
+      >
+        {count}
+      </span>
+    </button>
+  )
+}
+
 function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }) {
   const { t } = useTranslation('addons')
   return (
     <MotionCard className="flex flex-col gap-3 p-5">
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           {brandFor(addon.icon) ? (
             <BrandIcon brand={addon.icon} className="size-4" />
           ) : (
             <Blocks className="size-4 text-muted-foreground" />
           )}
-          <span className="text-sm font-semibold">{addon.name}</span>
+          <span className="truncate text-sm font-semibold">{addon.name}</span>
         </div>
         {installedApp ? (
           <span className="rounded-full border border-ok-border bg-ok-bg px-2 py-0.5 text-2xs text-ok-foreground">
@@ -123,6 +238,11 @@ function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }
             {t('card.footprint', { mb: addon.footprint_mb })}
           </span>
         )}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <Badge variant="secondary" className="text-2xs font-normal">
+          {categoryLabel(addon.category)}
+        </Badge>
       </div>
       <p className="flex-1 text-sm text-muted-foreground">{addon.description}</p>
       {addon.depends_on_db ? (
@@ -208,13 +328,13 @@ function DatabaseAddonCard({ addon, count, apps }: { addon: Addon; count: number
   return (
     <MotionCard className="flex flex-col gap-3 p-5">
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           {brandFor(addon.icon) ? (
             <BrandIcon brand={addon.icon} className="size-4" />
           ) : (
             <Database className="size-4 text-muted-foreground" />
           )}
-          <span className="text-sm font-semibold">{addon.name}</span>
+          <span className="truncate text-sm font-semibold">{addon.name}</span>
         </div>
         {active ? (
           <span className="rounded-full border border-ok-border bg-ok-bg px-2 py-0.5 text-2xs text-ok-foreground">
@@ -225,6 +345,11 @@ function DatabaseAddonCard({ addon, count, apps }: { addon: Addon; count: number
             {t('card.footprint', { mb: addon.footprint_mb })}
           </span>
         )}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <Badge variant="secondary" className="text-2xs font-normal">
+          {categoryLabel(addon.category)}
+        </Badge>
       </div>
       <p className="flex-1 text-sm text-muted-foreground">{addon.description}</p>
       <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
