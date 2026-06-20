@@ -1,0 +1,49 @@
+{
+  "viewer": {
+    "label": "Logs",
+    "empty": "Čekání na logs…",
+    "jumpToLatest": "Přejít na nejnovější",
+    "jumpToLatestAria": "Přejít na nejnovější řádek logu"
+  },
+  "panel": {
+    "searchPlaceholder": "Hledat v logs…",
+    "searchAria": "Hledat ve zprávách logu",
+    "allServices": "Všechny services",
+    "levels": {
+      "all": "Všechny úrovně",
+      "info": "Info",
+      "warn": "Warn",
+      "error": "Chyba"
+    },
+    "autoScroll": "Automatické posouvání",
+    "lineCount_one": "{{count}} řádek",
+    "lineCount_other": "{{count}} řádků",
+    "export": "Export",
+    "exportText": "Prostý text",
+    "exportJson": "JSON",
+    "viewerLabel": "Runtime logs"
+  },
+  "explorer": {
+    "title": "Log Explorer",
+    "description": "Prohledejte runtime logs napříč všemi aplikacemi.",
+    "allApps": "Všechny aplikace",
+    "allServices": "Všechny services",
+    "searchPlaceholder": "Hledat zprávy…",
+    "searchAria": "Hledat ve zprávách runtime logu",
+    "streams": {
+      "all": "Všechny streams",
+      "stdout": "stdout",
+      "stderr": "stderr",
+      "system": "system"
+    },
+    "loadOlder": "Načíst starší",
+    "loadingOlder": "Načítání…",
+    "noMore": "Začátek uchovaných logs",
+    "matchCount_one": "{{count}} řádek",
+    "matchCount_other": "{{count}} řádků",
+    "empty": "Žádné odpovídající řádky logu.",
+    "emptyHint": "Zkuste obecnější hledání nebo jinou aplikaci.",
+    "viewerLabel": "Výsledky hledání v logs",
+    "error": "Logs se nepodařilo prohledat."
+  }
+}

@@ -1,0 +1,389 @@
+{
+  "layout": {
+    "title": "Nastavení",
+    "description": "Účet, zabezpečení, instance a domény.",
+    "aria": "Sekce nastavení",
+    "tabs": {
+      "appearance": "Vzhled",
+      "account": "Účet a zabezpečení",
+      "notifications": "Oznámení",
+      "deployments": "Deployments",
+      "apiTokens": "API tokeny",
+      "domains": "Domény",
+      "instance": "Instance",
+      "danger": "Nebezpečná zóna"
+    }
+  },
+  "appearance": {
+    "title": "Vzhled",
+    "theme": "Motiv",
+    "themeDescription": "Vyberte světlý, tmavý nebo podle nastavení systému."
+  },
+  "language": {
+    "heading": "Jazyk",
+    "label": "Jazyk rozhraní",
+    "hint": "Nastaví jazyk dashboardu. Další jazyky se připravují."
+  },
+  "instance": {
+    "version": {
+      "heading": "Verze",
+      "current": "Aktuální",
+      "value": "vac · {{version}}",
+      "builtAt": "Sestaveno {{date}}"
+    },
+    "update": {
+      "label": "Aktualizace",
+      "checking": "Kontrola aktualizací…",
+      "upToDate": "Aktuální",
+      "available": "Dostupná aktualizace",
+      "latest": "Nejnovější: {{version}}",
+      "failed": "Nepodařilo se zkontrolovat aktualizace",
+      "releaseNotes": "Poznámky k vydání",
+      "instructions": "Spusťte toto na hostu pro upgrade. VAC stáhne nové images a znovu vytvoří své vlastní containery — vaše aplikace běží dál.",
+      "copyCommand": "Kopírovat příkaz"
+    },
+    "channel": {
+      "label": "Kanál aktualizací",
+      "hint": "Přepínání kanálů zatím není dostupné."
+    },
+    "autoUpdate": {
+      "label": "Automatické aktualizace",
+      "hint": "Stáhne a aktualizuje sám sebe během maintenance window (neděle 04:00 UTC).",
+      "ariaLabel": "Automatické aktualizace (již brzy)"
+    },
+    "comingSoon": "Již brzy"
+  },
+  "maintenance": {
+    "heading": "Údržba",
+    "description": "Uvolněte místo na disku zabrané zbylými Docker images a build cache. Bezpečné — images, které vaše běžící aplikace používají, zůstanou zachovány; odstraní se jen osamocené vrstvy.",
+    "images": "Nevyužité images",
+    "buildCache": "Build cache",
+    "reclaimable": "{{size}} k uvolnění",
+    "nothingToReclaim": "Není co uvolnit",
+    "reclaim": "Uvolnit místo",
+    "reclaiming": "Uvolňování…",
+    "reclaimed": "Uvolněno {{size}}",
+    "reclaimedNothing": "Již uklizeno — není co uvolnit",
+    "loadError": "Nepodařilo se načíst využití disku",
+    "note": "VAC také automaticky každou noc maže staré images."
+  },
+  "apiTokens": {
+    "heading": "API tokeny",
+    "created": "vytvořeno {{time}}",
+    "lastUsed": "naposledy použito {{time}}",
+    "neverUsed": "nikdy nepoužito",
+    "expires": "vyprší {{time}}",
+    "revoke": "Odvolat",
+    "cancel": "Zrušit",
+    "revokeDialog": {
+      "title": "Odvolat „{{name}}“?",
+      "description": "Jakýkoli klient nebo CI pipeline používající tento token okamžitě ztratí přístup. Tuto akci nelze vrátit zpět."
+    },
+    "empty": "Zatím žádné API tokeny.",
+    "newToken": "Nový token",
+    "toast": {
+      "revoked": "Token odvolán"
+    },
+    "dialog": {
+      "createTitle": "Vytvořit API token",
+      "createdTitle": "Token vytvořen",
+      "copyHint": "Zkopírujte tento token nyní — znovu se nezobrazí.",
+      "nameLabel": "Název",
+      "namePlaceholder": "CI pipeline",
+      "expiresLabel": "Vyprší za (dny)",
+      "expiresInvalid": "Zadejte celý počet dnů mezi 1 a 3650.",
+      "submit": "Vytvořit token"
+    }
+  },
+  "sessions": {
+    "heading": "Aktivní relace",
+    "revokeAllOthers": "Odvolat všechny ostatní",
+    "cancel": "Zrušit",
+    "revokeAllOthersDialog": {
+      "title": "Odvolat všechny ostatní relace?",
+      "description": "Každé další přihlášené zařízení bude okamžitě odhlášeno. Toto zařízení zůstane přihlášeno."
+    },
+    "unknownDevice": "Neznámé zařízení",
+    "thisDevice": "Toto zařízení",
+    "active": "aktivní {{time}}",
+    "revoke": "Odvolat",
+    "toast": {
+      "revoked": "Relace odvolána",
+      "revokedOthers_one": "Odvolána {{count}} relace",
+      "revokedOthers_other": "Odvoláno {{count}} relací"
+    }
+  },
+  "deployments": {
+    "heading": "Deployments",
+    "maxLabel": "Maximální počet souběžných deployů",
+    "hint": "Kolik deployů aplikací běží současně, když je jich několik ve frontě (např. dávka pushů). Pouze různé aplikace — VAC nikdy nespustí dva deploye pro <0>stejnou</0> aplikaci najednou. Vyšší hodnoty zpracují nahromaděnou frontu rychleji, ale během buildů spotřebují více CPU, RAM a diskového I/O; na malém VPS ji ponechte nízkou. Povolený rozsah {{min}}–{{max}}. Projeví se po příštím restartu control plane.",
+    "save": "Uložit",
+    "toast": {
+      "saved": "Souběžnost deployů uložena — projeví se po příštím restartu"
+    }
+  },
+  "notifications": {
+    "heading": "Oznámení",
+    "discordWebhook": "Discord webhook",
+    "slackWebhook": "Slack webhook",
+    "email": {
+      "heading": "E-mail (SMTP)",
+      "host": "SMTP host",
+      "port": "Port",
+      "portInvalid": "Port musí být mezi 1 a 65535.",
+      "username": "Uživatelské jméno",
+      "usernamePlaceholder": "ponechte prázdné pro neautentizovaný relay",
+      "password": "Heslo",
+      "from": "Adresa odesílatele",
+      "to": "Příjemci",
+      "toHint": "Seznam adres příjemců oddělený čárkami nebo novými řádky.",
+      "tlsMode": "Šifrování",
+      "tls": {
+        "starttls": "STARTTLS (587)",
+        "implicit": "Implicit TLS (465)",
+        "none": "Žádné (plaintext)"
+      }
+    },
+    "events": "Události",
+    "sendTest": "Odeslat test",
+    "testDirtyHint": "Nejprve uložte změny — test používá vaše uložená nastavení.",
+    "save": "Uložit",
+    "configuredPlaceholder": "Nakonfigurováno ({{hint}}) — ponechte prázdné pro zachování",
+    "toast": {
+      "tested_one": "Odeslána {{count}} testovací zpráva",
+      "tested_other": "Odesláno {{count}} testovacích zpráv",
+      "saved": "Nastavení oznámení uloženo"
+    }
+  },
+  "totp": {
+    "heading": "Dvoufaktorová autentizace",
+    "enabled": "2FA je povoleno",
+    "disabled": "2FA je zakázáno",
+    "hint": "Vyžadovat kromě hesla i časově omezený kód.",
+    "enable": "Povolit",
+    "disable": "Zakázat",
+    "enableFlow": {
+      "recoveryTitle": "Uložte si záložní kódy",
+      "setupTitle": "Nastavení dvoufaktorové autentizace",
+      "recoveryHint": "Uložte si je na bezpečné místo. Každý kód lze použít jednou, pokud ztratíte zařízení. Znovu se nezobrazí.",
+      "copyCodes": "Kopírovat kódy",
+      "downloadCodes": "Stáhnout",
+      "ackLabel": "Uložil/a jsem si záložní kódy na bezpečné místo",
+      "done": "Hotovo",
+      "codeLabel": "Zadejte 6místný kód",
+      "submit": "Ověřit a povolit"
+    },
+    "disableDialog": {
+      "title": "Zakázat dvoufaktorovou autentizaci",
+      "passwordLabel": "Potvrďte své heslo",
+      "submit": "Zakázat 2FA"
+    },
+    "toast": {
+      "disabled": "2FA zakázáno"
+    }
+  },
+  "dangerZone": {
+    "heading": "Nebezpečná zóna",
+    "cancel": "Zrušit",
+    "restart": {
+      "title": "Restartovat control plane",
+      "description": "Restartuje vac-api a vac-proxy. Aplikace běží dál.",
+      "action": "Restartovat",
+      "reconnecting": "Opětovné připojování…",
+      "confirmTitle": "Restartovat control plane?",
+      "confirmDescription": "vac-api a vac-proxy se restartují. Dashboard se krátce odpojí a znovu připojí. Běžících aplikací se to nedotkne.",
+      "toast": "Control plane se restartuje — opětovné připojování…"
+    },
+    "stopAll": {
+      "title": "Zastavit všechny aplikace",
+      "description": "Zastaví každý container spravovaný VAC.",
+      "action": "Zastavit vše",
+      "confirmTitle": "Zastavit všechny aplikace?",
+      "confirmDescription": "Každý stack aplikace spravovaný VAC bude zastaven. Lze je znovu spustit jednotlivě. Control plane běží dál.",
+      "toast_one": "Zastavena {{count}} aplikace",
+      "toast_other": "Zastaveno {{count}} aplikací"
+    },
+    "reset": {
+      "title": "Resetovat instanci",
+      "description": "Vymaže aplikace, deployments a databáze. Vyžaduje napsané potvrzení.",
+      "action": "Resetovat…",
+      "confirmTitle": "Resetovat tuto instanci?",
+      "confirmDescription": "Toto trvale odstraní každou aplikaci, její deployments a její datové volumes. Tuto akci nelze vrátit zpět. Pro potvrzení napište <0>{{phrase}}</0>.",
+      "confirmAction": "Resetovat instanci",
+      "resetting": "Resetování…",
+      "toast_one": "Reset dokončen — odstraněna {{count}} aplikace",
+      "toast_other": "Reset dokončen — odstraněno {{count}} aplikací"
+    }
+  },
+  "domains": {
+    "fields": {
+      "hostname": "Hostname",
+      "app": "Aplikace",
+      "appOptional": "Aplikace (volitelné)",
+      "service": "Service",
+      "unassigned": "Nepřiřazeno",
+      "selectService": "Vyberte service…"
+    },
+    "dnsRecord": {
+      "type": "Typ",
+      "name": "Název",
+      "value": "Hodnota",
+      "registrarHint": "Používáte Namecheap, GoDaddy nebo Cloudflare? Jejich pole Name/Host je relativní vůči vaší doméně — zadejte <0>{{relative}}</0>, nikoli celý název (vaši doménu doplní automaticky)."
+    },
+    "status": {
+      "checking": "Kontrola",
+      "awaiting_dns": "Čekání na DNS",
+      "misconfigured": "Špatně nakonfigurováno",
+      "issuing": "Vydávání cert",
+      "active": "Platné",
+      "error": "Chyba"
+    },
+    "base": {
+      "heading": "Základní doména",
+      "intro": "Aplikace dostanou automatickou subdomain pod touto doménou (např. <0>my-app.{{example}}</0>). Ponechte prázdné pro vypnutí automatických subdomén.",
+      "none": "Není nakonfigurována žádná základní doména — aplikace nedostanou automatickou subdomain.",
+      "domainLabel": "Doména",
+      "save": "Uložit",
+      "change": "Změnit",
+      "set": "Nastavit základní doménu",
+      "cancel": "Zrušit",
+      "inheritHint": "Ponechte prázdné pro zachování dědění z {{origin}}; zadáním hodnoty ji zde přepíšete.",
+      "source": {
+        "override": {
+          "suffix": "přepsáno zde",
+          "origin": "",
+          "badge": "přepsáno"
+        },
+        "env": {
+          "suffix": "z environment variable VAC_BASE_DOMAIN",
+          "origin": "environment variable VAC_BASE_DOMAIN",
+          "badge": "z env"
+        },
+        "file": {
+          "suffix": "z konfiguračního souboru",
+          "origin": "konfiguračního souboru",
+          "badge": "z configu"
+        },
+        "unset": {
+          "suffix": "",
+          "origin": "",
+          "badge": "nenastaveno"
+        }
+      },
+      "confirm": {
+        "title": "Změnit základní doménu?",
+        "body_one": "{{count}} aplikace přesune svou automatickou subdomain z <0>*.{{from}}</0> na <0>*.{{to}}</0>. Staré URL okamžitě přestanou fungovat.",
+        "body_other": "{{count}} aplikací přesune svou automatickou subdomain z <0>*.{{from}}</0> na <0>*.{{to}}</0>. Staré URL okamžitě přestanou fungovat.",
+        "disabled": "(zakázáno)",
+        "clearWarning": "Vymazáním základní domény přestane fungovat automatická subdomain každé aplikace. Vlastních domén se to nedotkne.",
+        "cancel": "Zrušit",
+        "continue": "Pokračovat"
+      },
+      "toast": {
+        "saved": "Základní doména uložena — routy se sjednocují"
+      }
+    },
+    "add": {
+      "heading": "Přidat doménu",
+      "hint": "Doménu můžete přidat nyní a přiřadit ji k service později — DNS se ověří tak či tak.",
+      "submit": "Přidat doménu",
+      "invalidHostname": "Zadejte platnou doménu, např. app.example.com.",
+      "toast": {
+        "added": "Doména přidána"
+      }
+    },
+    "list": {
+      "heading": "Domény",
+      "empty": "Zatím nejsou nakonfigurovány žádné domény.",
+      "primary": "Primární",
+      "redirectsTo": "Přesměrovává na <0>{{target}}</0>",
+      "managed": "spravováno",
+      "custom": "vlastní",
+      "hide": "Skrýt",
+      "configure": "Nakonfigurovat",
+      "auto": "Auto",
+      "autoTitle": "Spravováno automaticky — změňte slug nebo základní doménu",
+      "edit": "Upravit",
+      "delete": "Smazat",
+      "actionsLabel": "Akce domény",
+      "deleteConfirm": "Smazat {{hostname}}? Její routa bude okamžitě odebrána.",
+      "deleteDialogTitle": "Smazat doménu?",
+      "cancel": "Zrušit",
+      "toast": {
+        "deleted": "Doména smazána"
+      }
+    },
+    "config": {
+      "valid": "Platná konfigurace",
+      "certValid": "· certificate platný, obnovuje se automaticky",
+      "createRecord": "Vytvořte tento záznam u svého DNS poskytovatele, aby <0>{{hostname}}</0> směřoval na tento VPS.",
+      "apexNote": "Apex doména musí používat A record (CNAME na apexu je neplatný).",
+      "cnameAlt": "Případně nasměrujte <0>CNAME</0> z <0>{{hostname}}</0> na <0>{{baseHost}}</0>.",
+      "propagation": "Zobrazení změn DNS zde může trvat až do TTL vašeho záznamu. HTTPS se vydá automaticky během ~60 s, jakmile DNS směřuje na tento server.",
+      "refresh": "Obnovit",
+      "checking": "Kontrola…",
+      "checked": "Zkontrolováno {{time}}"
+    },
+    "cert": {
+      "title": "TLS certificate",
+      "acme": "Vydáno automaticky přes Let’s Encrypt (ACME).",
+      "uploaded": "Obsluhuje se nahraný certificate.",
+      "uploadedAt": "Nahráno {{time}}",
+      "expires": "Vyprší {{date}}",
+      "byoIntro": "Nahrajte vlastní certificate pro wildcard nebo interní host, kde automatické HTTPS nemůže fungovat. VAC jej obsluhuje místo vydávání vlastního; nebude se automaticky obnovovat, takže budete upozorněni před jeho vypršením.",
+      "certLabel": "Certificate (PEM — leaf + chain)",
+      "keyLabel": "Privátní klíč (PEM)",
+      "certPlaceholder": "-----BEGIN CERTIFICATE-----",
+      "keyPlaceholder": "-----BEGIN PRIVATE KEY-----",
+      "upload": "Nahrát certificate",
+      "uploading": "Nahrávání…",
+      "replace": "Nahradit certificate",
+      "clear": "Odebrat a vrátit na ACME",
+      "clearing": "Odebírání…",
+      "selfSignedWarn": "Tento certificate je self-signed — prohlížeče budou návštěvníky varovat, pokud mu nedůvěřují.",
+      "toast": {
+        "uploaded": "Certificate nahrán — {{hostname}} se nyní obsluhuje s ním",
+        "cleared": "Certificate odebrán — {{hostname}} se vrátil na automatické HTTPS"
+      }
+    },
+    "edit": {
+      "title": "Upravit doménu",
+      "description": "Přesměrujte tuto doménu na jinou service nebo aplikaci, nebo ji přejmenujte. Routing se vymění za běhu.",
+      "redirectLabel": "Přesměrovat na (volitelné)",
+      "redirectHint": "Pošlete veškerý provoz tohoto hostu na jinou doménu trvalým (308) přesměrováním — např. nasměrujte <0>www.example.com</0> na <0>example.com</0>. Cíl přesměrování se stane primární doménou. Ponechte prázdné pro přímou obsluhu aplikace.",
+      "cancel": "Zrušit",
+      "save": "Uložit změny",
+      "toast": {
+        "updated": "Doména aktualizována"
+      }
+    },
+    "wildcard": {
+      "intro": "Chcete, aby každá aplikace dostala automatickou subdomain? Přidejte wildcard záznam <0>*.{{baseDomain}}</0> směřující na tento VPS.",
+      "checking": "Kontrola…",
+      "checkingStatus": "Kontrola wildcard DNS…",
+      "recheck": "Zkontrolovat znovu",
+      "ok": "Wildcard DNS nakonfigurováno — každá aplikace dostane automatickou subdomain.",
+      "notResolving": "Zde se zatím nerozlišuje — přidejte výše uvedený záznam a zkontrolujte znovu"
+    },
+    "dnsProvider": {
+      "title": "DNS poskytovatel",
+      "description": "Nechte VAC automaticky vytvořit A record při přidání vlastní domény, místo ručního přidávání u vašeho poskytovatele.",
+      "providerLabel": "Poskytovatel",
+      "providerNone": "Vypnuto (přidávat záznamy ručně)",
+      "providerCloudflare": "Cloudflare",
+      "zoneLabel": "DNS zóna",
+      "zonePlaceholder": "example.com",
+      "tokenLabel": "API token",
+      "tokenPlaceholder": "Cloudflare API token (Zone · DNS · Edit)",
+      "tokenSet": "Token je uložen. Ponechte prázdné pro zachování.",
+      "tokenHelp": "Vytvořte token omezený na tuto zónu s oprávněním DNS edit. Je šifrován v klidu a znovu se nezobrazí.",
+      "proxiedNote": "Záznamy se vytvářejí bez proxy (šedý mrak) — Cloudflare proxy narušuje vydávání certificate ze strany Caddy.",
+      "save": "Uložit",
+      "saving": "Ukládání…",
+      "toast": {
+        "saved": "Nastavení DNS poskytovatele uloženo",
+        "cleared": "DNS automatizace vypnuta"
+      }
+    }
+  }
+}

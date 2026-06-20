@@ -1,0 +1,60 @@
+{
+  "page": {
+    "title": "Add-ony",
+    "description": "Pečlivě vybraný katalog pro tento box: aplikace na jedno kliknutí, které se nasadí včetně záloh, routingu a HTTPS, plus managed databases, které přidáte ke svým aplikacím.",
+    "empty": "Žádné add-ony nejsou k dispozici"
+  },
+  "filter": {
+    "searchPlaceholder": "Hledat add-ony",
+    "searchAria": "Hledat add-ony podle názvu nebo popisu",
+    "all": "Vše",
+    "noMatches": "Žádné add-ony neodpovídají vašemu hledání"
+  },
+  "card": {
+    "installed": "Nainstalováno",
+    "footprint": "~{{mb}} MB",
+    "provisionsDb": "Provisions a managed {{engine}} database",
+    "active_one": "Aktivní · {{count}} database",
+    "active_other": "Aktivní · {{count}} databases",
+    "shared": "Jedna sdílená instance obsluhuje všechny aplikace",
+    "perApp": "Provisioned pro každou aplikaci zvlášť"
+  },
+  "installed": {
+    "open": "Otevřít",
+    "uninstallAria": "Odinstalovat {{name}}",
+    "confirmTitle": "Odinstalovat {{name}}?",
+    "confirmDescription": "Tímto odeberete aplikaci a trvale smažete její data — její containers a volumes. Tuto akci nelze vrátit zpět.",
+    "confirmDescriptionWithDb": "Tímto odeberete aplikaci a trvale smažete její data — její containers a volumes, plus její managed {{engine}} database. Tuto akci nelze vrátit zpět.",
+    "cancel": "Zrušit",
+    "uninstall": "Odinstalovat",
+    "toastUninstalled": "Odinstalováno {{name}}"
+  },
+  "addToApp": {
+    "trigger": "Přidat k aplikaci",
+    "noApps": "Zatím žádné aplikace",
+    "title": "Přidat {{name}} k aplikaci",
+    "appLabel": "Aplikace",
+    "appPlaceholder": "Vyberte aplikaci",
+    "warningShared": "První {{name}} database spustí na tomto boxu sdílenou instance (~{{mb}} MB). Další databases ji znovu využijí.",
+    "warningPerApp": "Využije přibližně {{mb}} MB RAM na tomto boxu.",
+    "note": "VAC vloží connection string jako env var a naplánuje noční zálohu. Pro načtení aplikaci znovu nasaďte.",
+    "cancel": "Zrušit",
+    "provision": "Provision",
+    "manage": "Spravovat",
+    "toastProvisioning": "Probíhá provisioning {{name}} pro aplikaci"
+  },
+  "install": {
+    "trigger": "Nainstalovat",
+    "title": "Nainstalovat {{name}}",
+    "appName": "Název aplikace",
+    "credAutoGen": "Ponechte prázdné pro automatické vygenerování",
+    "warning": "Běží na tomto boxu a využije přibližně {{mb}} MB RAM.",
+    "warningWithDb": "Běží na tomto boxu a využije přibližně {{mb}} MB RAM, plus managed {{engine}} database.",
+    "cancel": "Zrušit",
+    "install": "Nainstalovat",
+    "secretsTitle": "Uložte si tyto secrets",
+    "secretsHint": "Nainstalováno. Tyto údaje se zobrazí pouze jednou a nelze je obnovit — před zavřením si každý zkopírujte na bezpečné místo.",
+    "secretsDone": "Hotovo",
+    "toastInstalling": "Add-on se instaluje"
+  }
+}

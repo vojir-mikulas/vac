@@ -1,0 +1,43 @@
+{
+  "page": {
+    "title": "Deployments",
+    "description": "Build aktivita napříč všemi aplikacemi.",
+    "stats": {
+      "deploysToday": "Deploye dnes",
+      "deploysTodaySub": "spuštěno",
+      "successRate": "Úspěšnost",
+      "successRateSub": "nedávné deploye",
+      "avgBuildTime": "Průměrný build time",
+      "avgBuildTimeSub": "úspěšné",
+      "inProgress": "Probíhá",
+      "inProgressSub": "běží nyní"
+    },
+    "timeline": "Časová osa",
+    "timelineTruncated": "Zobrazeno posledních {{shown}} z {{total}} deploymentů.",
+    "table": {
+      "app": "Aplikace",
+      "commit": "Commit",
+      "status": "Stav"
+    },
+    "deployFallback": "Deploy",
+    "empty": {
+      "title": "Zatím žádné deploymenty",
+      "description": "Deploye napříč všemi aplikacemi se zobrazí zde."
+    }
+  },
+  "queue": {
+    "inProgress": "Probíhá",
+    "queued": "Ve frontě",
+    "rollbackBadge": "rollback",
+    "latestCommit": "poslední commit",
+    "startedAt": "spuštěno {{time}}",
+    "queuedAt": "ve frontě {{time}}"
+  },
+  "cancel": {
+    "ariaLabel": "Zrušit deploy aplikace {{app}}",
+    "title": "Zrušit tento deploy?",
+    "description": "Zastaví deploy aplikace {{app}}. Aktuálně běžící verze nadále funguje — zrušení nikdy neshodí to, co už je nasazené.",
+    "keepDeploying": "Pokračovat v deployi",
+    "confirm": "Zrušit deploy"
+  }
+}

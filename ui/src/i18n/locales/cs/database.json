@@ -1,0 +1,55 @@
+{
+  "page": {
+    "title": "Database",
+    "description": "Každá database, kterou VAC na tomto stroji spravuje — využití disku, backupy a aplikace, která ji vlastní."
+  },
+  "stats": {
+    "engines": "Enginy",
+    "enginesSub": "běží na tomto stroji",
+    "databases": "Databases",
+    "databasesSub": "spravované VAC",
+    "managedDisk": "Spravovaný disk",
+    "managedDiskSub": "napříč všemi databases",
+    "hostDisk": "Host disk",
+    "hostDiskSub": "z {{size}}"
+  },
+  "empty": {
+    "title": "Žádné spravované databases",
+    "description": "Přidejte database z karty Databases libovolné aplikace — VAC ji vytvoří, vloží connection string a naplánuje noční backup.",
+    "action": "Procházet add-ony"
+  },
+  "engine": {
+    "totalDisk": "Celkový disk:",
+    "unknown": " · {{count}} neznámé",
+    "sharedInstance": "Sdílená instance {{engine}} · ~{{footprint}} MB",
+    "noDatabases": "Na tomto enginu zatím nejsou žádné databases.",
+    "mariadbNote": "Velikosti jsou vypočítány z <0>information_schema</0> a jsou přibližné (InnoDB zaokrouhluje alokaci na extenty)."
+  },
+  "table": {
+    "database": "Database",
+    "app": "Aplikace",
+    "size": "Velikost",
+    "status": "Stav",
+    "lastBackup": "Poslední backup",
+    "noBackup": "žádný"
+  },
+  "vacCard": {
+    "systemBadge": "Systémová database VAC",
+    "description": "Vlastní úložiště control-plane VAC. Uživatelské Postgres databases ve výchozím nastavení běží uvnitř této stejné instance — této se nedotýkejte.",
+    "lastBackup": "Poslední backup {{time}}",
+    "noBackup": "Pro control-plane database není nakonfigurován žádný backup."
+  },
+  "controlPlane": {
+    "engine": "Engine",
+    "engineSub": "sdílená instance",
+    "diskUsed": "Využitý disk",
+    "diskUsedSub": "z {{size}}",
+    "connections": "Connections",
+    "connectionsSub": "max_connections",
+    "disk": "Disk",
+    "diskUsage": "{{used}} z {{total}} využito na host volume.",
+    "diskLoading": "Načítání využití host volume…",
+    "about": "O databázi",
+    "aboutDescription": "VAC ukládá svůj interní stav v úsporném sdíleném Postgres vyladěném pro malé VPS hosty. Povolte spravované služby pro vytvoření databases pro vaše vlastní aplikace a uvidíte je zde."
+  }
+}

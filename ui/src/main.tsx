@@ -5,10 +5,10 @@ import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { LazyMotion, MotionConfig, domAnimation } from 'motion/react'
 
 import './index.css'
-// Initialize the i18n singleton before anything renders. English is bundled, so
-// this resolves synchronously today; the <Suspense> below covers lazy locale
-// loads once additional languages ship.
-import './i18n'
+// Initialize the i18n singleton before anything renders. English is bundled; a
+// stored non-English choice (e.g. cs) is code-split, so bootstrap() awaits
+// `i18nReady` below to load it before the first paint and avoid an English flash.
+import { i18nReady } from './i18n'
 import { routeTree } from './routeTree.gen'
 import { registerUnauthorizedHandler } from '@/lib/api/client'
 import { ThemeProvider } from '@/components/theme/theme-provider'
@@ -66,6 +66,10 @@ async function bootstrap() {
     const { startMocks } = await import('./mocks/start')
     startMocks()
   }
+
+  // Wait for i18n to resolve the active language and load its catalog so the
+  // first render is already in the user's language.
+  await i18nReady
 
   const rootEl = document.getElementById('root')
   if (!rootEl) throw new Error('#root element not found')

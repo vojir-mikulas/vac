@@ -1,0 +1,24 @@
+{
+  "heading": "Začít s VAC",
+  "subheading": "Pár kroků k vašemu prvnímu živému deploy. Hotovo {{done}} z {{total}}.",
+  "dismiss": "Skrýt onboarding",
+  "steps": {
+    "baseDomain": {
+      "title": "Nastavte si základní doménu",
+      "description": "Apps pod ní získají automatickou subdoménu (např. my-app.example.com).",
+      "action": "Otevřít nastavení",
+      "aRecordHint": "Nasměrujte A záznam na tento server:",
+      "copyIp": "Kopírovat IP"
+    },
+    "firstApp": {
+      "title": "Nasaďte svou první app",
+      "description": "Vložte URL repository, vyberte branch a doménu a spusťte deploy.",
+      "action": "Nová app"
+    },
+    "twoFactor": {
+      "title": "Zabezpečte svůj účet pomocí 2FA",
+      "description": "Přidejte k heslu časově omezený jednorázový kód — doporučeno pro server přístupný z internetu.",
+      "action": "Zapnout 2FA"
+    }
+  }
+}

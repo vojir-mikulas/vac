@@ -1,0 +1,176 @@
+{
+  "actions": {
+    "copy": "Kopírovat",
+    "copied": "Zkopírováno",
+    "reload": "Znovu načíst",
+    "backToApps": "Zpět na aplikace"
+  },
+  "toast": {
+    "copyFailed": "Kopírování selhalo — označte text a zkopírujte jej ručně."
+  },
+  "notFound": {
+    "title": "Stránka nenalezena",
+    "description": "Stránka, kterou hledáte, neexistuje."
+  },
+  "error": {
+    "title": "Něco se pokazilo",
+    "description": "Došlo k neočekávané chybě."
+  },
+  "errorState": {
+    "title": "Nepodařilo se to načíst",
+    "description": "Požadavek selhal. Backend může být nedostupný.",
+    "retry": "Zkusit znovu"
+  },
+  "connection": {
+    "live": "Živě",
+    "connecting": "Připojování",
+    "reconnecting": "Opětovné připojování",
+    "disconnected": "Odpojeno"
+  },
+  "stepUp": {
+    "title": "Potvrďte pomocí dvoufaktorového ověření",
+    "description": "Tato akce je citlivá. Pro pokračování zadejte kód z vaší authenticator aplikace.",
+    "codeLabel": "Ověřovací kód",
+    "codePlaceholder": "123456",
+    "recoveryLabel": "Záložní kód",
+    "recoveryPlaceholder": "xxxxx-xxxxx",
+    "useRecovery": "Použít místo toho záložní kód",
+    "useAuthenticator": "Použít místo toho kód z authenticator aplikace",
+    "submit": "Ověřit",
+    "cancel": "Zrušit",
+    "error": "Ověření selhalo. Zkontrolujte kód a zkuste to znovu."
+  },
+  "nav": {
+    "aria": "Hlavní",
+    "apps": "Aplikace",
+    "deployments": "Deployments",
+    "activity": "Aktivita",
+    "logs": "Logs",
+    "security": "Zabezpečení",
+    "addons": "Doplňky",
+    "database": "Databáze",
+    "backups": "Backups",
+    "storage": "Úložiště",
+    "settings": "Nastavení"
+  },
+  "badge": {
+    "active": "{{count}} aktivní",
+    "issuesNeedAttention_one": "{{count}} problém vyžaduje pozornost",
+    "issuesNeedAttention_other": "{{count}} problémů vyžaduje pozornost",
+    "warnings_one": "{{count}} varování",
+    "warnings_other": "{{count}} varování",
+    "backupsFailed_one": "{{count}} backup nedávno selhal",
+    "backupsFailed_other": "{{count}} backupů nedávno selhalo"
+  },
+  "host": {
+    "thisHost": "Tento host",
+    "host": "Host",
+    "cpu": "CPU",
+    "ram": "RAM",
+    "disk": "Disk",
+    "usage": "Využití {{label}}"
+  },
+  "crumbs": {
+    "apps": "Aplikace",
+    "new": "Nová",
+    "deployments": "Deployments",
+    "database": "Databáze",
+    "logs": "Logs",
+    "settings": "Nastavení",
+    "overview": "Přehled",
+    "services": "Služby",
+    "deploys": "Deploys",
+    "environment": "Environment"
+  },
+  "topbar": {
+    "openMenu": "Otevřít menu",
+    "navigation": "Navigace",
+    "breadcrumb": "Drobečková navigace",
+    "search": "Hledat…",
+    "searchAria": "Hledat — ⌘K",
+    "accountMenu": "Menu účtu",
+    "account": "Účet",
+    "signOut": "Odhlásit se"
+  },
+  "theme": {
+    "theme": "Motiv",
+    "light": "Světlý",
+    "dark": "Tmavý",
+    "system": "Systémový"
+  },
+  "command": {
+    "placeholder": "Hledat aplikace, deploys, nastavení…",
+    "empty": "Nenalezeny žádné výsledky.",
+    "navigate": "Přejít na",
+    "apps": "Aplikace",
+    "actions": "Akce",
+    "app": "Aplikace: {{name}}",
+    "newApp": "Nová aplikace",
+    "cancel": "Zrušit",
+    "toggleTheme": "Přepnout motiv",
+    "restartControlPlane": "Restartovat control plane",
+    "stopAllApps": "Zastavit všechny aplikace",
+    "deployNow": "Deploynout nyní",
+    "restartStack": "Restartovat aplikaci",
+    "stopStack": "Zastavit aplikaci",
+    "startStack": "Spustit aplikaci",
+    "settings": {
+      "appearance": "Nastavení vzhledu",
+      "account": "Nastavení účtu",
+      "apiTokens": "API tokeny",
+      "notifications": "Nastavení notifikací",
+      "instance": "Nastavení instance",
+      "domains": "Nastavení domén",
+      "deployments": "Nastavení deployments",
+      "danger": "Nebezpečná zóna"
+    },
+    "tabs": {
+      "overview": "Přehled",
+      "services": "Služby",
+      "deploys": "Deploys",
+      "previews": "Náhledy",
+      "logs": "Logs",
+      "jobs": "Úlohy",
+      "environment": "Environment",
+      "backups": "Backups",
+      "databases": "Databáze",
+      "settings": "Nastavení aplikace"
+    },
+    "confirm": {
+      "restartControlPlane": {
+        "title": "Restartovat control plane?",
+        "description": "Dashboard API se na chvíli odpojí a znovu připojí. Běžící aplikace zůstanou v provozu.",
+        "action": "Restartovat"
+      },
+      "stopAllApps": {
+        "title": "Zastavit všechny aplikace?",
+        "description": "Každá aplikace na tomto hostu se zastaví, dokud ji znovu nespustíte.",
+        "action": "Zastavit vše"
+      },
+      "deployNow": {
+        "title": "Deploynout {{name}}?",
+        "description": "Sestaví a deployne nejnovější commit ze sledované branch.",
+        "action": "Deploynout"
+      },
+      "restartStack": {
+        "title": "Restartovat {{name}}?",
+        "description": "Restartuje každou službu v této aplikaci. Krátké přerušení je očekávané.",
+        "action": "Restartovat"
+      },
+      "stopStack": {
+        "title": "Zastavit {{name}}?",
+        "description": "Zastaví každou službu v této aplikaci, dokud ji znovu nespustíte.",
+        "action": "Zastavit"
+      }
+    },
+    "toast": {
+      "deployTriggered": "Deploy spuštěn",
+      "start": "Spouštění aplikace…",
+      "stop": "Zastavování aplikace…",
+      "restart": "Restartování aplikace…",
+      "restartControlPlane": "Restartování control plane…",
+      "stoppedAll": "Zastavena {{count}} aplikace",
+      "stoppedAll_other": "Zastaveno {{count}} aplikací"
+    }
+  }
+}

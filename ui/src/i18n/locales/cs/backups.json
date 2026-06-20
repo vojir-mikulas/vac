@@ -1,0 +1,54 @@
+{
+  "page": {
+    "title": "Backupy",
+    "description": "Stav backupů napříč všemi aplikacemi. Konfigurace a úpravy provádějte na záložce Backupy u každé aplikace."
+  },
+  "stats": {
+    "configs": "Nakonfigurováno",
+    "configsSub": "backup úloh",
+    "failed": "Selhalo (7 d)",
+    "failedSub": "běhů za posledních 7 dní",
+    "uncovered": "Nechráněno",
+    "uncoveredSub": "služeb s volumes",
+    "localDisk": "Lokální disk",
+    "localDiskSub": "uloženo na tomto stroji"
+  },
+  "table": {
+    "title": "Backup úlohy",
+    "app": "Aplikace",
+    "service": "Služba",
+    "schedule": "Schedule",
+    "destination": "Cíl",
+    "lastRun": "Poslední běh",
+    "actions": "Akce"
+  },
+  "destinationS3": "S3",
+  "destinationLocal": "Lokální",
+  "weeklySummary": "Týdně v {{day}} v {{at}} UTC",
+  "dailySummary": "Denně v {{at}} UTC",
+  "paused": "pozastaveno",
+  "backupNow": "Zálohovat nyní",
+  "backupStarted": "Backup spuštěn",
+  "download": "Stáhnout",
+  "edit": "Upravit",
+  "lastRunNever": "nikdy",
+  "empty": {
+    "title": "Žádné backupy nenakonfigurovány",
+    "description": "Naplánujte dump pro stavovou službu na záložce Backupy její aplikace — objeví se zde.",
+    "action": "Přejít na vaše aplikace"
+  },
+  "uncovered": {
+    "title": "Nechráněné služby",
+    "description": "Tyto služby mají perzistentní volumes, ale nemají nakonfigurovaný backup.",
+    "configure": "Konfigurovat"
+  },
+  "days": {
+    "0": "Neděle",
+    "1": "Pondělí",
+    "2": "Úterý",
+    "3": "Středa",
+    "4": "Čtvrtek",
+    "5": "Pátek",
+    "6": "Sobota"
+  }
+}

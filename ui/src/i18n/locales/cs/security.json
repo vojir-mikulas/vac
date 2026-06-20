@@ -1,0 +1,129 @@
+{
+  "page": {
+    "title": "Zabezpečení",
+    "description": "Stav zabezpečení a signály provozu s ručním přepsáním fail2ban."
+  },
+  "posture": {
+    "heading": "Stav zabezpečení",
+    "empty": {
+      "title": "Žádné kontroly stavu",
+      "description": "Kontrolní seznam stavu zabezpečení není k dispozici."
+    },
+    "summary": {
+      "needAttention_one": "{{count}} problém vyžaduje pozornost",
+      "needAttention_other": "{{count}} problémů vyžaduje pozornost",
+      "warnings_one": "{{count}} varování",
+      "warnings_other": "{{count}} varování",
+      "allPassing": "Všechny kontroly prošly",
+      "checksPassing_one": "{{count}} kontrola prošla",
+      "checksPassing_other": "{{count}} kontrol prošlo",
+      "errors_one": "{{count}} chyba",
+      "errors_other": "{{count}} chyb"
+    },
+    "passing": {
+      "label_one": "{{count}} úspěšná kontrola",
+      "label_other": "{{count}} úspěšných kontrol"
+    }
+  },
+  "traffic": {
+    "heading": "Provoz",
+    "windowLabel": "okno {{seconds}} s",
+    "live": "živě",
+    "you": "Vy",
+    "youTitle": "Toto je IP, ze které jste připojeni",
+    "filterByIp": "Zobrazit pouze nedávné požadavky z této IP",
+    "stats": {
+      "trackedIps": "Sledované IP",
+      "requests": "Požadavky",
+      "errors": "Chyby (4xx/5xx)",
+      "recentAnomalies": "Nedávné anomálie",
+      "thisProcess": "tento proces"
+    },
+    "topTalkers": {
+      "heading": "Nejaktivnější zdroje",
+      "sourceIp": "Zdrojová IP",
+      "reqs": "Pož.",
+      "errors": "Chyby",
+      "empty": {
+        "title": "Žádný provoz",
+        "description": "V aktuálním okně nebyly zaznamenány žádné požadavky."
+      }
+    },
+    "anomalies": {
+      "heading": "Nedávné anomálie",
+      "empty": {
+        "title": "Žádné anomálie",
+        "description": "Nebyly zjištěny žádné anomálie provozu."
+      },
+      "notAlerted": "Bez upozornění",
+      "notAlertedTitle": "Tento zdroj je na allowlistu, takže porušení je zobrazeno zde, ale nebylo odesláno žádné oznámení."
+    },
+    "recentRequests": {
+      "heading": "Nedávné požadavky",
+      "status": "Stav",
+      "method": "Metoda",
+      "hostPath": "Host / cesta",
+      "sourceIp": "Zdrojová IP",
+      "when": "Kdy",
+      "filtered_one": "Zobrazuje se {{count}} požadavek z <0>{{ip}}</0>",
+      "filtered_other": "Zobrazuje se {{count}} požadavků z <0>{{ip}}</0>",
+      "clearFilter": "Vymazat",
+      "noneForIp": "V aktuálním okně nejsou z této IP žádné nedávné požadavky.",
+      "empty": {
+        "title": "Zatím žádné požadavky",
+        "description": "Na proxy zatím nedorazily žádné požadavky. Pokud zůstane prázdné, zkontrolujte, zda je povolen access log Caddy (viz panel Stav zabezpečení)."
+      }
+    }
+  },
+  "fail2ban": {
+    "heading": "fail2ban",
+    "staleEmpty": {
+      "title": "Host agent nehlásí stav",
+      "description": "Bezpečnostní agent hostitele nedávno neaktualizoval data, takže stav fail2ban může být zastaralý. Zkontrolujte časovač vac-security-agent na hostiteli."
+    },
+    "notDetected": {
+      "title": "fail2ban nebyl zjištěn",
+      "description": "fail2ban není na tomto hostiteli nainstalován nebo čitelný — doporučeno na stroji vystaveném do internetu pro automatický ban pokusů o brute force. Viz panel Stav zabezpečení."
+    },
+    "noJails": {
+      "title": "Žádné jails",
+      "description": "fail2ban běží, ale nehlásí žádné jails."
+    },
+    "banned": "{{currentlyBanned}} zabanováno · {{totalBanned}} celkem",
+    "ban": {
+      "button": "Zabanovat IP",
+      "title": "Zabanovat IP address",
+      "description": "fail2ban už automaticky banuje narušitele. Toto je ruční přepsání — okamžitě zabanujte IP ve zvoleném jail.",
+      "ipLabel": "IP address",
+      "ipPlaceholder": "např. 203.0.113.42",
+      "jailLabel": "Jail",
+      "submit": "Zabanovat IP",
+      "submitting": "Banování…",
+      "successQueued": "Ban zařazen do fronty — projeví se do ~60 s.",
+      "success": "{{ip}} zabanována v {{jail}}.",
+      "invalid": "Zadejte platnou IP address."
+    }
+  },
+  "monitoringOff": {
+    "title": "Monitorování vypnuto",
+    "description": "Bezpečnostní host agent v režimu jen pro čtení není povolen, takže VAC nevidí stav hostitele. Zapněte jej příkazem `vac security-agent on`."
+  },
+  "hostSource": {
+    "viaHostAgent": "host agent",
+    "viaHost": "host",
+    "via": "přes {{label}}",
+    "updated": " · aktualizováno {{time}}"
+  },
+  "firewall": {
+    "heading": "Firewall",
+    "staleEmpty": {
+      "title": "Host agent nehlásí stav",
+      "description": "Bezpečnostní agent hostitele nedávno neaktualizoval data, takže stav firewallu může být zastaralý. Zkontrolujte časovač vac-security-agent na hostiteli."
+    },
+    "notDetected": {
+      "title": "Žádný firewall nezjištěn",
+      "description": "Na tomto hostiteli není čitelná žádná sada pravidel ufw / nftables. Provozovat stroj vystavený do internetu bez firewallu je nebezpečné — povolte jej, nebo se odhlaste pomocí <0>vac security-check firewall off</0>."
+    },
+    "noRules": "Nehlášena žádná pravidla."
+  }
+}

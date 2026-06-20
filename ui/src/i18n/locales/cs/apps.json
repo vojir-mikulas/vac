@@ -1,0 +1,304 @@
+{
+  "actions": {
+    "import": "Importovat",
+    "newApp": "Nová aplikace",
+    "cancel": "Zrušit",
+    "back": "Zpět",
+    "continue": "Pokračovat"
+  },
+  "dashboard": {
+    "title": "Aplikace",
+    "summary_one": "{{count}} aplikace · {{running}} běží",
+    "summary_other": "{{count}} aplikací · {{running}} běží",
+    "filterPlaceholder": "Filtrovat aplikace…",
+    "filterAria": "Filtrovat aplikace",
+    "filters": {
+      "all": "Vše",
+      "running": "Běží",
+      "issues": "Problémy",
+      "stopped": "Zastaveno"
+    },
+    "stats": {
+      "runningApps": "Běžící aplikace",
+      "hostCpu": "Host CPU",
+      "allCores": "napříč všemi jádry",
+      "cpuTrendAria": "Trend Host CPU za posledních pár minut",
+      "needsAttention": "Vyžaduje pozornost",
+      "issuesSub_one": "{{count}} aplikace vyžaduje kontrolu",
+      "issuesSub_other": "{{count}} aplikací vyžaduje kontrolu",
+      "allHealthy": "Všechny aplikace jsou v pořádku",
+      "traffic24h": "Provoz · 24 h",
+      "trafficSub": "{{errPct}} chyb · {{egress}} ven",
+      "noTraffic": "Zatím žádné požadavky",
+      "trafficTrendAria": "Objem požadavků celého boxu za posledních 24 hodin",
+      "trafficTrendValue_one": "{{value}} req",
+      "trafficTrendValue_other": "{{value}} reqs",
+      "deploys": "Deploye",
+      "deploysSub": "{{building}} se builduje · {{queued}} ve frontě",
+      "lastDeploy": "Poslední deploy {{time}}"
+    },
+    "table": {
+      "application": "Aplikace",
+      "status": "Stav",
+      "compose": "Compose",
+      "updated": "Aktualizováno",
+      "noMatch": "Žádná aplikace neodpovídá aktuálnímu filtru.",
+      "installedFrom": "Nainstalováno z {{name}}",
+      "addonFallback": "add-on",
+      "previewBadge": "Náhled"
+    },
+    "rowActions": {
+      "menuAria": "Akce pro {{name}}",
+      "open": "Otevřít",
+      "start": "Spustit",
+      "restart": "Restartovat",
+      "stop": "Zastavit",
+      "delete": "Smazat aplikaci",
+      "uninstall": "Odinstalovat",
+      "started": "{{name}} spuštěna",
+      "restarted": "Restartuje se {{name}}",
+      "stopped": "{{name}} zastavena",
+      "deleted": "{{name}} smazána",
+      "confirm": {
+        "title": "Smazat {{name}}?",
+        "uninstallTitle": "Odinstalovat {{name}}?",
+        "description": "Tímto trvale odstraníte aplikaci, její služby, konfiguraci a datové volumy — včetně případné spravované databáze, kterou vlastní. Tuto akci nelze vrátit zpět.",
+        "cancel": "Zrušit",
+        "confirm": "Smazat"
+      }
+    },
+    "empty": {
+      "title": "Zatím žádné aplikace",
+      "description": "Připojte repository a nasaďte svou první aplikaci, nebo importujte existující spec vac.app.yaml."
+    },
+    "budget": {
+      "heading": "Rozpočet containerů",
+      "hostRam": "Host RAM",
+      "disk": "Disk",
+      "allocatedRam": "Alokovaná RAM",
+      "overCommitted": "Aplikace si rezervovaly více RAM, než má box k dispozici — over-committed.",
+      "unbudgeted_one": "{{count}} aplikace bez limitu RAM není v rozpočtu.",
+      "unbudgeted_other": "{{count}} aplikací bez limitu RAM není v rozpočtu.",
+      "requestRate": "Frekvence požadavků",
+      "reqPerSecond": "{{rate}} req/s"
+    },
+    "capacity": {
+      "view": "Rozpis po aplikacích",
+      "title": "Kapacita RAM",
+      "description": "Vyhrazený limit vs. aktuální využití na aplikaci. Vyhrazená RAM zahrnuje zastavené aplikace; aplikace bez limitu nejsou v rozpočtu.",
+      "stopped": "Zastaveno",
+      "unbudgeted": "Bez limitu",
+      "loading": "Načítání využití…",
+      "empty": "Zatím žádné aplikace."
+    }
+  },
+  "new": {
+    "steps": {
+      "source": "Zdroj",
+      "build": "Build",
+      "domain": "Doména",
+      "env": "Proměnné",
+      "deploy": "Deploy"
+    },
+    "backToApps": "Zpět na aplikace",
+    "title": "Nová aplikace",
+    "subtitle": "Připojte Git repository — VAC se postará o build, deploy, HTTPS a routing.",
+    "createOnly": "Vytvořit aplikaci",
+    "createAndDeploy": "Vytvořit a nasadit",
+    "source": {
+      "title": "Připojení repository",
+      "subtitle": "Vložte Git URL. Pro privátní repozitáře VAC vytvoří deploy key jen pro čtení.",
+      "repoUrl": "URL repository",
+      "repoHint": "HTTPS pro veřejné repozitáře, nebo SSH (git@…) pro privátní repozitáře s deploy key.",
+      "repoInvalid": "Zadejte platnou Git URL — HTTPS (https://…) nebo SSH (git@host:owner/repo).",
+      "portMissing": "Není nastaven port — tento image nebude dostupný přes HTTP. Nastavte naslouchající port containeru, abyste jej zpřístupnili; nechte prázdné jen pro ne-HTTP worker.",
+      "needRepo": "Zadejte URL repository",
+      "needImage": "Zadejte referenci image",
+      "needName": "Zadejte název aplikace",
+      "slugTakenTitle": "Tento název je již obsazený",
+      "appName": "Název aplikace",
+      "appNameFallback": "my-app",
+      "branch": "Branch",
+      "slugPreview": "Nasadí se jako <0>{{slug}}</0>",
+      "slugTaken": "Aplikace s názvem <0>{{slug}}</0> už existuje. Zvolte jiný název.",
+      "slugInvalid": "Použijte písmena, číslice a pomlčky — alespoň jedno písmeno nebo číslici.",
+      "imageTitle": "Nasadit prebuilt image",
+      "imageSubtitle": "Nasměrujte VAC na publikovaný image. Stáhne jej a spustí — žádné repo, žádný build.",
+      "imageRef": "Reference image",
+      "imageRefHint": "např. ghcr.io/me/app:1.4.2 nebo nginx:alpine. Přesunutý tag se při deployi stáhne znovu; @sha256 digest je zafixovaný.",
+      "internalPort": "Interní port",
+      "internalPortHint": "Port, na kterém naslouchá váš container, zpřístupněný edge VAC. Nechte prázdné pro ne-HTTP worker.",
+      "registry": {
+        "toggle": "Privátní registry",
+        "hint": "Přidejte přihlašovací údaje, pokud je image v privátním registry. Ukládá se zašifrovaně; už se znovu nezobrazí.",
+        "host": "Host registry",
+        "hostHint": "např. ghcr.io. Pro Docker Hub nechte prázdné.",
+        "username": "Uživatelské jméno",
+        "password": "Heslo nebo token"
+      }
+    },
+    "build": {
+      "title": "Konfigurace buildu",
+      "subtitle": "Zvolte, jak má VAC tento repozitář buildovat, nebo nechte autodetekci.",
+      "imageNote": "Prebuilt image — žádný build krok. VAC image stáhne a spustí."
+    },
+    "domain": {
+      "title": "Doména",
+      "subtitle": "Volitelné. Nasměrujte vlastní doménu na tento VPS hned, aby se DNS mohlo propagovat, zatímco se vaše aplikace builduje.",
+      "label": "Vlastní doména",
+      "hint": "Doména nebo subdomain, kterou vlastníte, např. app.example.com. Pro použití generované URL nechte prázdné.",
+      "invalid": "Zadejte platnou doménu, např. app.example.com (bez http://, portu nebo cesty).",
+      "skip": "Žádná vlastní doména — vaše aplikace bude dostupná na generované URL. Doménu můžete přidat později na záložce Domény.",
+      "bindNote": "Doménu nyní zaregistrujeme a začneme kontrolovat DNS. Jakmile bude váš první deploy živý, navažte ji na službu v hubu Domény — certifikáty se vydávají při prvním požadavku.",
+      "addFailed": "Doménu se nepodařilo zaregistrovat — přidejte ji později na záložce Domény."
+    },
+    "env": {
+      "title": "Environment variables",
+      "subtitle": "Volitelné. Nastavte, co vaše aplikace potřebuje před prvním deployem — načtěte .env.example z repozitáře, vložte .env, nebo je přidejte ručně.",
+      "loadExample": "Načíst z .env.example",
+      "paste": "Vložit .env",
+      "addVariable": "Přidat proměnnou",
+      "loaded_one": "Načtena {{count}} proměnná z {{file}}",
+      "loaded_other": "Načteno {{count}} proměnných z {{file}}",
+      "pasted_one": "Přidána {{count}} proměnná",
+      "pasted_other": "Přidáno {{count}} proměnných",
+      "notFound": "V tomto repozitáři nebyl nalezen žádný .env.example — přidejte proměnné ručně níže.",
+      "unreadable": {
+        "title": "Repository se nepodařilo přečíst",
+        "body": "Vypadá to na privátní repo. Jeho deploy key zatím neexistuje, takže .env.example zde nelze přečíst. Přidejte proměnné nyní ručně, nebo je načtěte na záložce Proměnné aplikace, jakmile bude deploy key zaregistrovaný."
+      },
+      "loadFailed": "Nepodařilo se přečíst .env.example",
+      "saveFailed": "Aplikace vytvořena, ale uložení proměnných selhalo",
+      "empty": "Zatím žádné proměnné — načtěte je, vložte nebo přidejte.",
+      "hint": "Secrety (ikona zámku) se ukládají zašifrovaně a už se znovu nezobrazí. Můžete je upravit později na záložce Proměnné aplikace.",
+      "keyPlaceholder": "KLÍČ",
+      "valuePlaceholder": "hodnota",
+      "keyAria": "Název proměnné, řádek {{index}}",
+      "valueAria": "Hodnota, řádek {{index}}",
+      "makeSecret": "Označit jako secret (jen pro zápis)",
+      "makePlain": "Označit jako prostý text",
+      "delete": "Odebrat proměnnou",
+      "pastePrompt": "Vložte obsah souboru .env. Prázdné řádky a komentáře # se ignorují.",
+      "pastePlaceholder": "DATABASE_URL=postgres://…\nAPI_KEY=…",
+      "autoMark": "Automaticky označit klíče vypadající jako přihlašovací údaje jako secret",
+      "pasteParsed_one": "{{count}} proměnná zpracována",
+      "pasteParsed_other": "{{count}} proměnných zpracováno",
+      "pasteImport_one": "Přidat {{count}} proměnnou",
+      "pasteImport_other": "Přidat {{count}} proměnných"
+    },
+    "review": {
+      "title": "Kontrola a deploy",
+      "subtitle": "Vytvořte aplikaci, ověřte přístup a pak spusťte první deploy — vše tady.",
+      "name": "Název",
+      "source": "Zdroj",
+      "branch": "Branch",
+      "build": "Build",
+      "domain": "Doména",
+      "env": "Proměnné",
+      "envCount_one": "{{count}} proměnná",
+      "envCount_other": "{{count}} proměnných",
+      "image": "Image",
+      "port": "Port"
+    },
+    "summary": {
+      "auto": "Autodetekce",
+      "compose": "Compose ({{path}})",
+      "dockerfile": "Dockerfile ({{path}})",
+      "framework": "Framework: {{name}}",
+      "static": "Static ({{path}})",
+      "image": "Image ({{ref}})"
+    },
+    "notices": {
+      "created": "{{name}} vytvořena",
+      "sshKey": {
+        "title": "Tento SSH repozitář potřebuje deploy key",
+        "body": "Nejprve vytvořte aplikaci — VAC poté vygeneruje deploy key jen pro čtení. Přidejte jej na svůj Git host a otestujte připojení, abyste odemkli první deploy."
+      },
+      "addKey": {
+        "title": "Přidejte tento deploy key na svůj Git host",
+        "body": "Zkopírujte klíč níže a přidejte jej jako deploy key jen pro čtení na svůj Git host (Deploy keys / SSH keys s přístupem pro čtení). Poté spusťte test připojení — deploy se odemkne, jakmile uspěje."
+      }
+    },
+    "connect": {
+      "reach": "Před prvním deployem ověřte, že VAC dosáhne na <0>{{url}}</0>.",
+      "testConnection": "Otestovat připojení",
+      "testFailed": "Test připojení selhal",
+      "succeeded": "Připojení úspěšné",
+      "connectionFailed": "Připojení selhalo",
+      "goToApp": "Přejít na aplikaci",
+      "deployNow": "Nasadit nyní",
+      "deployLocked": "Přidejte deploy key na svůj Git host a projděte testem připojení, abyste odemkli deploy."
+    },
+    "toast": {
+      "created": "Aplikace vytvořena",
+      "deployTriggered": "Deploy spuštěn"
+    },
+    "sourceType": {
+      "heading": "Jak chcete nasazovat?",
+      "git": {
+        "label": "Git repository",
+        "hint": "Naklonovat a buildovat ze zdroje"
+      },
+      "image": {
+        "label": "Container image",
+        "hint": "Spustit prebuilt image"
+      }
+    }
+  },
+  "buildSource": {
+    "kinds": {
+      "auto": {
+        "label": "Autodetekce",
+        "hint": "compose → Dockerfile → framework"
+      },
+      "compose": {
+        "label": "Compose",
+        "hint": "docker compose stack"
+      },
+      "dockerfile": {
+        "label": "Dockerfile",
+        "hint": "build z jednoho Dockerfile"
+      },
+      "framework": {
+        "label": "Framework",
+        "hint": "React, Next.js, Astro, Vite, Node, Python"
+      },
+      "static": {
+        "label": "Static",
+        "hint": "servírovat buildnutý adresář"
+      },
+      "image": {
+        "label": "Image",
+        "hint": "nasadit prebuilt image"
+      }
+    },
+    "detected": "detekováno",
+    "soon": "brzy",
+    "autoNote": "VAC při deployi zkontroluje repo a vybere první shodu: compose soubor, pak Dockerfile, pak známý framework. Pokud chcete konkrétní build, přepište výše.",
+    "composePath": "Cesta k compose souboru",
+    "dockerfilePath": "Cesta k Dockerfile",
+    "relativeToRoot": "Relativně ke kořeni repozitáře.",
+    "composeDetected": "V repozitáři detekováno {{path}}.",
+    "frameworkDetected": "Detekována {{name}} aplikace — VAC ji umí buildovat automaticky.",
+    "framework": "Framework",
+    "buildCommand": "Build command",
+    "buildCommandHint": "Spustí se v build fázi. Pro výchozí nechte prázdné.",
+    "outputDir": "Výstupní adresář",
+    "outputDirHint": "Složka obsahující index.html, relativně ke kořeni repozitáře.",
+    "spaFallback": "SPA fallback",
+    "spaFallbackHint": "Servírovat index.html pro neznámé cesty (client-side routing)."
+  },
+  "import": {
+    "title": "Import aplikace",
+    "description": "Vložte spec <0>vac.app.yaml</0> (nebo jej nahrajte) pro vytvoření či aktualizaci aplikace. Opětovný import stejného slugu jej aktualizuje na místě. Citlivé hodnoty env se nepřenášejí — zadáte je znovu poté.",
+    "spec": "Spec",
+    "upload": "Nahrát soubor…",
+    "cancel": "Zrušit",
+    "import": "Importovat",
+    "toast": {
+      "imported": "Importováno {{slug}}",
+      "updated": "Aktualizováno {{slug}}",
+      "reenterSecrets": "Znovu zadejte hodnoty secretů: {{values}}"
+    }
+  }
+}

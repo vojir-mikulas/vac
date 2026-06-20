@@ -1,0 +1,65 @@
+{
+  "page": {
+    "title": "Aktivita",
+    "description": "Kdo na tomto stroji co změnil. Bezpečně vratné změny lze vrátit zpět."
+  },
+  "sectionHeader": "Nedávná aktivita",
+  "empty": {
+    "title": "Zatím žádná aktivita",
+    "description": "Změny app, env proměnných, domén a nastavení se zobrazí zde."
+  },
+  "row": {
+    "failed": "selhalo",
+    "preview": "Náhled",
+    "reverted": "vráceno",
+    "revert": "Vrátit zpět"
+  },
+  "actor": {
+    "operator": "operátor",
+    "token": "{{name}} (API)",
+    "tokenFallback": "token",
+    "system": "VAC (automaticky)",
+    "unauthenticated": "neověřeno"
+  },
+  "action": {
+    "created": "Vytvořeno",
+    "deleted": "Smazáno",
+    "updated": "Aktualizováno"
+  },
+  "revertToast": {
+    "success": "Vráceno zpět"
+  },
+  "attempts": {
+    "heading": "Neoprávněné pokusy",
+    "summary_one": "{{count}} zablokovaný pokus z {{sources}}",
+    "summary_other": "{{count}} zablokovaných pokusů z {{sources}}",
+    "sources_one": "{{count}} zdroj",
+    "sources_other": "{{count}} zdrojů",
+    "lastSeen": "naposledy viděno {{time}}",
+    "morePaths_one": "+{{count}} další cesta",
+    "morePaths_other": "+{{count}} dalších cest",
+    "empty": {
+      "title": "Žádné neoprávněné pokusy",
+      "description": "Neúspěšné login pokusy a sondy na neexistující endpointy se zobrazí zde."
+    }
+  },
+  "diff": {
+    "title": "Náhled změny",
+    "descriptionFallback": "Co tato změna provedla.",
+    "loadError": "Náhled se nepodařilo načíst.",
+    "noChanges": "Nebyly zaznamenány žádné změny.",
+    "changedAgain": "⚠ od této akce znovu změněno · ",
+    "comparedAgainst": "Porovnáno s aktuálním stavem ({{time}})",
+    "close": "Zavřít",
+    "showUnchanged_one": "Zobrazit {{count}} nezměněný",
+    "showUnchanged_other": "Zobrazit {{count}} nezměněných",
+    "noChangesToDisplay": "Žádné změny k zobrazení — {{count}} klíč(ů) nezměněno.",
+    "maskedTitle": "skryto (citlivé)",
+    "status": {
+      "added": "přidáno",
+      "removed": "odebráno",
+      "changed": "změněno",
+      "unchanged": "stejné"
+    }
+  }
+}

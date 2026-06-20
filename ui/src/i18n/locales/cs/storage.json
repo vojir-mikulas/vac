@@ -1,0 +1,36 @@
+{
+  "page": {
+    "title": "Storage",
+    "description": "Co zabírá disk na tomto hostu — napříč všemi aplikacemi a vrstvou Dockeru."
+  },
+  "host": {
+    "heading": "Host disk",
+    "images": "Images",
+    "containers": "Containers",
+    "volumes": "Volumes",
+    "buildCache": "Build cache",
+    "reclaimable": "{{size}} k uvolnění",
+    "used": "Využito",
+    "empty": "Žádné využití",
+    "reclaim": "Uvolnit místo",
+    "reclaiming": "Uvolňování…",
+    "reclaimed": "Uvolněno {{size}}",
+    "reclaimedNothing": "Není co uvolnit",
+    "nothingToReclaim": "Není co uvolnit",
+    "note": "Odstraní dangling images a nepoužitou build cache. Live a rollback images se nikdy nedotkne."
+  },
+  "apps": {
+    "heading": "Aplikace podle storage",
+    "app": "Aplikace",
+    "volumes": "Volumes",
+    "used": "Využito",
+    "unmeasured": "+{{n}} neměřeno",
+    "noLimit": "Bez limitu"
+  },
+  "empty": {
+    "title": "Zatím žádné využití volumes",
+    "description": "Jakmile budou nasazeny a zaznamenány aplikace s volumes, jejich využití disku se zobrazí zde.",
+    "action": "Vytvořit aplikaci"
+  },
+  "loadError": "Nepodařilo se načíst využití storage."
+}
