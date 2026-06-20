@@ -16,9 +16,7 @@ import {
 import { CopyButton } from '@/components/common/copy-button'
 import { cn } from '@/lib/utils'
 import { useInstanceInfo, useUpdateCheck } from '@/lib/api/instance'
-import { SUPPORTED_LANGUAGES } from '@/i18n'
-
-import { MaintenanceSection } from './maintenance-section'
+import { SUPPORTED_LANGUAGES, changeLanguage, type SupportedLanguage } from '@/i18n'
 
 const CHANNELS = ['stable', 'beta', 'edge'] as const
 
@@ -76,8 +74,6 @@ export function InstanceSection() {
           </Row>
         </Card>
       </div>
-
-      <MaintenanceSection />
 
       <LanguageSection />
     </section>
@@ -163,7 +159,7 @@ function LanguageSection() {
         <Row label={t('language.label')} hint={t('language.hint')}>
           <Select
             value={i18n.resolvedLanguage}
-            onValueChange={(lng) => void i18n.changeLanguage(lng)}
+            onValueChange={(lng) => void changeLanguage(lng as SupportedLanguage)}
           >
             <SelectTrigger className="w-40" aria-label={t('language.label')}>
               <SelectValue />

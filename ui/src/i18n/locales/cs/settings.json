@@ -53,20 +53,6 @@
     },
     "comingSoon": "Již brzy"
   },
-  "maintenance": {
-    "heading": "Údržba",
-    "description": "Uvolněte místo na disku zabrané zbylými Docker images a build cache. Bezpečné — images, které vaše běžící aplikace používají, zůstanou zachovány; odstraní se jen osamocené vrstvy.",
-    "images": "Nevyužité images",
-    "buildCache": "Build cache",
-    "reclaimable": "{{size}} k uvolnění",
-    "nothingToReclaim": "Není co uvolnit",
-    "reclaim": "Uvolnit místo",
-    "reclaiming": "Uvolňování…",
-    "reclaimed": "Uvolněno {{size}}",
-    "reclaimedNothing": "Již uklizeno — není co uvolnit",
-    "loadError": "Nepodařilo se načíst využití disku",
-    "note": "VAC také automaticky každou noc maže staré images."
-  },
   "apiTokens": {
     "heading": "API tokeny",
     "created": "vytvořeno {{time}}",

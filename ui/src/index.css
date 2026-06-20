@@ -352,20 +352,19 @@
   -webkit-mask-image: radial-gradient(300px at bottom left, #000 26%, transparent 82%);
 }
 
-/* Soft brand glow above the card. JS drives a gentle parallax/breathe on top. */
-.auth-aurora {
+/* Soft brand glow above the card — rendered through the dot lattice instead of
+   a smooth blur. A bright, brand-tinted copy of the dot field (aligned to the
+   same grid as `.scan-field`, so its dots sit exactly on the base lattice),
+   revealed by a soft radial mask driven in JS. The mask fades the dots out
+   toward its edge, so the glow only ever shows on the dots. JS drives a gentle
+   parallax (mask center) and breathe (opacity) on top. */
+.auth-aurora-dots {
   position: absolute;
-  top: -180px;
-  left: 50%;
-  width: 580px;
-  height: 580px;
-  margin-left: -290px;
-  border-radius: 9999px;
-  background: radial-gradient(
-    circle at 50% 50%,
-    color-mix(in oklch, var(--brand), transparent 85%),
-    transparent 68%
-  );
-  filter: blur(44px);
+  inset: 0;
   pointer-events: none;
+  background-size: 24px 24px;
+  background-image: radial-gradient(
+    color-mix(in oklch, var(--brand), transparent 38%) 1.4px,
+    transparent 1.9px
+  );
 }

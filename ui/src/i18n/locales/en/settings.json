@@ -53,20 +53,6 @@
     },
     "comingSoon": "Coming soon"
   },
-  "maintenance": {
-    "heading": "Maintenance",
-    "description": "Reclaim disk space taken by leftover Docker images and build cache. Safe — the images your running apps use are kept; only orphaned layers are removed.",
-    "images": "Dangling images",
-    "buildCache": "Build cache",
-    "reclaimable": "{{size}} reclaimable",
-    "nothingToReclaim": "Nothing to reclaim",
-    "reclaim": "Reclaim space",
-    "reclaiming": "Reclaiming…",
-    "reclaimed": "Reclaimed {{size}}",
-    "reclaimedNothing": "Already clean — nothing to reclaim",
-    "loadError": "Couldn't read disk usage",
-    "note": "VAC also prunes old images automatically every night."
-  },
   "apiTokens": {
     "heading": "API Tokens",
     "created": "created {{time}}",

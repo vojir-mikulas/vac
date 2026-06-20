@@ -37,9 +37,12 @@ export function AuthBackground() {
   const sy = useSpring(my, SPRING)
   const mask = useMotionTemplate`radial-gradient(circle 230px at ${sx}% ${sy}%, #000 0%, rgba(0,0,0,0.85) 34%, transparent 66%)`
 
-  // Parallax: the aurora rides the scan center, but more gently than the spotlight.
+  // Parallax: the aurora's mask center rides the scan, but more gently than the
+  // spotlight. The dot layer itself stays put (so its dots keep aligning with
+  // the base lattice); only the mask drifts.
   const auroraX = useTransform(sx, (v) => (v - 50) * 0.3)
   const auroraY = useTransform(sy, (v) => (v - 42) * 0.3)
+  const auroraMask = useMotionTemplate`radial-gradient(circle 300px at calc(50% + ${auroraX}px) calc(110px + ${auroraY}px), #000 0%, rgba(0,0,0,0.55) 42%, transparent 72%)`
 
   useEffect(() => {
     if (reduce) return
@@ -99,11 +102,14 @@ export function AuthBackground() {
       animate={reduce ? undefined : { opacity: 1 }}
       transition={{ duration: 1.2, ease: 'easeOut' }}
     >
-      {/* Soft brand aurora — breathes, drifts with the scan. */}
+      {/* Soft brand aurora — a glow made of lit dots: a bright brand-tinted dot
+          layer revealed through a soft radial mask that fades at its edges, so
+          the glow only ever shows on the dots. Breathes via opacity, drifts via
+          the mask center (the layer stays grid-aligned). */}
       <m.div
-        className="auth-aurora"
-        style={{ x: auroraX, y: auroraY }}
-        animate={reduce ? undefined : { scale: [1, 1.12, 1], opacity: [0.6, 0.9, 0.6] }}
+        className="auth-aurora-dots"
+        style={{ maskImage: auroraMask, WebkitMaskImage: auroraMask }}
+        animate={reduce ? undefined : { opacity: [0.55, 0.85, 0.55] }}
         transition={{ duration: 10, ease: 'easeInOut', repeat: Infinity }}
       />
 

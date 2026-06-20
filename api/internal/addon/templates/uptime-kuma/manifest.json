@@ -7,5 +7,8 @@
   "footprint_mb": 150,
   "depends_on_db": "",
   "compose_file": "compose.yaml",
-  "default_env": {}
+  "default_env": {},
+  "health_paths": {
+    "uptime-kuma": "/dashboard"
+  }
 }
