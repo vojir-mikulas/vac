@@ -87,6 +87,16 @@ services:
       # dashboard (gated by a confirm + audit-logged). Highest blast-radius
       # feature, so it stays closed until you opt in: `vac container-shell on`.
       VAC_ENABLE_SHELL: "${VAC_ENABLE_SHELL:-}"
+      # Scale-to-zero / idle-suspend (docs/plans/scale-to-zero.md). Master gate,
+      # off by default — when "true" the sweeper stops apps that have opted in and
+      # gone idle, and Caddy wakes them on the next request. The per-app toggle in
+      # the dashboard stays hidden until this is on. Toggle: `vac idle-suspend on`.
+      VAC_IDLE_SUSPEND: "${VAC_IDLE_SUSPEND:-}"
+      # Inactivity window before an opted-in app is suspended (per-app override
+      # wins). Go duration, e.g. "15m", "2h". Empty = built-in default (15m).
+      VAC_IDLE_TIMEOUT: "${VAC_IDLE_TIMEOUT:-}"
+      # How often the sweeper scans for idle apps. Go duration; empty = 1m.
+      VAC_IDLE_SWEEP_INTERVAL: "${VAC_IDLE_SWEEP_INTERVAL:-}"
       # Soft heap ceiling: keeps the control plane pacing GC against the
       # <200 MB idle target (plan 07) and, paired with the hard memory limit
       # below, makes a memory regression OOM in testing rather than on a user's
