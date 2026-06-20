@@ -66,6 +66,11 @@ services:
       # Point managed Postgres at a separate vac-db-managed instance for
       # blast-radius isolation instead of sharing the control-plane DB.
       VAC_MANAGED_DB_ISOLATED: "${VAC_MANAGED_DB_ISOLATED:-}"
+      # Scale-to-zero / idle-suspend (docs/plans/scale-to-zero.md). Off by default —
+      # set "true" to expose the per-app idle-suspend toggle and run the sweeper.
+      VAC_IDLE_SUSPEND: "${VAC_IDLE_SUSPEND:-}"
+      VAC_IDLE_TIMEOUT: "${VAC_IDLE_TIMEOUT:-}"
+      VAC_IDLE_SWEEP_INTERVAL: "${VAC_IDLE_SWEEP_INTERVAL:-}"
     ports:
       - "${VAC_HOST_PORT:-9393}:9393"
     volumes:

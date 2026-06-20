@@ -29,6 +29,7 @@ set -eu
 [ -n "${VAC_MANAGED_SERVICES+x}" ] && MANAGED_PRESET=1  || MANAGED_PRESET=0
 [ -n "${VAC_ENABLE_SHELL+x}" ]     && SHELL_PRESET=1    || SHELL_PRESET=0
 [ -n "${VAC_SECURITY_AGENT+x}" ]   && SECAGENT_PRESET=1 || SECAGENT_PRESET=0
+[ -n "${VAC_IDLE_SUSPEND+x}" ]     && IDLE_PRESET=1    || IDLE_PRESET=0
 [ -n "${VAC_GRANT_ACCESS+x}" ]     && GRANT_PRESET=1    || GRANT_PRESET=0
 
 VAC_VERSION="${VAC_VERSION:-latest}"
@@ -49,6 +50,10 @@ VAC_ENABLE_SHELL="${VAC_ENABLE_SHELL:-}"
 # it installs a host-level systemd timer/cron outside the compose stack, so it's
 # opt-in. Toggle any time with `vac security-agent on|off`.
 VAC_SECURITY_AGENT="${VAC_SECURITY_AGENT:-}"
+# Scale-to-zero / idle-suspend. Off by default — when on, apps that opt in and go
+# idle are stopped and woken on the next request, saving RAM. Toggle any time with
+# `vac idle-suspend on|off`.
+VAC_IDLE_SUSPEND="${VAC_IDLE_SUSPEND:-}"
 # When installed via sudo, also let the invoking user run `vac` without sudo:
 # add them to the `docker` group and give them the install dir (which holds the
 # root-only .env). Opt out with --no-grant or VAC_GRANT_ACCESS=0.
@@ -118,8 +123,9 @@ Flags:
   -h, --help   Show this help and exit.
 
 Env overrides (a pre-set value skips its question): VAC_VERSION, VAC_DOMAIN,
-VAC_MANAGED_SERVICES (true/false), VAC_ENABLE_SHELL (true/false), VAC_INSTALL_DIR,
-VAC_HOST_PORT, VAC_REGISTRY, VAC_GRANT_ACCESS (1/0).
+VAC_MANAGED_SERVICES (true/false), VAC_ENABLE_SHELL (true/false),
+VAC_IDLE_SUSPEND (true/false), VAC_INSTALL_DIR, VAC_HOST_PORT, VAC_REGISTRY,
+VAC_GRANT_ACCESS (1/0).
 USAGE
 }
 
@@ -238,7 +244,8 @@ run_wizard() {
     VAC_MANAGED_SERVICES="$(normalize_bool "${VAC_MANAGED_SERVICES:-false}")"
     VAC_ENABLE_SHELL="$(normalize_bool "${VAC_ENABLE_SHELL:-false}")"
     VAC_SECURITY_AGENT="$(normalize_bool "${VAC_SECURITY_AGENT:-false}")"
-    info "Running non-interactively — using defaults (domain: ${VAC_DOMAIN:-none}, managed services: ${VAC_MANAGED_SERVICES}, container shell: ${VAC_ENABLE_SHELL}, security agent: ${VAC_SECURITY_AGENT})."
+    VAC_IDLE_SUSPEND="$(normalize_bool "${VAC_IDLE_SUSPEND:-false}")"
+    info "Running non-interactively — using defaults (domain: ${VAC_DOMAIN:-none}, managed services: ${VAC_MANAGED_SERVICES}, container shell: ${VAC_ENABLE_SHELL}, security agent: ${VAC_SECURITY_AGENT}, idle suspend: ${VAC_IDLE_SUSPEND})."
     return 0
   fi
 
@@ -248,6 +255,7 @@ run_wizard() {
   wizard_ask_managed_services
   wizard_ask_container_shell
   wizard_ask_security_agent
+  wizard_ask_idle_suspend
   wizard_ask_grant
   wizard_confirm
 }
@@ -339,6 +347,24 @@ wizard_ask_security_agent() {
   fi
 }
 
+wizard_ask_idle_suspend() {
+  if [ "$IDLE_PRESET" = 1 ]; then
+    VAC_IDLE_SUSPEND="$(normalize_bool "$VAC_IDLE_SUSPEND")"
+    return 0
+  fi
+  say ""
+  say "${B}${C}Scale to zero${N}  (stop idle apps, wake them on the next request)"
+  say "  Off by default. When on, an app you opt in from the dashboard is stopped"
+  say "  after a period with no traffic and started again automatically when the"
+  say "  next request arrives — saving RAM on apps that sit idle."
+  say "  You can turn it on or off any time with: ${B}vac idle-suspend on|off${N}"
+  if confirm 'Enable scale to zero now?' n; then
+    VAC_IDLE_SUSPEND=true
+  else
+    VAC_IDLE_SUSPEND=false
+  fi
+}
+
 wizard_ask_grant() {
   # Only meaningful when invoked via sudo from a real user account.
   [ "$GRANT_PRESET" = 1 ] && return 0
@@ -365,6 +391,7 @@ wizard_confirm() {
   say "  managed services:  ${VAC_MANAGED_SERVICES}"
   say "  container shell:    ${VAC_ENABLE_SHELL}"
   say "  security agent:    ${VAC_SECURITY_AGENT}"
+  say "  scale to zero:     ${VAC_IDLE_SUSPEND}"
   say "  sudo-free access:  ${_grant}"
   say ""
   confirm 'Proceed?' y || die "Aborted — nothing was changed."
@@ -436,6 +463,7 @@ VAC_BASE_DOMAIN=$VAC_DOMAIN
 VAC_MANAGED_SERVICES=$(normalize_bool "${VAC_MANAGED_SERVICES:-false}")
 VAC_ENABLE_SHELL=$(normalize_bool "${VAC_ENABLE_SHELL:-false}")
 VAC_SECURITY_AGENT=$(normalize_bool "${VAC_SECURITY_AGENT:-false}")
+VAC_IDLE_SUSPEND=$(normalize_bool "${VAC_IDLE_SUSPEND:-false}")
 EOF
     chmod 600 "$ENV_FILE"
   fi
@@ -519,6 +547,17 @@ case "$cmd" in
         set_env VAC_ENABLE_SHELL false; dc up -d vac-api
         echo "Container shell disabled." ;;
       *) echo "usage: vac container-shell on|off" >&2; exit 1 ;;
+    esac ;;
+  idle-suspend)
+    case "${1:-}" in
+      on|true|1)
+        set_env VAC_IDLE_SUSPEND true; dc up -d vac-api
+        echo "Scale to zero enabled — opt apps in from the dashboard (Settings → Idle suspend)."
+        echo "Opted-in apps stop when idle and wake automatically on the next request." ;;
+      off|false|0|"")
+        set_env VAC_IDLE_SUSPEND false; dc up -d vac-api
+        echo "Scale to zero disabled — apps are no longer auto-suspended." ;;
+      *) echo "usage: vac idle-suspend on|off" >&2; exit 1 ;;
     esac ;;
   security-check)
     # Opt in/out of the firewall / fail2ban posture warnings. A box with no
@@ -682,6 +721,7 @@ vac — manage this VAC install ($DIR)
   vac unset-domain                 disable HTTPS dashboard and app subdomains
   vac managed-services on|off      toggle backups, databases & the add-on catalog
   vac container-shell on|off       toggle the in-dashboard container shell (privileged)
+  vac idle-suspend on|off          toggle scale to zero (stop idle apps, wake on request)
   vac security-agent on|off        install/remove the read-only host security
                                    collector (fail2ban/firewall; root required)
   vac security-check firewall|fail2ban on|off
