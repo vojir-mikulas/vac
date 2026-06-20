@@ -102,6 +102,10 @@ type Config struct {
 	// PostgresControlDB is the control-plane database name (default "vac") — pinned
 	// as the "VAC system database" card in the box-wide inventory (plan 20).
 	PostgresControlDB string
+	// ManagedDBIsolated selects the isolated managed-Postgres engine (a dedicated
+	// vac-db-managed daemon) over the shared control-plane vac-db, for blast-radius
+	// isolation (VAC_MANAGED_DB_ISOLATED; docs/deviations.md).
+	ManagedDBIsolated bool
 }
 
 // roleAlphabet / passwordAlphabet are deliberately quote-free so identifiers and

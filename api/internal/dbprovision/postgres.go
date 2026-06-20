@@ -119,18 +119,38 @@ func (e *PostgresEngine) ConnString(dbName, roleName, password string) string {
 }
 
 func (e *PostgresEngine) DefaultBackupCommand(dbName string) string {
-	// Runs inside vac-db over the local socket as the superuser (trust auth in the
-	// official image), so no password lands in the backup command.
-	return fmt.Sprintf("pg_dump -U %s %s", e.adminUser, dbName)
+	return pgDefaultBackupCommand(e.adminUser, dbName)
 }
 
-// MatchBackupCommand recognizes the `pg_dump -U <admin> <db>` shape this engine
-// emits and extracts the database name. A custom command (different flags, env
-// vars, -Fc, …) returns ok=false so restore is refused (decision #1). The db
-// name must be a safe generated identifier — it's interpolated into a shell
-// command in RestoreCommand.
 func (e *PostgresEngine) MatchBackupCommand(cmd string) (string, bool) {
-	prefix := fmt.Sprintf("pg_dump -U %s ", e.adminUser)
+	return pgMatchBackupCommand(e.adminUser, cmd)
+}
+
+func (e *PostgresEngine) RestoreCommand(dbName string) string {
+	return pgRestoreCommand(e.adminUser, dbName)
+}
+
+func (e *PostgresEngine) VerifyRestoreCommand(scratchDB string) string {
+	return pgVerifyRestoreCommand(e.adminUser, scratchDB)
+}
+
+// The Postgres dump/restore command shapes are identical for the shared (vac-db)
+// and isolated (vac-db-managed) engines — only the superuser differs — so they
+// live as free functions both engines share.
+
+// pgDefaultBackupCommand is the dump D1 runs inside the Postgres container over
+// the local socket as the superuser (trust auth in the official image), so no
+// password lands in the stored backup command.
+func pgDefaultBackupCommand(admin, dbName string) string {
+	return fmt.Sprintf("pg_dump -U %s %s", admin, dbName)
+}
+
+// pgMatchBackupCommand recognizes the `pg_dump -U <admin> <db>` shape and extracts
+// the database name. A custom command (different flags, -Fc, …) returns ok=false so
+// restore is refused (decision #1). The db name must be a safe generated
+// identifier — it's interpolated into a shell command in pgRestoreCommand.
+func pgMatchBackupCommand(admin, cmd string) (string, bool) {
+	prefix := fmt.Sprintf("pg_dump -U %s ", admin)
 	db, ok := strings.CutPrefix(strings.TrimSpace(cmd), prefix)
 	if !ok || !safeIdentRe.MatchString(db) {
 		return "", false
@@ -138,27 +158,27 @@ func (e *PostgresEngine) MatchBackupCommand(cmd string) (string, bool) {
 	return db, true
 }
 
-// RestoreCommand replays a plain pg_dump from stdin. pg_dump's default output
-// carries no DROP statements, so restoring into a populated database would
-// collide on existing objects; reset the public schema first (as the superuser
-// the dump ran as), then replay. ON_ERROR_STOP makes a mid-stream failure a
-// non-zero exit so the restore run is recorded as failed, not silently partial.
-func (e *PostgresEngine) RestoreCommand(dbName string) string {
+// pgRestoreCommand replays a plain pg_dump from stdin. pg_dump's default output
+// carries no DROP statements, so restoring into a populated database would collide
+// on existing objects; reset the public schema first (as the superuser the dump
+// ran as), then replay. ON_ERROR_STOP makes a mid-stream failure a non-zero exit
+// so the restore run is recorded as failed, not silently partial.
+func pgRestoreCommand(admin, dbName string) string {
 	reset := fmt.Sprintf(
 		"psql -U %s -d %s -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'",
-		e.adminUser, dbName)
-	apply := fmt.Sprintf("psql -U %s -d %s -v ON_ERROR_STOP=1", e.adminUser, dbName)
+		admin, dbName)
+	apply := fmt.Sprintf("psql -U %s -d %s -v ON_ERROR_STOP=1", admin, dbName)
 	return reset + " && " + apply
 }
 
-// VerifyRestoreCommand creates a fresh scratch database, replays the dump into
-// it (ON_ERROR_STOP so any SQL error is a non-zero exit), then drops it — always,
-// even on failure — preserving the replay's exit status. The scratch DB is empty,
-// so no schema reset is needed before the replay.
-func (e *PostgresEngine) VerifyRestoreCommand(scratchDB string) string {
-	create := fmt.Sprintf("psql -U %s -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE %s'", e.adminUser, scratchDB)
-	apply := fmt.Sprintf("psql -U %s -d %s -v ON_ERROR_STOP=1", e.adminUser, scratchDB)
-	drop := fmt.Sprintf("psql -U %s -d postgres -c 'DROP DATABASE IF EXISTS %s'", e.adminUser, scratchDB)
+// pgVerifyRestoreCommand creates a fresh scratch database, replays the dump into it
+// (ON_ERROR_STOP so any SQL error is a non-zero exit), then drops it — always, even
+// on failure — preserving the replay's exit status. The scratch DB is empty, so no
+// schema reset is needed before the replay.
+func pgVerifyRestoreCommand(admin, scratchDB string) string {
+	create := fmt.Sprintf("psql -U %s -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE %s'", admin, scratchDB)
+	apply := fmt.Sprintf("psql -U %s -d %s -v ON_ERROR_STOP=1", admin, scratchDB)
+	drop := fmt.Sprintf("psql -U %s -d postgres -c 'DROP DATABASE IF EXISTS %s'", admin, scratchDB)
 	return fmt.Sprintf("%s && { %s; rc=$?; %s >/dev/null 2>&1; exit $rc; }", create, apply, drop)
 }
 

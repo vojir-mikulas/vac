@@ -60,15 +60,19 @@ type fakeProvStore struct {
 	dbs           map[string]store.ManagedDatabase
 	envVars       map[string][]byte
 	backupConfigs int
-	statuses      map[string]string
+	// backupCfgByService records seeded configs keyed by service_name, mirroring the
+	// real UNIQUE(app_id, service_name) so the two-DBs-one-engine fix is testable.
+	backupCfgByService map[string]store.BackupConfigInput
+	statuses           map[string]string
 }
 
 func newFakeProvStore() *fakeProvStore {
 	return &fakeProvStore{
-		app:      store.App{ID: "app1", Slug: "blog"},
-		dbs:      map[string]store.ManagedDatabase{},
-		envVars:  map[string][]byte{},
-		statuses: map[string]string{},
+		app:                store.App{ID: "app1", Slug: "blog"},
+		dbs:                map[string]store.ManagedDatabase{},
+		envVars:            map[string][]byte{},
+		backupCfgByService: map[string]store.BackupConfigInput{},
+		statuses:           map[string]string{},
 	}
 }
 
@@ -110,8 +114,12 @@ func (s *fakeProvStore) ListAllManagedDatabases(_ context.Context) ([]store.Mana
 	}
 	return out, nil
 }
-func (s *fakeProvStore) GetBackupConfigForService(_ context.Context, _, _ string) (store.BackupConfig, error) {
-	return store.BackupConfig{}, store.ErrNotFound
+func (s *fakeProvStore) GetBackupConfigForService(_ context.Context, _, service string) (store.BackupConfig, error) {
+	in, ok := s.backupCfgByService[service]
+	if !ok {
+		return store.BackupConfig{}, store.ErrNotFound
+	}
+	return store.BackupConfig{ID: "cfg-" + service, ServiceName: in.ServiceName, ContainerName: in.ContainerName, Command: in.Command}, nil
 }
 func (s *fakeProvStore) LatestBackupRun(_ context.Context, _ string) (store.BackupRun, error) {
 	return store.BackupRun{}, store.ErrNotFound
@@ -124,11 +132,16 @@ func (s *fakeProvStore) DeleteEnvVar(_ context.Context, _, key string) error {
 	delete(s.envVars, key)
 	return nil
 }
-func (s *fakeProvStore) CreateBackupConfig(_ context.Context, _ string, _ store.BackupConfigInput) (store.BackupConfig, error) {
+func (s *fakeProvStore) CreateBackupConfig(_ context.Context, _ string, in store.BackupConfigInput) (store.BackupConfig, error) {
+	if _, exists := s.backupCfgByService[in.ServiceName]; exists {
+		return store.BackupConfig{}, store.ErrConflict
+	}
 	s.backupConfigs++
-	return store.BackupConfig{}, nil
+	s.backupCfgByService[in.ServiceName] = in
+	return store.BackupConfig{ID: "cfg-" + in.ServiceName, ServiceName: in.ServiceName, ContainerName: in.ContainerName}, nil
 }
-func (s *fakeProvStore) DeleteBackupConfigForService(context.Context, string, string) error {
+func (s *fakeProvStore) DeleteBackupConfigForService(_ context.Context, _, service string) error {
+	delete(s.backupCfgByService, service)
 	return nil
 }
 
@@ -170,6 +183,39 @@ func TestProvisioner_ProvisionSuccess(t *testing.T) {
 	}
 	if st.backupConfigs != 1 {
 		t.Errorf("backup configs seeded = %d, want 1", st.backupConfigs)
+	}
+}
+
+// TestProvisioner_TwoDBsSameEngineEachGetBackup covers the 00080 fix: two managed
+// DBs of the same engine on one app share an engine container but must each get
+// their own backup config (keyed on the DB name, with the container as the exec
+// target) — previously the second silently collided and was never backed up.
+func TestProvisioner_TwoDBsSameEngineEachGetBackup(t *testing.T) {
+	st := newFakeProvStore()
+	eng := &fakeEngine{name: "postgres"}
+	p := newTestProvisioner(t, st, eng)
+	p.logger = discardLogger()
+
+	for _, db := range []string{"blog_abc", "blog_def"} {
+		names := GeneratedNames{DBName: db, RoleName: db + "_u", Password: "pw"}
+		row, _ := st.CreateManagedDatabase(context.Background(), "app1", "postgres", db, &names.RoleName, []byte("sealed"), "DATABASE_URL_"+db)
+		p.provision(row, st.app, eng, names, []byte("sealed"))
+	}
+
+	if st.backupConfigs != 2 {
+		t.Fatalf("backup configs seeded = %d, want 2 (one per DB)", st.backupConfigs)
+	}
+	for _, db := range []string{"blog_abc", "blog_def"} {
+		in, ok := st.backupCfgByService[db]
+		if !ok {
+			t.Fatalf("no backup config keyed on DB name %q", db)
+		}
+		if in.ContainerName == nil || *in.ContainerName != "vac-postgres" {
+			t.Errorf("config %q container_name = %v, want vac-postgres", db, in.ContainerName)
+		}
+		if in.Command != "dump "+db {
+			t.Errorf("config %q command = %q, want %q", db, in.Command, "dump "+db)
+		}
 	}
 }
 

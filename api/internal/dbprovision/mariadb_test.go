@@ -15,6 +15,7 @@ type fakeDocker struct {
 	ups     []string
 	execs   []string
 	execErr error
+	output  []byte // written to the exec writer when set (for size-probe tests)
 }
 
 func (f *fakeDocker) Up(_ context.Context, _, _, projectName, _ string, _ ...string) error {
@@ -22,8 +23,11 @@ func (f *fakeDocker) Up(_ context.Context, _, _, projectName, _ string, _ ...str
 	return nil
 }
 func (f *fakeDocker) Ps(_ context.Context, _ string) ([]dockercli.PsService, error) { return nil, nil }
-func (f *fakeDocker) Exec(_ context.Context, _ string, cmd []string, _ io.Writer) error {
+func (f *fakeDocker) Exec(_ context.Context, _ string, cmd []string, out io.Writer) error {
 	f.execs = append(f.execs, cmd[0])
+	if f.output != nil && out != nil {
+		_, _ = out.Write(f.output)
+	}
 	return f.execErr
 }
 

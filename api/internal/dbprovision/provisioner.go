@@ -82,8 +82,15 @@ func New(s Store, box *crypto.Box, pool PGExecutor, docker interface {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	// The Postgres recipe has two shapes: the shared control-plane vac-db (default,
+	// zero extra footprint) or an isolated vac-db-managed daemon for blast-radius
+	// isolation. Exactly one is registered under "postgres" per the opt-in.
+	var postgres Engine = NewPostgresEngine(pool, docker, cfg)
+	if cfg.ManagedDBIsolated {
+		postgres = NewIsolatedPostgresEngine(docker, cfg)
+	}
 	engines := map[string]Engine{
-		"postgres": NewPostgresEngine(pool, docker, cfg),
+		"postgres": postgres,
 		"mariadb":  NewMariaDBEngine(docker, cfg),
 		"redis":    NewRedisEngine(docker, cfg),
 	}
@@ -282,23 +289,27 @@ func (p *Provisioner) provision(row store.ManagedDatabase, app store.App, eng En
 		return
 	}
 	// Seed a daily local backup so the DB is covered with no manual config. The
-	// config is keyed on (app, BackupContainer): a second managed DB of the same
-	// engine shares the container, so its seed conflicts. We surface that instead
-	// of dropping it silently — the second DB's data isn't separately covered by
-	// its own dump command, which the operator should know.
+	// config is keyed on (app, DBName) — unique per managed DB — with the shared
+	// engine container as the explicit exec target. This is what lets two managed
+	// DBs of the same engine on one app each get their own backup (they share the
+	// container but no longer the config key).
+	container := eng.BackupContainer()
 	_, err := p.store.CreateBackupConfig(ctx, app.ID, store.BackupConfigInput{
-		ServiceName: eng.BackupContainer(),
-		Command:     eng.DefaultBackupCommand(names.DBName),
-		Frequency:   "daily",
-		HourOfDay:   3,
-		Destination: "local",
-		KeepCount:   7,
-		Enabled:     true,
+		ServiceName:   names.DBName,
+		ContainerName: &container,
+		Command:       eng.DefaultBackupCommand(names.DBName),
+		Frequency:     "daily",
+		HourOfDay:     3,
+		Destination:   "local",
+		KeepCount:     7,
+		Enabled:       true,
 	})
 	switch {
 	case errors.Is(err, store.ErrConflict):
-		p.logger.Info("dbprovision: backup already configured for this engine container; new DB shares it and is not separately dumped",
-			"app", app.Slug, "engine", eng.Name(), "container", eng.BackupContainer())
+		// Re-provisioning the same DB name (e.g. a retried provision): the backup is
+		// already configured, nothing to do.
+		p.logger.Info("dbprovision: backup already configured for this database",
+			"app", app.Slug, "engine", eng.Name(), "db", names.DBName)
 	case err != nil:
 		p.logger.Warn("dbprovision: seed backup config", "app", app.Slug, "err", err)
 	}
@@ -335,7 +346,16 @@ func (p *Provisioner) Remove(ctx context.Context, appID, id string) error {
 		if err := eng.Deprovision(ctx, m.DBName, role); err != nil {
 			p.logger.Warn("dbprovision: engine deprovision", "id", id, "err", err)
 		}
-		_ = p.store.DeleteBackupConfigForService(ctx, appID, eng.BackupContainer())
+		// The seeded backup is keyed on the DB name (see provision), so removing one
+		// managed DB leaves any sibling DB's backup on the same engine container
+		// untouched.
+		_ = p.store.DeleteBackupConfigForService(ctx, appID, m.DBName)
+		// Clear a legacy container-keyed config (pre-00080) only when this is the
+		// last managed DB of its engine for the app — otherwise a sibling that still
+		// relies on that shared config would lose it.
+		if p.lastOfEngine(ctx, appID, m.Engine, m.ID) {
+			_ = p.store.DeleteBackupConfigForService(ctx, appID, eng.BackupContainer())
+		}
 		// Remove any engine-specific extra env vars injected at provision (Redis's
 		// key prefix). The values don't matter here — only the keys, which are
 		// derived from the binding.
@@ -347,6 +367,23 @@ func (p *Provisioner) Remove(ctx context.Context, appID, id string) error {
 	}
 	_ = p.store.DeleteEnvVar(ctx, appID, m.EnvVarName)
 	return p.store.DeleteManagedDatabase(ctx, appID, id)
+}
+
+// lastOfEngine reports whether excludeID is the only managed DB of the given
+// engine left for the app — used to decide if a shared legacy backup config is
+// safe to remove. On a list error it returns false (keep the config; deleting on
+// uncertainty is the riskier choice).
+func (p *Provisioner) lastOfEngine(ctx context.Context, appID, engine, excludeID string) bool {
+	dbs, err := p.store.ListManagedDatabasesForApp(ctx, appID)
+	if err != nil {
+		return false
+	}
+	for _, d := range dbs {
+		if d.ID != excludeID && d.Engine == engine {
+			return false
+		}
+	}
+	return true
 }
 
 // DeprovisionApp drops the engine-side objects for every managed DB an app owns.

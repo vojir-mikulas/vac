@@ -128,6 +128,29 @@ func TestEngine_RunOnce_ExecFailureNotifies(t *testing.T) {
 	}
 }
 
+// TestEngine_RunOnce_ExplicitContainer covers a managed-DB backup (00080): when
+// ContainerName is set the engine execs into it directly and never consults the
+// service row — so a service lookup error must not matter.
+func TestEngine_RunOnce_ExplicitContainer(t *testing.T) {
+	fs := newFakeStore()
+	fs.svcErr = errors.New("no such service") // would fail if resolveContainer touched it
+	ex := &fakeExec{output: []byte("DUMP")}
+	eng := NewEngine(fs, ex, nil, t.TempDir(), &fakeNotifier{}, nil)
+	eng.now = func() time.Time { return time.Date(2026, 6, 1, 3, 0, 0, 0, time.UTC) }
+
+	container := "vac-db"
+	cfg := store.BackupConfig{ID: "cfg1", AppID: "app1", ServiceName: "blog_abc", ContainerName: &container, Command: "pg_dump -U vac blog_abc", Destination: "local", KeepCount: 7}
+	if err := eng.RunOnce(context.Background(), cfg); err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if ex.gotID != "vac-db" {
+		t.Errorf("exec container = %q, want vac-db (the explicit container)", ex.gotID)
+	}
+	if len(fs.recorded) != 1 || fs.recorded[0].status != "success" {
+		t.Fatalf("recorded = %+v, want one success", fs.recorded)
+	}
+}
+
 func TestEngine_RunOnce_NoContainer(t *testing.T) {
 	fs := newFakeStore()
 	fs.svc.ContainerID = nil

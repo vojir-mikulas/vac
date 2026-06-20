@@ -290,12 +290,19 @@ footprint on a box that uses none — the `<200 MB` claim holds.
 - **We do instead:** the backup engine falls back to treating `service_name` as a literal
   container name when the service lookup returns `ErrNotFound` (`docker exec` accepts names). D2
   seeds the auto-backup with `service_name = <engine container>`.
-- **Trade-off:** `backup_configs` is `UNIQUE(app_id, service_name)`, so a single app provisioning
-  **two** managed DBs of the same engine (both → `vac-db`) gets one auto-backup, not two. The
-  common one-DB-per-app case is fully covered; the rare case degrades gracefully (logged, not
-  errored).
+- **Trade-off (RESOLVED 2026-06-21, migration 00080):** originally `backup_configs` was
+  `UNIQUE(app_id, service_name)` with `service_name` overloaded as the engine *container* for
+  managed DBs, so a single app provisioning **two** managed DBs of the same engine (both →
+  `vac-db`) got one auto-backup, not two — the second DB's data was silently uncovered.
+  Fixed by adding a nullable `container_name` column that carries the exec target separately, so
+  `service_name` reverts to a pure per-DB identity (the DB name, unique per app). Each managed DB
+  now gets its own backup config keyed on its name, with `container_name` pointing at the shared
+  engine container. Backward-compatible: legacy container-keyed rows keep `container_name = NULL`
+  and still resolve via the service-row / literal fallback; the inventory looks up a managed DB's
+  backup by DB name first, then by container. (Pre-existing duplicate DBs provisioned before the
+  fix stay uncovered — only the keying is fixed going forward.)
 
-### D2 — Engines shipped: Postgres + MariaDB + Redis; Mongo and isolated Postgres deferred
+### D2 — Engines shipped: Postgres (shared + isolated) + MariaDB + Redis; Mongo deferred
 
 - **Plan said:** Postgres (shared `vac-db`) plus a shared lazy daemon per engine for
   mariadb/mongo/redis, and a `VAC_MANAGED_DB_ISOLATED` opt-in for a second `vac-db-managed`.
@@ -303,8 +310,20 @@ footprint on a box that uses none — the `<200 MB` claim holds.
   **MariaDB** (shared, lazily `compose up`ed `vac-mariadb`, provisioned via `docker exec`), and
   **Redis** (shared, lazily `compose up`ed `vac-redis`, provisioned via `redis-cli` ACL). The
   recipe framework (`Engine` interface + shared compose/exec helpers) is generic — Mongo drops in
-  as data. `VAC_MANAGED_DB_ISOLATED` is recognized but logs a warning and falls back to shared
-  (isolated instance not yet implemented).
+  as data (still deferred until demand: it'd need an auth-database multi-tenancy model rather than
+  the SQL `CREATE ROLE` shape, plus a `order`-slice entry to surface in the picker).
+- **Isolated Postgres (SHIPPED 2026-06-21):** `VAC_MANAGED_DB_ISOLATED` now selects an
+  `IsolatedPostgresEngine` — a dedicated `vac-db-managed` Postgres daemon (image
+  `postgres:16-alpine`) lazily `compose up`ed and provisioned via `docker exec psql`, exactly the
+  MariaDB/Redis lazy-daemon shape rather than the shared engine's control-plane pool (the control
+  plane has no pool to that instance). Same `crypto`-derived stable admin password
+  (`deriveAdminPassword(masterKey, "postgres-isolated")`); dump/restore command shapes are shared
+  with the pooled engine via free functions (only the superuser differs — `postgres`). Exactly one
+  Postgres engine is registered under `"postgres"` per the opt-in, so the picker and
+  restore-command matching stay consistent. Trade-off: switching the flag on a box that already has
+  shared managed Postgres DBs does **not** migrate them — they live in a different instance, and
+  their stored `pg_dump -U vac …` commands won't match the isolated engine's `-U postgres` prefix
+  (a documented, unsupported migration).
 - **Why:** the `09` stub's own strategy gate ("build when users ask"). The shared admin password
   for a lazy engine is derived from `VAC_MASTER_KEY` (stable across restarts without separate
   storage); MariaDB writes a root `~/.my.cnf` so dumps carry no password on the command line.

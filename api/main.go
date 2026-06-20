@@ -407,9 +407,10 @@ func main() {
 			EdgeNetwork:       cfg.EdgeNetwork,
 			MasterKey:         cfg.MasterKey,
 			PostgresControlDB: controlDBName(cfg.DatabaseURL),
+			ManagedDBIsolated: cfg.ManagedDBIsolated,
 		}, slog.Default())
 		if cfg.ManagedDBIsolated {
-			slog.Warn("VAC_MANAGED_DB_ISOLATED is set, but isolated managed Postgres is not yet implemented; using shared vac-db (see docs/deviations.md)")
+			slog.Info("managed Postgres: isolated mode — provisioning into a dedicated vac-db-managed daemon")
 		}
 
 		// Backup restore (plan: docs/plans/backup-restore.md): the inverse of the

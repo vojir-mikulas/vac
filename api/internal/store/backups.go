@@ -15,29 +15,35 @@ type BackupConfig struct {
 	ID          string
 	AppID       string
 	ServiceName string
-	Command     string
-	Frequency   string // daily | weekly
-	HourOfDay   int
-	DayOfWeek   *int   // 0-6 (Sun=0); NULL for daily
-	Destination string // local | s3
-	DestConfig  []byte
-	KeepCount   int
-	Enabled     bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// ContainerName, when set, is the literal container the backup engine execs the
+	// dump in — used by managed-DB backups whose data lives in a shared engine
+	// container (vac-db, vac-mariadb) rather than an app service. NULL for ordinary
+	// app-service backups, which resolve their container from the service row.
+	ContainerName *string
+	Command       string
+	Frequency     string // daily | weekly
+	HourOfDay     int
+	DayOfWeek     *int   // 0-6 (Sun=0); NULL for daily
+	Destination   string // local | s3
+	DestConfig    []byte
+	KeepCount     int
+	Enabled       bool
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // BackupConfigInput is the write shape for create/update.
 type BackupConfigInput struct {
-	ServiceName string
-	Command     string
-	Frequency   string
-	HourOfDay   int
-	DayOfWeek   *int
-	Destination string
-	DestConfig  []byte
-	KeepCount   int
-	Enabled     bool
+	ServiceName   string
+	ContainerName *string
+	Command       string
+	Frequency     string
+	HourOfDay     int
+	DayOfWeek     *int
+	Destination   string
+	DestConfig    []byte
+	KeepCount     int
+	Enabled       bool
 }
 
 // BackupRun is one execution of a BackupConfig.
@@ -52,20 +58,20 @@ type BackupRun struct {
 	Error       *string
 }
 
-const backupConfigColumns = `id, app_id, service_name, command, frequency,
+const backupConfigColumns = `id, app_id, service_name, container_name, command, frequency,
 	hour_of_day, day_of_week, destination, dest_config, keep_count, enabled,
 	created_at, updated_at`
 
 // bBackupConfigColumns is the same column list qualified with the `b` alias, for
 // queries that join backup_configs to apps.
-const bBackupConfigColumns = `b.id, b.app_id, b.service_name, b.command, b.frequency,
+const bBackupConfigColumns = `b.id, b.app_id, b.service_name, b.container_name, b.command, b.frequency,
 	b.hour_of_day, b.day_of_week, b.destination, b.dest_config, b.keep_count, b.enabled,
 	b.created_at, b.updated_at`
 
 func scanBackupConfig(row pgx.Row) (BackupConfig, error) {
 	var c BackupConfig
 	err := row.Scan(
-		&c.ID, &c.AppID, &c.ServiceName, &c.Command, &c.Frequency,
+		&c.ID, &c.AppID, &c.ServiceName, &c.ContainerName, &c.Command, &c.Frequency,
 		&c.HourOfDay, &c.DayOfWeek, &c.Destination, &c.DestConfig, &c.KeepCount,
 		&c.Enabled, &c.CreatedAt, &c.UpdatedAt,
 	)
@@ -77,10 +83,10 @@ func scanBackupConfig(row pgx.Row) (BackupConfig, error) {
 func (s *Store) CreateBackupConfig(ctx context.Context, appID string, in BackupConfigInput) (BackupConfig, error) {
 	c, err := scanBackupConfig(s.pool.QueryRow(ctx, `
 		INSERT INTO backup_configs
-			(app_id, service_name, command, frequency, hour_of_day, day_of_week, destination, dest_config, keep_count, enabled)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			(app_id, service_name, container_name, command, frequency, hour_of_day, day_of_week, destination, dest_config, keep_count, enabled)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING `+backupConfigColumns,
-		appID, in.ServiceName, in.Command, in.Frequency, in.HourOfDay, in.DayOfWeek,
+		appID, in.ServiceName, in.ContainerName, in.Command, in.Frequency, in.HourOfDay, in.DayOfWeek,
 		in.Destination, in.DestConfig, in.KeepCount, in.Enabled))
 	if isUniqueViolation(err) {
 		return BackupConfig{}, ErrConflict
@@ -121,9 +127,10 @@ func (s *Store) GetBackupConfig(ctx context.Context, configID string) (BackupCon
 	return c, err
 }
 
-// GetBackupConfigForService returns the backup config for one (app, service) —
-// the box-wide Database inventory uses it to find a managed DB's backup, which is
-// keyed on its engine container (e.g. vac-db) rather than the DB itself.
+// GetBackupConfigForService returns the backup config for one (app, service).
+// service_name is the app service for an ordinary backup, or the managed DB's name
+// for a managed-DB backup (post-00080; legacy managed configs are keyed on the
+// engine container — the inventory tries both).
 func (s *Store) GetBackupConfigForService(ctx context.Context, appID, service string) (BackupConfig, error) {
 	c, err := scanBackupConfig(s.pool.QueryRow(ctx, `
 		SELECT `+backupConfigColumns+` FROM backup_configs WHERE app_id = $1 AND service_name = $2
@@ -186,7 +193,7 @@ type BackupConfigWithApp struct {
 func scanBackupConfigWithApp(row pgx.Row) (BackupConfigWithApp, error) {
 	var c BackupConfigWithApp
 	err := row.Scan(
-		&c.ID, &c.AppID, &c.ServiceName, &c.Command, &c.Frequency,
+		&c.ID, &c.AppID, &c.ServiceName, &c.ContainerName, &c.Command, &c.Frequency,
 		&c.HourOfDay, &c.DayOfWeek, &c.Destination, &c.DestConfig, &c.KeepCount,
 		&c.Enabled, &c.CreatedAt, &c.UpdatedAt,
 		&c.AppSlug, &c.AppName,

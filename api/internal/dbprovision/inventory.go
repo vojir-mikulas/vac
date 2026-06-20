@@ -95,7 +95,7 @@ func (p *Provisioner) DatabaseInventory(ctx context.Context) (Inventory, error) 
 				EnvVarName: m.EnvVarName,
 				Status:     m.Status,
 				SizeBytes:  sizeOf(sizes[name], m.DBName),
-				LastBackup: p.lastBackup(ctx, m.AppID, eng.BackupContainer()),
+				LastBackup: p.lastBackup(ctx, m.AppID, m.DBName, eng.BackupContainer()),
 			})
 		}
 		inv.Engines = append(inv.Engines, g)
@@ -151,12 +151,17 @@ func (p *Provisioner) cachedSizes(ctx context.Context, all []store.ManagedDataba
 	return out
 }
 
-// lastBackup resolves the latest backup run for a managed DB via its engine
-// container's backup config. Returns nil for "no config" or "never run".
-func (p *Provisioner) lastBackup(ctx context.Context, appID, container string) *BackupSummary {
-	cfg, err := p.store.GetBackupConfigForService(ctx, appID, container)
+// lastBackup resolves the latest backup run for a managed DB via its backup
+// config, which is keyed on the DB name (post-00080) with a fallback to the engine
+// container name for legacy rows. Returns nil for "no config" or "never run".
+func (p *Provisioner) lastBackup(ctx context.Context, appID, dbName, container string) *BackupSummary {
+	cfg, err := p.store.GetBackupConfigForService(ctx, appID, dbName)
 	if err != nil {
-		return nil
+		// Legacy container-keyed config (pre-00080).
+		cfg, err = p.store.GetBackupConfigForService(ctx, appID, container)
+		if err != nil {
+			return nil
+		}
 	}
 	run, err := p.store.LatestBackupRun(ctx, cfg.ID)
 	if err != nil {

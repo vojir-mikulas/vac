@@ -128,12 +128,16 @@ type serviceGetter interface {
 	GetService(ctx context.Context, appID, name string) (store.Service, error)
 }
 
-// resolveContainer finds the container to exec the dump/restore in. A normal app
-// backup resolves the service row to its container_id. A managed-database backup
-// (D2) targets a shared engine container (e.g. vac-db) that isn't an app service
-// row, so a service-not-found falls back to treating ServiceName as a literal
-// container name — docker exec accepts names as well as IDs.
+// resolveContainer finds the container to exec the dump/restore in. A managed-DB
+// backup carries an explicit ContainerName (the shared engine container, e.g.
+// vac-db) and uses it directly. A normal app backup resolves the service row to
+// its container_id. As a back-compat fallback (pre-container_name managed rows), a
+// service-not-found treats ServiceName as a literal container name — docker exec
+// accepts names as well as IDs.
 func resolveContainer(ctx context.Context, s serviceGetter, cfg store.BackupConfig) (string, error) {
+	if cfg.ContainerName != nil && *cfg.ContainerName != "" {
+		return *cfg.ContainerName, nil
+	}
 	svc, err := s.GetService(ctx, cfg.AppID, cfg.ServiceName)
 	if err == nil {
 		if svc.ContainerID == nil || *svc.ContainerID == "" {
