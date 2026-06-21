@@ -74,8 +74,9 @@ interface RequestOptions {
   rawBody?: string
   contentType?: string
   // responseType 'text' returns the raw response body unparsed (e.g. an exported
-  // YAML spec); the default parses JSON.
-  responseType?: 'json' | 'text'
+  // YAML spec); 'blob' returns the body as a Blob (binary downloads, e.g. the
+  // migration bundle tar); the default parses JSON.
+  responseType?: 'json' | 'text' | 'blob'
   signal?: AbortSignal
   // `path` is relative to /api unless it starts with '/', in which case it's
   // treated as an absolute server path (used for non-/api routes).
@@ -140,6 +141,9 @@ async function request<T>(path: string, opts: RequestOptions = {}, retried = fal
   }
 
   if (res.status === 204) return undefined as T
+  // Binary download: return the raw bytes. Kept above the text read so the body
+  // isn't consumed as a string first. Step-up/CSRF retry above still applies.
+  if (opts.responseType === 'blob') return (await res.blob()) as T
   const text = await res.text()
   if (opts.responseType === 'text') return text as T
   if (!text) return undefined as T
@@ -156,4 +160,6 @@ export const api = {
     request<string>(path, { responseType: 'text', signal }),
   postRaw: <T>(path: string, rawBody: string, contentType: string) =>
     request<T>(path, { method: 'POST', rawBody, contentType }),
+  postBlob: (path: string, body?: unknown) =>
+    request<Blob>(path, { method: 'POST', body, responseType: 'blob' }),
 }

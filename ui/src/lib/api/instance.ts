@@ -108,6 +108,15 @@ export const instanceApi = {
     api.post<{ removed: number; failed: number }>('instance/reset', { confirm }),
   onboarding: () => api.get<OnboardingState>('instance/onboarding'),
   dismissOnboarding: () => api.post<OnboardingState>('instance/onboarding/dismiss'),
+  // Streams a portable instance bundle (control DB + secrets). POST so it flows
+  // through CSRF + step-up; the body is the raw tar.
+  exportBundle: () => api.postBlob('instance/migration-bundle'),
+}
+
+export function useExportBundle() {
+  return useMutation({
+    mutationFn: () => instanceApi.exportBundle(),
+  })
 }
 
 export function useInstanceInfo() {

@@ -51,7 +51,20 @@
       "hint": "Pull and self-update during the maintenance window (Sun 04:00 UTC).",
       "ariaLabel": "Auto update (coming soon)"
     },
-    "comingSoon": "Coming soon"
+    "comingSoon": "Coming soon",
+    "migration": {
+      "heading": "Migration",
+      "label": "Export instance bundle",
+      "description": "Download this instance's control database and secrets (including the master key) to move VAC to another host. App data volumes are not included — carry those with 'vac migrate export' on the host. Restore with 'vac migrate import'.",
+      "button": "Export bundle",
+      "exporting": "Exporting…",
+      "confirmTitle": "Download instance bundle?",
+      "confirmDescription": "This file contains your master key and every stored secret in plaintext-equivalent form. Anyone who obtains it can impersonate this instance. Save it somewhere safe and transfer it only over a private channel (e.g. SSH).",
+      "confirmAction": "Download",
+      "cancel": "Cancel",
+      "success": "Instance bundle downloaded",
+      "error": "Could not export the bundle"
+    }
   },
   "apiTokens": {
     "heading": "API Tokens",

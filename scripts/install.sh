@@ -436,6 +436,15 @@ lay_down_files() {
   else
     warn "Could not fetch uninstall.sh; 'vac uninstall' will fall back to the network."
   fi
+
+  # Same idea for migrate.sh — stash it next to the compose file so 'vac migrate'
+  # works offline. Non-fatal: the wrapper fetches it on demand if it's missing.
+  info "Fetching migrate.sh…"
+  if fetch "$VAC_ASSET_BASE/migrate.sh" "$VAC_INSTALL_DIR/migrate.sh"; then
+    chmod +x "$VAC_INSTALL_DIR/migrate.sh"
+  else
+    warn "Could not fetch migrate.sh; 'vac migrate' will fall back to the network."
+  fi
 }
 
 generate_env() {
@@ -695,6 +704,20 @@ UNITEOF
     dc ps --status=running --services 2>/dev/null | grep -q '^vac-api$' \
       || { echo "vac-api is not running; start it with 'vac up' first." >&2; exit 1; }
     dc exec vac-api vac-api reset-password "$@" ;;
+  migrate)
+    # Whole-box export/import for VPS-to-VPS migration. Prefer the on-disk copy
+    # (offline hosts); fall back to the published asset. Runs in $DIR so a bare
+    # `vac migrate export` lands the bundle in the install dir by default.
+    if [ -x "$DIR/migrate.sh" ]; then
+      exec "$DIR/migrate.sh" "$@"
+    elif command -v curl >/dev/null 2>&1; then
+      curl -fsSL "$ASSET_BASE/migrate.sh" | sh -s -- "$@"
+    elif command -v wget >/dev/null 2>&1; then
+      wget -qO- "$ASSET_BASE/migrate.sh" | sh -s -- "$@"
+    else
+      echo "neither curl nor wget available, and no $DIR/migrate.sh on disk" >&2
+      exit 1
+    fi ;;
   uninstall)
     # Prefer an on-disk copy so air-gapped hosts work; fall back to fetching
     # the published asset. uninstall.sh exits 0 if the user declines.
@@ -729,6 +752,8 @@ vac — manage this VAC install ($DIR)
   vac reset-password <username>    set a new password and revoke sessions
   vac up | down | restart [service]
   vac config                       print the .env
+  vac migrate export [DIR]         bundle this whole install (DB, key, certs, app data)
+  vac migrate import <BUNDLE>      restore a bundle onto this host (move from another VPS)
   vac uninstall [--purge] [--apps] [--backup DIR] [--yes]
                                    remove VAC; see --help for full options
 USAGE

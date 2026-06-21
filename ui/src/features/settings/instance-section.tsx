@@ -1,8 +1,10 @@
 import { useTranslation } from 'react-i18next'
 import { ExternalLink } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { SectionHeader } from '@/components/common/section-header'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -13,9 +15,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { CopyButton } from '@/components/common/copy-button'
 import { cn } from '@/lib/utils'
-import { useInstanceInfo, useUpdateCheck } from '@/lib/api/instance'
+import { useInstanceInfo, useUpdateCheck, useExportBundle } from '@/lib/api/instance'
+import { downloadBlob } from '@/lib/log-export'
 import { SUPPORTED_LANGUAGES, changeLanguage, type SupportedLanguage } from '@/i18n'
 
 const CHANNELS = ['stable', 'beta', 'edge'] as const
@@ -75,8 +89,67 @@ export function InstanceSection() {
         </Card>
       </div>
 
+      <MigrationSection />
+
       <LanguageSection />
     </section>
+  )
+}
+
+// MigrationSection downloads a portable instance bundle (control DB + every
+// encrypted secret + the master key) to move this VAC to another host. It is the
+// browser half of `vac migrate`: app *data* volumes are deliberately not included
+// (they're bulk and belong to the host CLI), so the card says so. The bundle
+// holds secrets, so the action is behind a warning dialog and fresh-2FA step-up
+// (enforced transparently by the API client on the POST).
+function MigrationSection() {
+  const { t } = useTranslation('settings')
+  const exportBundle = useExportBundle()
+
+  const handleExport = () =>
+    exportBundle.mutate(undefined, {
+      onSuccess: (blob) => {
+        downloadBlob('vac-instance-bundle.tar', blob)
+        toast.success(t('instance.migration.success'))
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : t('instance.migration.error')),
+    })
+
+  return (
+    <div>
+      <SectionHeader>{t('instance.migration.heading')}</SectionHeader>
+      <Card className="gap-0 p-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <div className="max-w-xl">
+            <div className="text-sm font-medium">{t('instance.migration.label')}</div>
+            <p className="text-xs text-muted-foreground">{t('instance.migration.description')}</p>
+          </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm" disabled={exportBundle.isPending}>
+                {exportBundle.isPending
+                  ? t('instance.migration.exporting')
+                  : t('instance.migration.button')}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('instance.migration.confirmTitle')}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('instance.migration.confirmDescription')}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('instance.migration.cancel')}</AlertDialogCancel>
+                <AlertDialogAction onClick={handleExport}>
+                  {t('instance.migration.confirmAction')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </Card>
+    </div>
   )
 }
 

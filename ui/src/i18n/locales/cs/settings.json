@@ -51,7 +51,20 @@
       "hint": "Stáhne a aktualizuje sám sebe během maintenance window (neděle 04:00 UTC).",
       "ariaLabel": "Automatické aktualizace (již brzy)"
     },
-    "comingSoon": "Již brzy"
+    "comingSoon": "Již brzy",
+    "migration": {
+      "heading": "Migrace",
+      "label": "Exportovat balíček instance",
+      "description": "Stáhne řídicí databázi a tajné údaje této instance (včetně hlavního klíče) pro přesun VAC na jiný server. Datové svazky aplikací nejsou součástí — ty přeneste příkazem 'vac migrate export' na hostiteli. Obnovení provedete přes 'vac migrate import'.",
+      "button": "Exportovat balíček",
+      "exporting": "Exportuji…",
+      "confirmTitle": "Stáhnout balíček instance?",
+      "confirmDescription": "Tento soubor obsahuje váš hlavní klíč a všechna uložená tajemství. Kdokoli, kdo jej získá, může tuto instanci napodobit. Uložte jej na bezpečné místo a přenášejte pouze přes soukromý kanál (např. SSH).",
+      "confirmAction": "Stáhnout",
+      "cancel": "Zrušit",
+      "success": "Balíček instance stažen",
+      "error": "Balíček se nepodařilo exportovat"
+    }
   },
   "apiTokens": {
     "heading": "API tokeny",

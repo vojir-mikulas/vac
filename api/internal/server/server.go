@@ -304,6 +304,10 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 					// Irreversible box-wide wipe — gate on fresh 2FA (on top of
 					// the typed "RESET" confirmation the handler enforces).
 					r.With(middleware.RequireStepUp).Post("/reset", handler.ResetInstance(s, docker, proxyMgr, cfg.WorkDir))
+					// Streams a portable instance bundle (control DB + secrets +
+					// master key). Maximally sensitive, so fresh 2FA like the wipes
+					// above; the host CLI carries app data volumes on top of this.
+					r.With(middleware.RequireStepUp).Post("/migration-bundle", handler.ExportInstanceBundle(docker, cfg))
 				}
 			})
 

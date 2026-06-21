@@ -86,6 +86,7 @@ jobs:
           mkdir public
           cp scripts/install.sh public/install.sh
           cp scripts/uninstall.sh public/uninstall.sh
+          cp scripts/migrate.sh public/migrate.sh
           cp compose.prod.yaml public/compose.prod.yaml
 
       - name: Deploy to GitHub Pages branch

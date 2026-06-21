@@ -24,7 +24,12 @@ export function logsToJson(lines: LogLine[]): string {
 }
 
 export function downloadFile(filename: string, content: string, mime: string) {
-  const blob = new Blob([content], { type: mime })
+  downloadBlob(filename, new Blob([content], { type: mime }))
+}
+
+// downloadBlob triggers a browser save of an already-built Blob (e.g. a binary
+// download fetched from the API), sharing downloadFile's anchor lifecycle.
+export function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
