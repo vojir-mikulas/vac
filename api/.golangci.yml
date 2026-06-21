@@ -84,6 +84,44 @@ linters:
         text: G115
         linters:
           - gosec
+      # G118: DB provisioning is detached on purpose — it must outlive the
+      # request that triggered it (a client disconnect mid-provision must not
+      # cancel it and leave a half-created database). context.Background is
+      # correct here; binding to the request context would be the bug.
+      - path: internal/dbprovision/provisioner.go
+        text: G118
+        linters:
+          - gosec
+      # G118: HTTP handlers intentionally spawn detached background work (backup
+      # runs/verifications, manual job runs, route reconcile, audit-log writes)
+      # that must outlive the triggering request — a client disconnect must not
+      # cancel it. Each site uses context.Background with its own bounded timeout
+      # by design (see the per-call comments); binding to r.Context() is the bug.
+      - path: internal/server/handler/
+        text: G118
+        linters:
+          - gosec
+      # G117: req.S3 (carries AccessKey/SecretKey) is marshaled only to be passed
+      # straight into box.Seal — it is encrypted at rest, never written or logged
+      # as plaintext. The marshal is the input to encryption, not a leak.
+      - path: internal/server/handler/backups.go
+        text: G117
+        linters:
+          - gosec
+      # G117: same pattern — the registry password is marshaled solely to feed
+      # box.Seal on the next line; the plaintext never escapes the function.
+      - path: internal/server/handler/registry_auth.go
+        text: G117
+        linters:
+          - gosec
+      # G710: not an open redirect — the redirect only fires after the host has
+      # been resolved to a known app (resolver.AppIDForHost) and woken, and
+      # wakeTarget sanitizes the URI (forces a leading "/", rejects "//host").
+      # The taint analysis can't see the AppIDForHost validation gate.
+      - path: internal/server/handler/wake.go
+        text: G710
+        linters:
+          - gosec
 
 formatters:
   enable:

@@ -1,6 +1,6 @@
 module github.com/vojir-mikulas/vac/api
 
-go 1.25.7
+go 1.25.11
 
 require (
 	github.com/coder/websocket v1.8.14
@@ -13,7 +13,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.4
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.52.0
 	golang.org/x/net v0.55.0
 	golang.org/x/term v0.43.0
 	golang.org/x/time v0.15.0
