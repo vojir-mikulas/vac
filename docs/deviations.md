@@ -509,6 +509,49 @@ footprint on a box that uses none — the `<200 MB` claim holds.
 - **Trade-off:** one provider per instance; DNS-01 ACME (wildcard via ACME) is out of scope —
   BYO upload (D1) covers wildcards for v1.
 
+## Security hardening sweep (2026-06-21)
+
+### D — The Caddy `ask`/wake shared secret is auto-minted, not operator-supplied, and rides the ask URL as a query param
+
+- **Context:** `/internal/caddy/ask` (on-demand-TLS gate) and `/__vac_wake` (scale-to-zero) are
+  unauthenticated — Caddy can't present a session. They sit outside the `/api` auth group. The
+  primary abuse control is the host allow-list (`caddy_ask` answers 2xx only for hosts VAC knows),
+  but a shared secret was meant to add defence-in-depth.
+- **Was broken:** the secret came only from `VAC_CADDY_ASK_TOKEN`, which neither `install.sh` nor
+  `compose.prod.yaml` ever set — so it was empty by default and the gate was a no-op. Worse, on the
+  **ask** path it could never work: Caddy's on-demand `permission` module calls the endpoint with
+  only `?domain=<host>` and **cannot send request headers**, yet `caddy_ask` only checked the
+  `X-Caddy-Ask-Token` header. The header check was dead code for the ask hook (only the wake path,
+  which flows through `reverse_proxy`, can set the header — `proxy.Manager` does at `manager.go`).
+- **We do instead:** `config.Load` mints an ephemeral per-process token (`crypto/rand`, 32 bytes
+  hex) whenever `VAC_CADDY_ASK_TOKEN` is unset, so the gate is always active. `main.go` stamps that
+  token into the ask URL as a `?token=` query param (Caddy preserves it and appends `&domain=`), and
+  `caddy_ask` now accepts the secret from the query param **or** the header. All four consumers read
+  the same `cfg.CaddyAskToken`, so the value is self-consistent; a vac-api restart re-pushes the base
+  config, keeping Caddy and the handler in sync.
+- **Trade-off:** an ephemeral token rotates on every vac-api restart, opening a sub-second window
+  (until the base-config re-push lands) where an in-flight ask carrying the old token is refused —
+  harmless, since on-demand issuance is rare and self-heals. Operators who want a stable token can
+  still set `VAC_CADDY_ASK_TOKEN`.
+
+### D — vac-api's `9393` is published on all interfaces over plain HTTP by design (recovery path), hardened by guidance not by binding
+
+- **Context:** `compose.prod.yaml` publishes vac-api on `0.0.0.0:${VAC_HOST_PORT:-9393}` (unlike
+  vac-db, which is `127.0.0.1`-only). The installer advertises `http://<ip>:9393` as the
+  pre-DNS / recovery path and the **first-run admin-setup link is delivered over it** — so the box
+  is reachable and the admin account is created before DNS + TLS settle.
+- **Risk:** the full `/api` surface is reachable directly, bypassing Caddy's HTTPS; a login over
+  that port traverses plain HTTP (and the session cookie isn't `Secure`, since cookies are
+  `Secure`-per-request only on real TLS).
+- **We do instead:** we keep the port (binding it to localhost would break first-run setup and
+  recovery), and instead the installer's closing output now tells the operator to firewall the
+  direct port to their admin IP — or close it and use an SSH tunnel — once `https://vac.<domain>`
+  is live, with a copy-pasteable `ufw` snippet.
+- **Trade-off:** the hardening is advisory, not enforced — a box with no firewall leaves `9393`
+  open over plain HTTP. The host security agent already warns when no firewall is active, and
+  `VAC_HOST_PORT` lets an operator move/limit the binding. Auto-binding to localhost post-setup is
+  possible future work but would complicate the recovery story.
+
 ---
 
 > Maintenance note: when a deviation is later reconciled (e.g. we adopt the mvp's original

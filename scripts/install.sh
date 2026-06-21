@@ -870,6 +870,14 @@ print_summary() {
     printf '  Security monitoring is %son%s — read-only fail2ban/firewall status on the Security tab.\n' "$B" "$N"
   fi
   printf '  Manage:  %svac status | vac logs | vac upgrade | vac down%s\n' "$B" "$N"
+  if [ -n "$VAC_DOMAIN" ]; then
+    printf '\n  %sSecurity:%s the direct port %s:%s serves the dashboard over plain\n' "$B" "$N" "$IP" "$VAC_HOST_PORT"
+    printf '  HTTP (no TLS) — itʼs the pre-DNS recovery path. Once %shttps://vac.%s%s\n' "$B" "$VAC_DOMAIN" "$N"
+    printf '  works, restrict that port to your admin IP (or close it and use an SSH\n'
+    printf '  tunnel) so logins never traverse plain HTTP, e.g.:\n'
+    printf '    %sufw allow from <your-ip> to any port %s proto tcp%s\n' "$B" "$VAC_HOST_PORT" "$N"
+    printf '    %sufw deny %s/tcp%s\n' "$B" "$VAC_HOST_PORT" "$N"
+  fi
   if [ "${RELOGIN:-0}" = "1" ]; then
     printf '\n  %sLog out and back in%s (or run %snewgrp docker%s) so %s%s%s can run\n' "$B" "$N" "$B" "$N" "$B" "${SUDO_USER:-your user}" "$N"
     printf '  %svac%s commands without sudo.\n' "$B" "$N"

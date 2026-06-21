@@ -27,8 +27,9 @@ type WakeResolver interface {
 // an app is suspended, Caddy swaps its routes for one that rewrites any path to
 // /__vac_wake and proxies here, carrying the original host and URI in the
 // X-Vac-Wake-Host / X-Vac-Wake-Uri headers. This endpoint is unauthenticated
-// (like CaddyAsk) and lives outside the /api auth group; it is reachable only on
-// the internal compose network and is optionally shared-secret gated.
+// (like CaddyAsk) and lives outside the /api auth group; it is gated by the
+// shared X-Caddy-Ask-Token (set on the wake route by proxy.Manager, and always
+// present since config.Load mints one when VAC_CADDY_ASK_TOKEN is unset).
 //
 // Flow: resolve host → app, trigger Wake (in-flight-deduped so concurrent
 // requests cause exactly one docker start). The request that wins the race

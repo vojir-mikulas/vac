@@ -532,6 +532,20 @@ func loadCaddyBaseConfig(parent context.Context, cfg config.Config, client *cadd
 	if askURL == "" {
 		askURL = fmt.Sprintf("http://vac-api:%d/internal/caddy/ask", cfg.Server.Port)
 	}
+	// Caddy's on-demand permission module calls the ask endpoint with only
+	// ?domain=<host> appended and cannot send custom headers, so the shared secret
+	// rides along as a query param (Caddy preserves any query already on the
+	// endpoint URL). caddy_ask.go enforces it. The wake path uses the
+	// X-Caddy-Ask-Token header instead — that flows through reverse_proxy, where
+	// the proxy manager can set headers.
+	if cfg.CaddyAskToken != "" {
+		if u, err := url.Parse(askURL); err == nil {
+			q := u.Query()
+			q.Set("token", cfg.CaddyAskToken)
+			u.RawQuery = q.Encode()
+			askURL = u.String()
+		}
+	}
 	// Seed the base with any uploaded (bring-your-own) certs so they are served
 	// immediately after a Caddy restart, before the first route sync re-pushes
 	// them (dns-automation plan B). Best-effort: an error here just means the

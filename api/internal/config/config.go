@@ -5,6 +5,7 @@
 package config
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -315,9 +316,33 @@ func Load() (Config, error) {
 
 	applyEnv(&cfg)
 
+	// The on-demand-TLS ask and scale-to-zero wake endpoints are unauthenticated
+	// (Caddy can't present a session) and live outside the /api auth group. A
+	// shared secret gates them as defence in depth. When the operator hasn't set
+	// one, mint an ephemeral per-process token so the gate is always active rather
+	// than a silent no-op: vac-api stamps this same value into Caddy's ask URL and
+	// the wake route on boot, so the two ends always agree (a vac-api restart
+	// re-pushes the base config, keeping them in sync).
+	if cfg.CaddyAskToken == "" {
+		tok, err := randomHex(32)
+		if err != nil {
+			return cfg, fmt.Errorf("config: generating caddy ask token: %w", err)
+		}
+		cfg.CaddyAskToken = tok
+	}
+
 	deriveBaseDomainSource(&cfg)
 	validate(&cfg)
 	return cfg, nil
+}
+
+// randomHex returns n cryptographically-random bytes as a hex string.
+func randomHex(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // deriveBaseDomainSource records where the effective base domain came from so the

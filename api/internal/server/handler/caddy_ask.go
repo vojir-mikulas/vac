@@ -31,13 +31,23 @@ type AutoHostChecker interface {
 // unbounded ACME issuance.
 //
 // This endpoint is unauthenticated (Caddy can't present a session) and lives
-// outside the /api auth group. It is reachable only on the internal compose
-// network. An optional shared-secret header adds defence in depth.
+// outside the /api auth group. A shared secret gates it as defence in depth —
+// vac-api mints one automatically when the operator hasn't set VAC_CADDY_ASK_TOKEN
+// (see config.Load), so the gate is always active. Caddy's on-demand permission
+// module can't set request headers, so it presents the secret as the `token`
+// query param (stamped into the ask URL at boot); a header is also accepted for
+// callers that can set one.
 func CaddyAsk(s *store.Store, token string, ctrl ControlDomainChecker, auto AutoHostChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if token != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Caddy-Ask-Token")), []byte(token)) != 1 {
-			w.WriteHeader(http.StatusForbidden)
-			return
+		if token != "" {
+			presented := r.Header.Get("X-Caddy-Ask-Token")
+			if presented == "" {
+				presented = r.URL.Query().Get("token")
+			}
+			if subtle.ConstantTimeCompare([]byte(presented), []byte(token)) != 1 {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
 		}
 		host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(r.URL.Query().Get("domain")), "."))
 		if host == "" {
