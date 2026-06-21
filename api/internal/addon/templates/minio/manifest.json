@@ -13,5 +13,6 @@
   },
   "health_paths": {
     "minio": "/minio/health/live"
-  }
+  },
+  "requires_cpu_baseline": "x86-64-v2"
 }

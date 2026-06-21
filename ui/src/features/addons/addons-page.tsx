@@ -2,7 +2,16 @@ import { useDeferredValue, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, Blocks, Database, Download, Search, SearchX, Trash2 } from 'lucide-react'
+import {
+  AlertTriangle,
+  Blocks,
+  Cpu,
+  Database,
+  Download,
+  Search,
+  SearchX,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageContainer, PageHeader } from '@/components/layout/app-shell'
@@ -217,6 +226,29 @@ function CategoryChip({
   )
 }
 
+// CpuRequirementNotice flags an add-on whose image needs a CPU microarchitecture
+// level (e.g. x86-64-v2). When this box can't meet it (incompatible), the add-on
+// won't start — shown in red so the operator sees it before installing instead
+// of via a post-install crash loop; otherwise it's a muted heads-up.
+function CpuRequirementNotice({ addon }: { addon: Addon }) {
+  const { t } = useTranslation('addons')
+  if (!addon.requires_cpu_baseline) return null
+  if (addon.incompatible) {
+    return (
+      <div className="flex items-start gap-1.5 rounded-md border border-err-border bg-err-bg px-2.5 py-1.5 text-2xs text-err-foreground">
+        <Cpu className="mt-px size-3 shrink-0" />
+        <span>{t('card.cpuIncompatible', { baseline: addon.requires_cpu_baseline })}</span>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
+      <Cpu className="size-3" />
+      {t('card.cpuRequires', { baseline: addon.requires_cpu_baseline })}
+    </div>
+  )
+}
+
 function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }) {
   const { t } = useTranslation('addons')
   return (
@@ -252,6 +284,7 @@ function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }
           {t('card.provisionsDb', { engine: addon.depends_on_db })}
         </div>
       ) : null}
+      <CpuRequirementNotice addon={addon} />
       {installedApp ? (
         <InstalledActions addon={addon} app={installedApp} />
       ) : (
@@ -579,24 +612,37 @@ function InstallDialog({ addon }: { addon: Addon }) {
                 )
               })}
 
-              <div className="flex items-start gap-2 rounded-lg border border-warn-border bg-warn-bg px-3 py-2 text-xs text-warn-foreground">
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                <span>
-                  {addon.depends_on_db
-                    ? t('install.warningWithDb', {
-                        mb: addon.footprint_mb,
-                        engine: addon.depends_on_db,
-                      })
-                    : t('install.warning', { mb: addon.footprint_mb })}
-                </span>
-              </div>
+              {addon.incompatible ? (
+                <div className="flex items-start gap-2 rounded-lg border border-err-border bg-err-bg px-3 py-2 text-xs text-err-foreground">
+                  <Cpu className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    {t('install.cpuIncompatible', { baseline: addon.requires_cpu_baseline })}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 rounded-lg border border-warn-border bg-warn-bg px-3 py-2 text-xs text-warn-foreground">
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    {addon.depends_on_db
+                      ? t('install.warningWithDb', {
+                          mb: addon.footprint_mb,
+                          engine: addon.depends_on_db,
+                        })
+                      : t('install.warning', { mb: addon.footprint_mb })}
+                  </span>
+                </div>
+              )}
             </div>
 
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)}>
                 {t('install.cancel')}
               </Button>
-              <Button variant="brand" disabled={install.isPending} onClick={submit}>
+              <Button
+                variant="brand"
+                disabled={install.isPending || addon.incompatible}
+                onClick={submit}
+              >
                 {t('install.install')}
               </Button>
             </DialogFooter>

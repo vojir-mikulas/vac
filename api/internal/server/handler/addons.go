@@ -51,20 +51,28 @@ type addonDTO struct {
 	// Shared marks a database add-on whose engine runs as one instance shared by
 	// every app that provisions on it. Only meaningful for kind="database".
 	Shared bool `json:"shared,omitempty"`
+	// RequiresCPUBaseline echoes the template's CPU microarchitecture requirement
+	// (e.g. "x86-64-v2"), or "" for none. Incompatible is true when this box's CPU
+	// can't meet it — surfaced so the operator sees it before installing rather
+	// than via a post-install crash loop.
+	RequiresCPUBaseline string `json:"requires_cpu_baseline,omitempty"`
+	Incompatible        bool   `json:"incompatible,omitempty"`
 }
 
 func templateAddon(t addon.Template) addonDTO {
 	return addonDTO{
-		Kind:        "template",
-		ID:          t.ID,
-		Name:        t.Name,
-		Description: t.Description,
-		Category:    t.Category,
-		Icon:        t.Icon,
-		FootprintMB: t.FootprintMB,
-		DependsOnDB: t.DependsOnDB,
-		ComposeFile: t.ComposeFile,
-		DefaultEnv:  t.DefaultEnv,
+		Kind:                "template",
+		ID:                  t.ID,
+		Name:                t.Name,
+		Description:         t.Description,
+		Category:            t.Category,
+		Icon:                t.Icon,
+		FootprintMB:         t.FootprintMB,
+		DependsOnDB:         t.DependsOnDB,
+		ComposeFile:         t.ComposeFile,
+		DefaultEnv:          t.DefaultEnv,
+		RequiresCPUBaseline: t.RequiresCPUBaseline,
+		Incompatible:        t.RequiresCPUBaseline != "" && !addon.HostSupportsBaseline(t.RequiresCPUBaseline),
 	}
 }
 

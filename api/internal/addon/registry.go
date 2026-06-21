@@ -42,6 +42,13 @@ type Template struct {
 	// unauthenticated 200 endpoint. The deploy pipeline applies these after the
 	// first deploy creates the service rows.
 	HealthPaths map[string]string `json:"health_paths"`
+	// RequiresCPUBaseline names an x86-64 microarchitecture level the add-on's
+	// image needs (currently "x86-64-v2"), or "" for none. MinIO's image is built
+	// against a glibc that aborts on a CPU without x86-64-v2 (SSE4.2/POPCNT) — a
+	// common case on budget VPS that expose a generic virtual CPU. The catalog
+	// surfaces this as a requirement and, when the host can't meet it, an
+	// up-front incompatibility flag instead of a post-install crash loop.
+	RequiresCPUBaseline string `json:"requires_cpu_baseline"`
 }
 
 // Registry holds the parsed catalog. It also implements

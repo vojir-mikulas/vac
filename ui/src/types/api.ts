@@ -709,6 +709,10 @@ export interface Addon {
   default_env?: Record<string, string>
   /** Database add-ons: the engine runs as one shared instance across apps. */
   shared?: boolean
+  /** CPU microarchitecture level the add-on's image needs (e.g. "x86-64-v2"). */
+  requires_cpu_baseline?: string
+  /** True when this box's CPU can't meet `requires_cpu_baseline` — won't run. */
+  incompatible?: boolean
 }
 
 export interface AddonInstallResult {

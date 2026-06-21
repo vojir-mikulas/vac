@@ -18,7 +18,9 @@
     "active_one": "Aktivní · {{count}} database",
     "active_other": "Aktivní · {{count}} databases",
     "shared": "Jedna sdílená instance obsluhuje všechny aplikace",
-    "perApp": "Provisioned pro každou aplikaci zvlášť"
+    "perApp": "Provisioned pro každou aplikaci zvlášť",
+    "cpuRequires": "Vyžaduje CPU s instrukční sadou {{baseline}}",
+    "cpuIncompatible": "CPU tohoto boxu nemá instrukční sadu {{baseline}}, takže se tento add-on nespustí. Zapněte na svém VPS host-CPU passthrough, nebo použijte jiný box."
   },
   "installed": {
     "open": "Otevřít",
@@ -51,6 +53,7 @@
     "credAutoGen": "Ponechte prázdné pro automatické vygenerování",
     "warning": "Běží na tomto boxu a využije přibližně {{mb}} MB RAM.",
     "warningWithDb": "Běží na tomto boxu a využije přibližně {{mb}} MB RAM, plus managed {{engine}} database.",
+    "cpuIncompatible": "CPU tohoto boxu nepodporuje instrukční sadu {{baseline}}, kterou image tohoto add-onu vyžaduje — při startu by spadl. Zapněte na svém VPS host-CPU passthrough, nebo jej nainstalujte na box s novějším CPU.",
     "cancel": "Zrušit",
     "install": "Nainstalovat",
     "secretsTitle": "Uložte si tyto secrets",

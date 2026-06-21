@@ -18,7 +18,9 @@
     "active_one": "Active · {{count}} database",
     "active_other": "Active · {{count}} databases",
     "shared": "One shared instance serves every app",
-    "perApp": "Provisioned per app"
+    "perApp": "Provisioned per app",
+    "cpuRequires": "Needs a CPU with the {{baseline}} instruction set",
+    "cpuIncompatible": "This box's CPU lacks the {{baseline}} instruction set, so this add-on won't start. Enable host-CPU passthrough at your VPS provider, or use a different box."
   },
   "installed": {
     "open": "Open",
@@ -51,6 +53,7 @@
     "credAutoGen": "Leave blank to auto-generate",
     "warning": "Runs on this box and uses roughly {{mb}} MB of RAM.",
     "warningWithDb": "Runs on this box and uses roughly {{mb}} MB of RAM, plus a managed {{engine}} database.",
+    "cpuIncompatible": "This box's CPU doesn't support the {{baseline}} instruction set, which this add-on's image requires — it would crash on startup. Enable host-CPU passthrough at your VPS provider, or install it on a box with a newer CPU.",
     "cancel": "Cancel",
     "install": "Install",
     "secretsTitle": "Save these secrets",
