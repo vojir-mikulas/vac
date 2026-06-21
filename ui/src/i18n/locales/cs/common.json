@@ -3,10 +3,18 @@
     "copy": "Kopírovat",
     "copied": "Zkopírováno",
     "reload": "Znovu načíst",
-    "backToApps": "Zpět na aplikace"
+    "backToApps": "Zpět na aplikace",
+    "close": "Zavřít"
   },
   "toast": {
     "copyFailed": "Kopírování selhalo — označte text a zkopírujte jej ručně."
+  },
+  "appShell": {
+    "skipToContent": "Přeskočit na obsah",
+    "insecureHttpTitle": "Jste na nešifrovaném HTTP — relace nejsou zabezpečené.",
+    "insecureHttpHintBefore": "Nakonfigurujte doménu příkazem",
+    "insecureHttpHintAfter": "pro povolení HTTPS.",
+    "dismiss": "Zavřít"
   },
   "notFound": {
     "title": "Stránka nenalezena",

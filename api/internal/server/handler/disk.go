@@ -47,7 +47,7 @@ func DiskUsage(d DiskReporter) http.HandlerFunc {
 // POST /api/instance/prune
 func PruneDisk(d DiskPruner) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		audit.Describe(r.Context(), "reclaimed disk space (pruned dangling images + build cache)")
+		audit.Action(r.Context(), "disk.reclaimed", nil)
 		// Detach from the request so a client disconnect doesn't abort a prune
 		// mid-flight, but bound it so a wedged daemon can't hang forever.
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Minute)

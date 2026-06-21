@@ -104,7 +104,7 @@ func TeardownPreview(s *store.Store, previews PreviewService) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "app", previewID)
-		audit.Describe(r.Context(), "tore down preview "+pv.Slug)
+		audit.Action(r.Context(), "preview.torn_down", map[string]any{"slug": pv.Slug})
 		WriteJSON(w, http.StatusOK, map[string]int{"deleted": 1})
 	}
 }

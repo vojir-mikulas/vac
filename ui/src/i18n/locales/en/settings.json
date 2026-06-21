@@ -20,7 +20,6 @@
     "themeDescription": "Choose light, dark, or follow your system preference."
   },
   "language": {
-    "heading": "Language",
     "label": "Display language",
     "hint": "Sets the dashboard language. More languages are on the way."
   },
@@ -144,6 +143,22 @@
       }
     },
     "events": "Events",
+    "eventLabels": {
+      "deploy_succeeded": "Deploy succeeded",
+      "deploy_failed": "Deploy failed",
+      "crash_loop": "Crash loop",
+      "oom_killed": "Out of memory (OOM killed)",
+      "vac_restarted": "VAC restarted",
+      "cert_expiring": "Certificate expiring",
+      "backup_failed": "Backup failed",
+      "restore_finished": "Restore finished",
+      "traffic_anomaly": "Traffic anomaly",
+      "disk_usage_high": "Disk usage high",
+      "mem_over_committed": "Memory over-committed",
+      "preview_cap_reached": "Preview cap reached",
+      "job_failed": "Job failed",
+      "backup_unverified": "Backup unverified"
+    },
     "sendTest": "Send test",
     "testDirtyHint": "Save your changes first — the test uses your saved settings.",
     "save": "Save",

@@ -113,7 +113,7 @@ func SetAppRegistryAuth(s *store.Store, box *crypto.Box) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "app", appID)
-		audit.Describe(r.Context(), "set private-registry credentials")
+		audit.Action(r.Context(), "registry.credentials_set", nil)
 		WriteJSON(w, http.StatusOK, registryAuthConfigDTO{Configured: true, Registry: req.Registry})
 	}
 }
@@ -132,7 +132,7 @@ func DeleteAppRegistryAuth(s *store.Store) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "app", appID)
-		audit.Describe(r.Context(), "cleared private-registry credentials")
+		audit.Action(r.Context(), "registry.credentials_cleared", nil)
 		WriteJSON(w, http.StatusOK, registryAuthConfigDTO{Configured: false})
 	}
 }

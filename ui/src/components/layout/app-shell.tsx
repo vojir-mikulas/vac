@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AnimatePresence, m } from 'motion/react'
 import { AlertTriangle, X } from 'lucide-react'
 
@@ -37,12 +38,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 // First focusable element on every page: visually hidden until focused, then it
 // reveals and jumps keyboard/SR users past the sidebar straight to <main>.
 function SkipToContent() {
+  const { t } = useTranslation('common')
   return (
     <a
       href="#main"
       className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:left-4 focus-visible:top-4 focus-visible:z-50 focus-visible:rounded-md focus-visible:border focus-visible:bg-surface-1 focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
-      Skip to content
+      {t('appShell.skipToContent')}
     </a>
   )
 }
@@ -52,6 +54,7 @@ function SkipToContent() {
 const BANNER_DISMISS_KEY = 'vac-insecure-http-dismissed'
 
 function InsecureHTTPBanner() {
+  const { t } = useTranslation('common')
   // Decided once at mount: read window directly — this SPA never runs under
   // SSR, so the lazy initializer is safe and avoids a setState-in-effect.
   const [show, setShow] = useState(
@@ -82,18 +85,18 @@ function InsecureHTTPBanner() {
               <AlertTriangle className="size-4" />
             </span>
             <div className="flex-1 leading-snug">
-              <span className="font-medium">You're on plain HTTP — sessions are insecure.</span>{' '}
+              <span className="font-medium">{t('appShell.insecureHttpTitle')}</span>{' '}
               <span className="text-warn-foreground/80">
-                Configure a domain with{' '}
+                {t('appShell.insecureHttpHintBefore')}{' '}
                 <code className="rounded bg-warn-foreground/10 px-1 py-0.5 font-mono text-xs">
                   vac set-domain
                 </code>{' '}
-                to enable HTTPS.
+                {t('appShell.insecureHttpHintAfter')}
               </span>
             </div>
             <button
               type="button"
-              aria-label="Dismiss"
+              aria-label={t('appShell.dismiss')}
               onClick={() => {
                 window.sessionStorage.setItem(BANNER_DISMISS_KEY, '1')
                 setShow(false)

@@ -12,7 +12,12 @@ export interface AuditEntry {
   action: string // "PUT /api/apps/{id}/env"
   target_type?: string
   target_id?: string
-  summary?: string
+  summary?: string // un-translated fallback (legacy rows, free-form descriptions)
+  // action_key is a stable dotted id ("deployment.rolled_back") the UI translates
+  // against the `activity` catalog; action_params supplies its interpolation
+  // values. Absent on legacy rows — fall back to summary then humanizeAction.
+  action_key?: string
+  action_params?: Record<string, string | number>
   status_code: number
   revertable: boolean // true only when undoable AND not yet reverted
   has_preview: boolean // carries a before-snapshot — previewable even once reverted

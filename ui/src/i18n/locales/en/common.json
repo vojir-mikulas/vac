@@ -3,10 +3,18 @@
     "copy": "Copy",
     "copied": "Copied",
     "reload": "Reload",
-    "backToApps": "Back to apps"
+    "backToApps": "Back to apps",
+    "close": "Close"
   },
   "toast": {
     "copyFailed": "Copy failed — select the text and copy manually."
+  },
+  "appShell": {
+    "skipToContent": "Skip to content",
+    "insecureHttpTitle": "You're on plain HTTP — sessions are insecure.",
+    "insecureHttpHintBefore": "Configure a domain with",
+    "insecureHttpHintAfter": "to enable HTTPS.",
+    "dismiss": "Dismiss"
   },
   "notFound": {
     "title": "Page not found",

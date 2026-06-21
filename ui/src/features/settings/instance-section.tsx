@@ -9,13 +9,6 @@ import { Card } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -30,7 +23,6 @@ import { CopyButton } from '@/components/common/copy-button'
 import { cn } from '@/lib/utils'
 import { useInstanceInfo, useUpdateCheck, useExportBundle } from '@/lib/api/instance'
 import { downloadBlob } from '@/lib/log-export'
-import { SUPPORTED_LANGUAGES, changeLanguage, type SupportedLanguage } from '@/i18n'
 
 const CHANNELS = ['stable', 'beta', 'edge'] as const
 
@@ -90,8 +82,6 @@ export function InstanceSection() {
       </div>
 
       <MigrationSection />
-
-      <LanguageSection />
     </section>
   )
 }
@@ -218,35 +208,6 @@ function UpdateRow() {
         </code>
         <CopyButton value={command} label={t('instance.update.copyCommand')} />
       </div>
-    </div>
-  )
-}
-
-function LanguageSection() {
-  const { t, i18n } = useTranslation('settings')
-
-  return (
-    <div>
-      <SectionHeader>{t('language.heading')}</SectionHeader>
-      <Card className="gap-5 p-5">
-        <Row label={t('language.label')} hint={t('language.hint')}>
-          <Select
-            value={i18n.resolvedLanguage}
-            onValueChange={(lng) => void changeLanguage(lng as SupportedLanguage)}
-          >
-            <SelectTrigger className="w-40" aria-label={t('language.label')}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SUPPORTED_LANGUAGES.map((lang) => (
-                <SelectItem key={lang.code} value={lang.code}>
-                  {lang.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Row>
-      </Card>
     </div>
   )
 }

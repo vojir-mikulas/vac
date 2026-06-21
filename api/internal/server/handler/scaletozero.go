@@ -77,9 +77,9 @@ func SetIdleSuspend(s *store.Store) http.HandlerFunc {
 		}
 		audit.SetTarget(r.Context(), "app", app.ID)
 		if req.Enabled {
-			audit.Describe(r.Context(), "enabled idle-suspend")
+			audit.Action(r.Context(), "idle_suspend.enabled", nil)
 		} else {
-			audit.Describe(r.Context(), "disabled idle-suspend")
+			audit.Action(r.Context(), "idle_suspend.disabled", nil)
 		}
 		updated, err := s.GetApp(r.Context(), app.ID)
 		if err != nil {

@@ -98,7 +98,7 @@ func UploadDomainCert(s *store.Store, box *crypto.Box, certs CertSyncer) http.Ha
 		}
 
 		syncCerts(r.Context(), certs)
-		audit.Describe(r.Context(), "uploaded a TLS certificate for "+d.Hostname)
+		audit.Action(r.Context(), "cert.uploaded", map[string]any{"hostname": d.Hostname})
 		WriteJSON(w, http.StatusOK, certMetaDTO{
 			Subject:    meta.Subject,
 			DNSNames:   meta.DNSNames,
@@ -135,7 +135,7 @@ func ClearDomainCert(s *store.Store, certs CertSyncer) http.HandlerFunc {
 			return
 		}
 		syncCerts(r.Context(), certs)
-		audit.Describe(r.Context(), "removed the uploaded TLS certificate for "+d.Hostname+" (reverted to ACME)")
+		audit.Action(r.Context(), "cert.removed", map[string]any{"hostname": d.Hostname})
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "cleared", "tls_cert_source": "acme"})
 	}
 }

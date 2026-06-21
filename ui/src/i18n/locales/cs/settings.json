@@ -20,7 +20,6 @@
     "themeDescription": "Vyberte světlý, tmavý nebo podle nastavení systému."
   },
   "language": {
-    "heading": "Jazyk",
     "label": "Jazyk rozhraní",
     "hint": "Nastaví jazyk dashboardu. Další jazyky se připravují."
   },
@@ -144,6 +143,22 @@
       }
     },
     "events": "Události",
+    "eventLabels": {
+      "deploy_succeeded": "Deploy úspěšný",
+      "deploy_failed": "Deploy selhal",
+      "crash_loop": "Smyčka pádů",
+      "oom_killed": "Nedostatek paměti (OOM)",
+      "vac_restarted": "VAC restartován",
+      "cert_expiring": "Certifikát brzy vyprší",
+      "backup_failed": "Záloha selhala",
+      "restore_finished": "Obnovení dokončeno",
+      "traffic_anomaly": "Anomálie provozu",
+      "disk_usage_high": "Vysoké využití disku",
+      "mem_over_committed": "Překročená alokace paměti",
+      "preview_cap_reached": "Dosažen limit náhledů",
+      "job_failed": "Úloha selhala",
+      "backup_unverified": "Záloha neověřena"
+    },
     "sendTest": "Odeslat test",
     "testDirtyHint": "Nejprve uložte změny — test používá vaše uložená nastavení.",
     "save": "Uložit",

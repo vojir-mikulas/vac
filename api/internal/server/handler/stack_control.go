@@ -171,7 +171,7 @@ func StopService(s *store.Store, ctrl StackController, pm ProxyManager) http.Han
 		// upstreams; the rest of the app's routes stay up.
 		proxySync(r.Context(), pm, app.ID)
 		audit.SetTarget(r.Context(), "app", app.ID)
-		audit.Describe(r.Context(), "stopped service "+name)
+		audit.Action(r.Context(), "service.stopped", map[string]any{"service": name})
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
 	}
 }
@@ -195,7 +195,7 @@ func StartService(s *store.Store, ctrl StackController, pm ProxyManager, cr Cras
 		_ = s.UpdateServiceStatus(r.Context(), app.ID, name, deploy.ServiceStatusRunning, nil)
 		proxySync(r.Context(), pm, app.ID)
 		audit.SetTarget(r.Context(), "app", app.ID)
-		audit.Describe(r.Context(), "started service "+name)
+		audit.Action(r.Context(), "service.started", map[string]any{"service": name})
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "started"})
 	}
 }

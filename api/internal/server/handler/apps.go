@@ -416,7 +416,7 @@ func UpdateApp(s *store.Store, cat AddonCatalog) http.HandlerFunc {
 		// be undone. Best-effort — a read failure must not block the update.
 		if prior, err := s.GetApp(r.Context(), id); err == nil {
 			audit.SetTarget(r.Context(), "app", id)
-			audit.Describe(r.Context(), "updated configuration for "+prior.Slug)
+			audit.Action(r.Context(), "app.config_updated", map[string]any{"slug": prior.Slug})
 			audit.Snapshot(r.Context(), map[string]any{"app": appConfigSnapshot(prior)})
 		}
 

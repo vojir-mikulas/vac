@@ -81,11 +81,11 @@ func ImportApp(s *store.Store, box *crypto.Box, syncer RouteSyncer) http.Handler
 		}
 
 		audit.SetTarget(r.Context(), "app", result.AppID)
-		verb := "updated"
 		if result.Created {
-			verb = "imported"
+			audit.Action(r.Context(), "app.imported_from_spec", map[string]any{"slug": result.Slug})
+		} else {
+			audit.Action(r.Context(), "app.updated_from_spec", map[string]any{"slug": result.Slug})
 		}
-		audit.Describe(r.Context(), verb+" app "+result.Slug+" from spec")
 
 		// Best-effort: converge Caddy now. The app isn't deployed yet, so its
 		// routes have no upstream until the first deploy — the DB is the source of

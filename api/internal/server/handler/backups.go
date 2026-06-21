@@ -256,7 +256,7 @@ func VerifyBackup(s *store.Store, verifier BackupVerifier) http.HandlerFunc {
 			_ = verifier.VerifyOnce(ctx, cfg)
 		}()
 		audit.SetTarget(r.Context(), "backup", cfg.ID)
-		audit.Describe(r.Context(), "verified backup of "+cfg.ServiceName)
+		audit.Action(r.Context(), "backup.verified", map[string]any{"service": cfg.ServiceName})
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
@@ -418,7 +418,7 @@ func CreateBackup(s *store.Store, box *crypto.Box) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "backup", c.ID)
-		audit.Describe(r.Context(), "configured backup for "+app.Slug+"/"+req.ServiceName)
+		audit.Action(r.Context(), "backup.configured", map[string]any{"app": app.Slug, "service": req.ServiceName})
 		WriteJSON(w, http.StatusCreated, toBackupConfigDTO(c))
 	}
 }
@@ -464,7 +464,7 @@ func UpdateBackup(s *store.Store, box *crypto.Box) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "backup", c.ID)
-		audit.Describe(r.Context(), "updated backup for "+c.ServiceName)
+		audit.Action(r.Context(), "backup.updated", map[string]any{"service": c.ServiceName})
 		WriteJSON(w, http.StatusOK, toBackupConfigDTO(c))
 	}
 }
@@ -483,7 +483,7 @@ func DeleteBackup(s *store.Store) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "backup", cid)
-		audit.Describe(r.Context(), "deleted backup config")
+		audit.Action(r.Context(), "backup.deleted", nil)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -505,7 +505,7 @@ func RunBackup(s *store.Store, runner BackupRunner) http.HandlerFunc {
 			_ = runner.RunOnce(ctx, cfg)
 		}()
 		audit.SetTarget(r.Context(), "backup", cid)
-		audit.Describe(r.Context(), "triggered manual backup of "+cfg.ServiceName)
+		audit.Action(r.Context(), "backup.triggered", map[string]any{"service": cfg.ServiceName})
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
@@ -609,7 +609,7 @@ func RestoreBackup(s *store.Store, restorer BackupRestorer) http.HandlerFunc {
 			_ = restorer.Restore(ctx, cfg, rid)
 		}()
 		audit.SetTarget(r.Context(), "backup", cfg.ID)
-		audit.Describe(r.Context(), "restored "+cfg.ServiceName+" from backup run "+rid)
+		audit.Action(r.Context(), "backup.restored", map[string]any{"service": cfg.ServiceName, "run": rid})
 		w.WriteHeader(http.StatusAccepted)
 	}
 }

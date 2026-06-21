@@ -196,7 +196,7 @@ func InstallAddon(cat AddonCatalog, installer AddonInstaller) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "app", res.App.ID)
-		audit.Describe(r.Context(), "installed add-on "+id)
+		audit.Action(r.Context(), "addon.installed", map[string]any{"id": id})
 		WriteJSON(w, http.StatusAccepted, installResultDTO{
 			AppID:            res.App.ID,
 			Slug:             res.App.Slug,

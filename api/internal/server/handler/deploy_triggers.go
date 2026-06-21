@@ -89,7 +89,7 @@ func CreateDeployTrigger(s *store.Store) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "app", appID)
-		audit.Describe(r.Context(), "added "+req.Event+" deploy trigger "+triggerLabel(req.Filter))
+		audit.Action(r.Context(), "deploy_trigger.added", map[string]any{"event": req.Event, "filter": triggerLabel(req.Filter)})
 		WriteJSON(w, http.StatusCreated, toDeployTriggerDTO(t))
 	}
 }
@@ -108,7 +108,7 @@ func DeleteDeployTrigger(s *store.Store) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "app", appID)
-		audit.Describe(r.Context(), "removed a deploy trigger")
+		audit.Action(r.Context(), "deploy_trigger.removed", nil)
 		WriteJSON(w, http.StatusOK, map[string]int{"deleted": 1})
 	}
 }

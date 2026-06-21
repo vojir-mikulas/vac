@@ -65,10 +65,10 @@ func SetRateLimit(s *store.Store, pm ProxyManager) http.HandlerFunc {
 		proxySync(r.Context(), pm, app.ID)
 		audit.SetTarget(r.Context(), "app", app.ID)
 		if rpm != nil {
-			audit.Describe(r.Context(), "set rate limit")
+			audit.Action(r.Context(), "ratelimit.set", nil)
 			audit.SetMetadata(r.Context(), map[string]any{"rpm": *rpm})
 		} else {
-			audit.Describe(r.Context(), "cleared rate limit")
+			audit.Action(r.Context(), "ratelimit.cleared", nil)
 		}
 		WriteJSON(w, http.StatusOK, rateLimitDTO{RPM: rpm})
 	}

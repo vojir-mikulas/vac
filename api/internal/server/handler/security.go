@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -174,7 +173,7 @@ func SecurityBanHandler(h SecurityHost) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "ip", req.IP)
-		audit.Describe(r.Context(), fmt.Sprintf("banned %s in jail %s", req.IP, req.Jail))
+		audit.Action(r.Context(), "security.ip_banned", map[string]any{"ip": req.IP, "jail": req.Jail})
 		audit.SetMetadata(r.Context(), map[string]any{"jail": req.Jail, "ip": req.IP, "queued": queued})
 		WriteJSON(w, http.StatusOK, map[string]bool{"queued": queued})
 	}

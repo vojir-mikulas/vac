@@ -172,6 +172,16 @@ func buildEntry(r *http.Request, record *audit.Record, status int) store.AuditEn
 	if record.Summary != "" {
 		entry.Summary = &record.Summary
 	}
+	if record.ActionKey != "" {
+		entry.ActionKey = &record.ActionKey
+	}
+	if len(record.ActionParams) > 0 {
+		if raw, err := json.Marshal(record.ActionParams); err == nil {
+			entry.ActionParams = raw
+		} else {
+			slog.Warn("audit: action params marshal failed", "err", err)
+		}
+	}
 	if len(record.Metadata) > 0 {
 		if raw, err := json.Marshal(record.Metadata); err == nil {
 			entry.Metadata = raw

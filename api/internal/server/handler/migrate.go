@@ -36,7 +36,7 @@ const controlDBContainer = "vac-db"
 // audit middleware exactly like the other privileged instance operations.
 func ExportInstanceBundle(docker *dockercli.Compose, cfg config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		audit.Describe(r.Context(), "exported the instance migration bundle (control DB + secrets)")
+		audit.Action(r.Context(), "migrate.bundle_exported", nil)
 		audit.SetTarget(r.Context(), "instance", "bundle")
 
 		// Dump the control DB to a temp file first: pg_dump's size is unknown up

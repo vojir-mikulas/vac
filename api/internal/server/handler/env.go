@@ -153,7 +153,7 @@ func ReplaceAppEnv(s *store.Store, box *crypto.Box) http.HandlerFunc {
 			audit.Snapshot(r.Context(), map[string]any{"env": envSnapshot(prior)})
 		}
 		audit.SetTarget(r.Context(), "app", id)
-		audit.Describe(r.Context(), "replaced environment for "+app.Slug)
+		audit.Action(r.Context(), "env.replaced", map[string]any{"app": app.Slug})
 		inputs := make([]store.EnvVarInput, 0, len(req.Vars))
 		seen := make(map[string]struct{}, len(req.Vars))
 		for _, e := range req.Vars {

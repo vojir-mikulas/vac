@@ -234,7 +234,9 @@ function NotificationsForm({ settings }: { settings: NotificationSettings }) {
         <span className="text-sm font-medium">{t('notifications.events')}</span>
         {Object.keys(events).map((key) => (
           <label key={key} className="flex items-center justify-between gap-2 text-sm">
-            <span className="text-muted-foreground">{humanize(key)}</span>
+            <span className="text-muted-foreground">
+              {t(`notifications.eventLabels.${key}`, { defaultValue: humanize(key) })}
+            </span>
             <Switch
               checked={events[key]}
               onCheckedChange={(v) => setEvents((e) => ({ ...e, [key]: v }))}

@@ -82,7 +82,7 @@ function ActivityRow({
   onPreview: () => void
   reverting: boolean
 }) {
-  const { t } = useTranslation('activity')
+  const { t, i18n } = useTranslation('activity')
   const failed = entry.status_code >= 400
   return (
     <m.div
@@ -95,7 +95,7 @@ function ActivityRow({
       <ActorIcon type={entry.actor_type} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm">
-          {entry.summary || humanizeAction(entry.action, t)}
+          {describeEntry(entry, t, i18n)}
           {failed ? (
             <span className="ml-2 text-2xs text-err-foreground">{t('row.failed')}</span>
           ) : null}
@@ -133,6 +133,22 @@ function ActorIcon({ type }: { type: AuditEntry['actor_type'] }) {
 }
 
 type ActT = ReturnType<typeof useTranslation<'activity'>>['t']
+type ActI18n = ReturnType<typeof useTranslation<'activity'>>['i18n']
+
+// describeEntry renders one activity line. Newer entries carry a stable
+// `action_key` we translate against the `activity` catalog (with `action_params`
+// interpolated); older entries and a few dynamically-composed actions only have
+// the server's English `summary`; failing both, we humanize the raw route.
+function describeEntry(e: AuditEntry, t: ActT, i18n: ActI18n): string {
+  if (e.action_key && i18n.exists(`messages.${e.action_key}`, { ns: 'activity' })) {
+    // The key is server-supplied and existence-checked above. The typed `t`
+    // can't narrow a runtime string to a known literal, so call it through a
+    // loosely-typed view for this one dynamic lookup.
+    const translate = t as unknown as (key: string, opts?: Record<string, unknown>) => string
+    return translate(`messages.${e.action_key}`, e.action_params ?? {})
+  }
+  return e.summary || humanizeAction(e.action, t)
+}
 
 function actorLabel(e: AuditEntry, t: ActT): string {
   switch (e.actor_type) {

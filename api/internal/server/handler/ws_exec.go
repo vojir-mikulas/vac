@@ -193,14 +193,18 @@ func pumpShell(ctx context.Context, conn *ws.Conn, session shellPTY) {
 // independently). Mirrors the actor resolution the audit middleware uses.
 func recordShellAudit(r *http.Request, s *store.Store, appID, service, containerID string) {
 	summary := "opened shell into service " + service
+	actionKey := "exec.shell_opened"
+	actionParams, _ := json.Marshal(map[string]any{"service": service})
 	targetType := "app"
 	entry := store.AuditEntry{
-		ActorType:  store.ActorUser,
-		Action:     shellAuditAction,
-		TargetType: &targetType,
-		TargetID:   &appID,
-		Summary:    &summary,
-		StatusCode: http.StatusOK,
+		ActorType:    store.ActorUser,
+		Action:       shellAuditAction,
+		TargetType:   &targetType,
+		TargetID:     &appID,
+		Summary:      &summary,
+		ActionKey:    &actionKey,
+		ActionParams: actionParams,
+		StatusCode:   http.StatusOK,
 	}
 	if tok := auth.APIToken(r.Context()); tok != nil {
 		uid := tok.UserID

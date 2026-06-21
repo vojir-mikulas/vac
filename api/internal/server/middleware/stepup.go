@@ -36,7 +36,7 @@ func RequireStepUp(next http.Handler) http.Handler {
 		}
 		sess := auth.Session(r.Context())
 		if sess == nil || !auth.StepUpFresh(*sess) {
-			audit.Describe(r.Context(), "step-up 2FA required")
+			audit.Action(r.Context(), "stepup.required", nil)
 			handler.WriteErrorCode(w, http.StatusForbidden, handler.CodeStepUpRequired,
 				"two-factor re-verification required for this action")
 			return

@@ -216,7 +216,7 @@ func AddDatabase(s *store.Store, prov DBProvisioner) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "managed_db", m.ID)
-		audit.Describe(r.Context(), "provisioned "+req.Engine+" for "+app.Slug)
+		audit.Action(r.Context(), "database.provisioned", map[string]any{"engine": req.Engine, "app": app.Slug})
 		WriteJSON(w, http.StatusAccepted, addDatabaseResp{
 			Database: toManagedDatabaseDTO(m, info),
 			Warning:  footprintWarning(info),
@@ -239,7 +239,7 @@ func RemoveDatabase(s *store.Store, prov DBProvisioner) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "managed_db", dbid)
-		audit.Describe(r.Context(), "removed managed database")
+		audit.Action(r.Context(), "database.removed", nil)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

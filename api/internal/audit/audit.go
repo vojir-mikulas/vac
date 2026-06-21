@@ -3,8 +3,14 @@
 // one record per mutating request and persists it once the handler returns;
 // handlers enrich it in passing with a one-line hook:
 //
-//	audit.Describe(r.Context(), "renamed app to "+name)
+//	audit.Action(r.Context(), "app.renamed", map[string]any{"name": name})
 //	audit.SetTarget(r.Context(), "app", id)
+//
+// Prefer Action (a stable, localizable key + params) over Describe (a free-form
+// English sentence): the activity feed translates keyed actions client-side via
+// its `activity` catalog, while Describe text is shown verbatim and never
+// localized. Describe remains for the rare action whose summary is composed
+// dynamically and isn't worth a key.
 //
 // The record is a pointer shared between middleware and handler, so a handler's
 // mutations are visible to the middleware after ServeHTTP — no return plumbing.
@@ -22,8 +28,19 @@ const recordKey ctxKey = iota
 // middleware fills in the non-discretionary fields (actor, route, ip, outcome)
 // itself; everything here is the handler's optional contribution.
 type Record struct {
-	// Summary is a short human sentence ("deleted app blog").
+	// Summary is a short human sentence ("deleted app blog"). Set by Describe.
+	// Prefer ActionKey/ActionParams (set by Action) for new code so the activity
+	// feed can localize the line; Summary is the un-translated fallback shown for
+	// legacy rows and the few dynamically-composed descriptions.
 	Summary string
+	// ActionKey is a stable, dotted identifier for the action ("deployment.
+	// rolled_back"). The UI resolves it against its `activity` catalog to render
+	// a localized line; ActionParams supplies the interpolation values.
+	ActionKey string
+	// ActionParams holds the interpolation values for ActionKey ({"app": "blog"}).
+	// Persisted as JSONB; must be JSON-marshalable and must not carry secrets —
+	// it is exposed to the client in the activity feed.
+	ActionParams map[string]any
 	// TargetType / TargetID identify the primary object acted on ("app", id).
 	TargetType string
 	TargetID   string
@@ -56,10 +73,22 @@ func FromContext(ctx context.Context) *Record {
 	return rec
 }
 
-// Describe sets the human summary line. No-op if no record is attached.
+// Describe sets the free-form, un-translated summary line. Prefer Action for
+// new code. No-op if no record is attached.
 func Describe(ctx context.Context, summary string) {
 	if rec := FromContext(ctx); rec != nil {
 		rec.Summary = summary
+	}
+}
+
+// Action records a localizable action: a stable dotted key the UI translates
+// against its `activity` catalog, plus optional interpolation params. params
+// must be JSON-marshalable and must not carry secrets (it reaches the client).
+// Pass nil params for keys with no interpolation. No-op if no record attached.
+func Action(ctx context.Context, key string, params map[string]any) {
+	if rec := FromContext(ctx); rec != nil {
+		rec.ActionKey = key
+		rec.ActionParams = params
 	}
 }
 

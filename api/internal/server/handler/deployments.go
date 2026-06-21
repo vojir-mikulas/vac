@@ -106,7 +106,7 @@ func TriggerDeployment(s *store.Store, w DeploymentEnqueuer) http.HandlerFunc {
 		// Audit hook — the central middleware records actor/route/outcome; this
 		// one line gives the entry its target and a human summary.
 		audit.SetTarget(r.Context(), "app", app.ID)
-		audit.Describe(r.Context(), "triggered deployment of "+app.Slug)
+		audit.Action(r.Context(), "deployment.triggered", map[string]any{"app": app.Slug})
 		WriteJSON(rw, http.StatusAccepted, toDeploymentDTO(d))
 	}
 }
@@ -161,7 +161,7 @@ func RollbackDeployment(s *store.Store, w DeploymentEnqueuer) http.HandlerFunc {
 			shortSHA = (*d.CommitSHA)[:7]
 		}
 		audit.SetTarget(r.Context(), "app", app.ID)
-		audit.Describe(r.Context(), "rolled back "+app.Slug+" to "+shortSHA)
+		audit.Action(r.Context(), "deployment.rolled_back", map[string]any{"app": app.Slug, "sha": shortSHA})
 		WriteJSON(rw, http.StatusAccepted, toDeploymentDTO(d))
 	}
 }
@@ -206,7 +206,7 @@ func CancelDeployment(s *store.Store, c DeploymentCanceller) http.HandlerFunc {
 		c.NotifyChanged()
 
 		audit.SetTarget(r.Context(), "app", appID)
-		audit.Describe(r.Context(), "canceled deployment")
+		audit.Action(r.Context(), "deployment.canceled", nil)
 		WriteJSON(rw, http.StatusOK, map[string]string{"status": deploy.DeploymentStatusCanceled})
 	}
 }

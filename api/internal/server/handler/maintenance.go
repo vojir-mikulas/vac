@@ -69,9 +69,9 @@ func SetMaintenance(s *store.Store, pm ProxyManager) http.HandlerFunc {
 		proxySync(r.Context(), pm, app.ID)
 		audit.SetTarget(r.Context(), "app", app.ID)
 		if req.Enabled {
-			audit.Describe(r.Context(), "enabled maintenance mode")
+			audit.Action(r.Context(), "maintenance.enabled", nil)
 		} else {
-			audit.Describe(r.Context(), "disabled maintenance mode")
+			audit.Action(r.Context(), "maintenance.disabled", nil)
 		}
 		updated, err := s.GetApp(r.Context(), app.ID)
 		if err != nil {
@@ -137,7 +137,7 @@ func PutMaintenancePage(s *store.Store, pm ProxyManager) http.HandlerFunc {
 			proxySync(r.Context(), pm, app.ID)
 		}
 		audit.SetTarget(r.Context(), "app", app.ID)
-		audit.Describe(r.Context(), "updated the maintenance page")
+		audit.Action(r.Context(), "maintenance.page_updated", nil)
 		WriteJSON(w, http.StatusOK, maintenancePageDTO{HTML: html, IsDefault: false})
 	}
 }
@@ -158,7 +158,7 @@ func DeleteMaintenancePage(s *store.Store, pm ProxyManager) http.HandlerFunc {
 			proxySync(r.Context(), pm, app.ID)
 		}
 		audit.SetTarget(r.Context(), "app", app.ID)
-		audit.Describe(r.Context(), "reset the maintenance page to default")
+		audit.Action(r.Context(), "maintenance.page_reset", nil)
 		WriteJSON(w, http.StatusOK, maintenancePageDTO{
 			HTML:      maintenance.DefaultHTML(),
 			IsDefault: true,

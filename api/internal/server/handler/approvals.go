@@ -64,7 +64,7 @@ func ApproveDeployment(s *store.Store, worker DeploymentEnqueuer) http.HandlerFu
 			return
 		}
 		audit.SetTarget(r.Context(), "app", appID)
-		audit.Describe(r.Context(), "approved a pending deployment")
+		audit.Action(r.Context(), "approval.approved", nil)
 		WriteJSON(w, http.StatusOK, toDeploymentDTO(d))
 	}
 }
@@ -84,7 +84,7 @@ func RejectDeployment(s *store.Store) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "app", appID)
-		audit.Describe(r.Context(), "rejected a pending deployment")
+		audit.Action(r.Context(), "approval.rejected", nil)
 		WriteJSON(w, http.StatusOK, toDeploymentDTO(d))
 	}
 }

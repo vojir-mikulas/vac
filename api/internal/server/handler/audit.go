@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -26,8 +27,12 @@ type auditLogDTO struct {
 	TargetType *string `json:"target_type,omitempty"`
 	TargetID   *string `json:"target_id,omitempty"`
 	Summary    *string `json:"summary,omitempty"`
-	StatusCode int     `json:"status_code"`
-	Revertable bool    `json:"revertable"`
+	// ActionKey + ActionParams let the UI render a localized line; when ActionKey
+	// is absent (legacy rows, free-form descriptions) the UI falls back to Summary.
+	ActionKey    *string         `json:"action_key,omitempty"`
+	ActionParams json.RawMessage `json:"action_params,omitempty"`
+	StatusCode   int             `json:"status_code"`
+	Revertable   bool            `json:"revertable"`
 	// HasPreview marks entries that carry a before-snapshot and can be diffed
 	// (plan 22). Unlike Revertable it tracks the raw column, independent of
 	// RevertedAt — a reverted entry loses its Revert button but stays previewable.
@@ -85,9 +90,11 @@ func RevertAudit(rv *revert.Reverter) http.HandlerFunc {
 			}
 			return
 		}
-		// Attribute the revert to the entry it undid, with a clear summary.
+		// Attribute the revert to the entry it undid, with a clear summary. The
+		// inner summary is the revert engine's own (English) description of what it
+		// reapplied; the "reverted" framing around it is localized via the key.
 		audit.SetTarget(r.Context(), "audit_log", id)
-		audit.Describe(r.Context(), "reverted: "+summary)
+		audit.Action(r.Context(), "revert.done", map[string]any{"summary": summary})
 		WriteJSON(w, http.StatusOK, map[string]string{"reverted": id, "summary": summary})
 	}
 }
@@ -119,17 +126,19 @@ func PreviewAudit(db *auditdiff.Builder) http.HandlerFunc {
 
 func toAuditDTO(a store.AuditLog, names map[string]string) auditLogDTO {
 	dto := auditLogDTO{
-		ID:         a.ID,
-		ActorType:  a.ActorType,
-		Action:     a.Action,
-		TargetType: a.TargetType,
-		TargetID:   a.TargetID,
-		Summary:    a.Summary,
-		StatusCode: a.StatusCode,
-		Revertable: a.Revertable && a.RevertedAt == nil,
-		HasPreview: a.Revertable,
-		RevertedAt: a.RevertedAt,
-		CreatedAt:  a.CreatedAt,
+		ID:           a.ID,
+		ActorType:    a.ActorType,
+		Action:       a.Action,
+		TargetType:   a.TargetType,
+		TargetID:     a.TargetID,
+		Summary:      a.Summary,
+		ActionKey:    a.ActionKey,
+		ActionParams: a.ActionParams,
+		StatusCode:   a.StatusCode,
+		Revertable:   a.Revertable && a.RevertedAt == nil,
+		HasPreview:   a.Revertable,
+		RevertedAt:   a.RevertedAt,
+		CreatedAt:    a.CreatedAt,
 	}
 	if a.ActorUserID != nil {
 		dto.Actor = names[*a.ActorUserID]

@@ -72,7 +72,7 @@ func PutDNSSettings(s *store.Store, box *crypto.Box, enabled bool) http.HandlerF
 				WriteError(w, http.StatusInternalServerError, "could not save DNS settings")
 				return
 			}
-			audit.Describe(r.Context(), "disabled DNS provider automation")
+			audit.Action(r.Context(), "dns.automation_disabled", nil)
 			WriteJSON(w, http.StatusOK, dnsSettingsDTO{Enabled: enabled})
 			return
 		}
@@ -114,7 +114,7 @@ func PutDNSSettings(s *store.Store, box *crypto.Box, enabled bool) http.HandlerF
 			WriteError(w, http.StatusInternalServerError, "could not save DNS settings")
 			return
 		}
-		audit.Describe(r.Context(), "configured DNS provider automation ("+provider+", zone "+zone+")")
+		audit.Action(r.Context(), "dns.automation_configured", map[string]any{"provider": provider, "zone": zone})
 		WriteJSON(w, http.StatusOK, dnsSettingsDTO{
 			Enabled:  enabled,
 			Provider: provider,
@@ -157,9 +157,9 @@ func ensureDNSRecord(r *http.Request, automator DNSAutomator, hostname string) *
 		} else {
 			rec.Error = err.Error()
 		}
-		audit.Describe(r.Context(), "DNS record automation failed for "+hostname+": "+rec.Error)
+		audit.Action(r.Context(), "dns.record_failed", map[string]any{"hostname": hostname, "error": rec.Error})
 	} else if rec.Created {
-		audit.Describe(r.Context(), "auto-created DNS record for "+hostname)
+		audit.Action(r.Context(), "dns.record_auto_created", map[string]any{"hostname": hostname})
 	}
 	if !rec.Attempted {
 		return nil

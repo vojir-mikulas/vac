@@ -29,6 +29,117 @@
   "revertToast": {
     "success": "Reverted"
   },
+  "messages": {
+    "env": {
+      "replaced": "replaced environment for {{app}}"
+    },
+    "instance": {
+      "base_domain_set": "set base domain to {{domain}}",
+      "deploy_concurrency_set": "set deploy concurrency to {{max}}"
+    },
+    "backup": {
+      "verified": "verified backup of {{service}}",
+      "configured": "configured backup for {{app}}/{{service}}",
+      "updated": "updated backup for {{service}}",
+      "deleted": "deleted backup config",
+      "triggered": "triggered manual backup of {{service}}",
+      "restored": "restored {{service}} from backup run {{run}}"
+    },
+    "ratelimit": {
+      "set": "set rate limit",
+      "cleared": "cleared rate limit"
+    },
+    "approval": {
+      "approved": "approved a pending deployment",
+      "rejected": "rejected a pending deployment"
+    },
+    "revert": {
+      "done": "reverted: {{summary}}"
+    },
+    "disk": {
+      "reclaimed": "reclaimed disk space (pruned dangling images + build cache)"
+    },
+    "dns": {
+      "record_auto_deleted": "auto-deleted DNS record for {{hostname}}",
+      "automation_disabled": "disabled DNS provider automation",
+      "automation_configured": "configured DNS provider automation ({{provider}}, zone {{zone}})",
+      "record_failed": "DNS record automation failed for {{hostname}}: {{error}}",
+      "record_auto_created": "auto-created DNS record for {{hostname}}"
+    },
+    "app": {
+      "config_updated": "updated configuration for {{slug}}",
+      "imported_from_spec": "imported app {{slug}} from spec",
+      "updated_from_spec": "updated app {{slug}} from spec"
+    },
+    "database": {
+      "provisioned": "provisioned {{engine}} for {{app}}",
+      "removed": "removed managed database"
+    },
+    "deploy_trigger": {
+      "added": "added {{event}} deploy trigger {{filter}}",
+      "removed": "removed a deploy trigger"
+    },
+    "security": {
+      "ip_banned": "banned {{ip}} in jail {{jail}}"
+    },
+    "deployment": {
+      "triggered": "triggered deployment of {{app}}",
+      "rolled_back": "rolled back {{app}} to {{sha}}",
+      "canceled": "canceled deployment"
+    },
+    "deploy_window": {
+      "cleared": "cleared the deploy window",
+      "updated": "updated the deploy window"
+    },
+    "preview": {
+      "torn_down": "tore down preview {{slug}}"
+    },
+    "addon": {
+      "installed": "installed add-on {{id}}"
+    },
+    "maintenance": {
+      "enabled": "enabled maintenance mode",
+      "disabled": "disabled maintenance mode",
+      "page_updated": "updated the maintenance page",
+      "page_reset": "reset the maintenance page to default"
+    },
+    "registry": {
+      "credentials_set": "set private-registry credentials",
+      "credentials_cleared": "cleared private-registry credentials"
+    },
+    "stepup": {
+      "verified": "verified step-up 2FA",
+      "required": "step-up 2FA required"
+    },
+    "idle_suspend": {
+      "enabled": "enabled idle-suspend",
+      "disabled": "disabled idle-suspend"
+    },
+    "job": {
+      "created": "created scheduled job {{app}}/{{name}}",
+      "updated": "updated scheduled job {{name}}",
+      "deleted": "deleted scheduled job",
+      "triggered": "triggered manual run of job {{name}}"
+    },
+    "cert": {
+      "uploaded": "uploaded a TLS certificate for {{hostname}}",
+      "removed": "removed the uploaded TLS certificate for {{hostname}} (reverted to ACME)"
+    },
+    "webhook": {
+      "secret_regenerated": "regenerated the deploy webhook secret",
+      "disabled": "disabled the deploy webhook"
+    },
+    "service": {
+      "stopped": "stopped service {{service}}",
+      "started": "started service {{service}}"
+    },
+    "migrate": {
+      "bundle_exported": "exported the instance migration bundle (control DB + secrets)"
+    },
+    "exec": {
+      "shell_opened": "opened shell into service {{service}}"
+    }
+  },
   "attempts": {
     "heading": "Unauthorized Attempts",
     "summary_one": "{{count}} blocked attempt from {{sources}}",

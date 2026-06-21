@@ -210,7 +210,7 @@ func CreateJob(s *store.Store) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "job", j.ID)
-		audit.Describe(r.Context(), "created scheduled job "+app.Slug+"/"+req.Name)
+		audit.Action(r.Context(), "job.created", map[string]any{"app": app.Slug, "name": req.Name})
 		WriteJSON(w, http.StatusCreated, toScheduledJobDTO(j))
 	}
 }
@@ -252,7 +252,7 @@ func UpdateJob(s *store.Store) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "job", j.ID)
-		audit.Describe(r.Context(), "updated scheduled job "+j.Name)
+		audit.Action(r.Context(), "job.updated", map[string]any{"name": j.Name})
 		WriteJSON(w, http.StatusOK, toScheduledJobDTO(j))
 	}
 }
@@ -271,7 +271,7 @@ func DeleteJob(s *store.Store) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "job", jid)
-		audit.Describe(r.Context(), "deleted scheduled job")
+		audit.Action(r.Context(), "job.deleted", nil)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -296,7 +296,7 @@ func RunJob(s *store.Store, runner JobRunner) http.HandlerFunc {
 			_ = runner.RunOnce(ctx, job)
 		}()
 		audit.SetTarget(r.Context(), "job", jid)
-		audit.Describe(r.Context(), "triggered manual run of job "+job.Name)
+		audit.Action(r.Context(), "job.triggered", map[string]any{"name": job.Name})
 		w.WriteHeader(http.StatusAccepted)
 	}
 }

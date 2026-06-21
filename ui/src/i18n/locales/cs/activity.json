@@ -29,6 +29,117 @@
   "revertToast": {
     "success": "Vráceno zpět"
   },
+  "messages": {
+    "env": {
+      "replaced": "nahrazeno prostředí pro {{app}}"
+    },
+    "instance": {
+      "base_domain_set": "nastavena základní doména na {{domain}}",
+      "deploy_concurrency_set": "nastavena souběžnost nasazení na {{max}}"
+    },
+    "backup": {
+      "verified": "ověřena záloha služby {{service}}",
+      "configured": "nakonfigurována záloha pro {{app}}/{{service}}",
+      "updated": "aktualizována záloha služby {{service}}",
+      "deleted": "smazána konfigurace zálohy",
+      "triggered": "spuštěna ruční záloha služby {{service}}",
+      "restored": "obnovena {{service}} ze zálohy {{run}}"
+    },
+    "ratelimit": {
+      "set": "nastaven rate limit",
+      "cleared": "zrušen rate limit"
+    },
+    "approval": {
+      "approved": "schváleno čekající nasazení",
+      "rejected": "zamítnuto čekající nasazení"
+    },
+    "revert": {
+      "done": "vráceno zpět: {{summary}}"
+    },
+    "disk": {
+      "reclaimed": "uvolněno místo na disku (odstraněny nepoužité image + build cache)"
+    },
+    "dns": {
+      "record_auto_deleted": "automaticky smazán DNS záznam pro {{hostname}}",
+      "automation_disabled": "vypnuta automatizace DNS poskytovatele",
+      "automation_configured": "nakonfigurována automatizace DNS poskytovatele ({{provider}}, zóna {{zone}})",
+      "record_failed": "automatizace DNS záznamu selhala pro {{hostname}}: {{error}}",
+      "record_auto_created": "automaticky vytvořen DNS záznam pro {{hostname}}"
+    },
+    "app": {
+      "config_updated": "aktualizována konfigurace pro {{slug}}",
+      "imported_from_spec": "importována app {{slug}} ze specifikace",
+      "updated_from_spec": "aktualizována app {{slug}} ze specifikace"
+    },
+    "database": {
+      "provisioned": "vytvořena {{engine}} pro {{app}}",
+      "removed": "odebrána spravovaná databáze"
+    },
+    "deploy_trigger": {
+      "added": "přidán {{event}} spouštěč nasazení {{filter}}",
+      "removed": "odebrán spouštěč nasazení"
+    },
+    "security": {
+      "ip_banned": "zablokována {{ip}} v jail {{jail}}"
+    },
+    "deployment": {
+      "triggered": "spuštěno nasazení {{app}}",
+      "rolled_back": "vrácena {{app}} na {{sha}}",
+      "canceled": "zrušeno nasazení"
+    },
+    "deploy_window": {
+      "cleared": "zrušeno okno nasazení",
+      "updated": "aktualizováno okno nasazení"
+    },
+    "preview": {
+      "torn_down": "zrušen náhled {{slug}}"
+    },
+    "addon": {
+      "installed": "nainstalován doplněk {{id}}"
+    },
+    "maintenance": {
+      "enabled": "zapnut režim údržby",
+      "disabled": "vypnut režim údržby",
+      "page_updated": "aktualizována stránka údržby",
+      "page_reset": "obnovena výchozí stránka údržby"
+    },
+    "registry": {
+      "credentials_set": "nastaveny přihlašovací údaje privátního registru",
+      "credentials_cleared": "zrušeny přihlašovací údaje privátního registru"
+    },
+    "stepup": {
+      "verified": "ověřeno step-up 2FA",
+      "required": "vyžadováno step-up 2FA"
+    },
+    "idle_suspend": {
+      "enabled": "zapnuto uspání při nečinnosti",
+      "disabled": "vypnuto uspání při nečinnosti"
+    },
+    "job": {
+      "created": "vytvořena naplánovaná úloha {{app}}/{{name}}",
+      "updated": "aktualizována naplánovaná úloha {{name}}",
+      "deleted": "smazána naplánovaná úloha",
+      "triggered": "spuštěno ruční spuštění úlohy {{name}}"
+    },
+    "cert": {
+      "uploaded": "nahrán TLS certifikát pro {{hostname}}",
+      "removed": "odebrán nahraný TLS certifikát pro {{hostname}} (vráceno na ACME)"
+    },
+    "webhook": {
+      "secret_regenerated": "přegenerován tajný klíč deploy webhooku",
+      "disabled": "vypnut deploy webhook"
+    },
+    "service": {
+      "stopped": "zastavena služba {{service}}",
+      "started": "spuštěna služba {{service}}"
+    },
+    "migrate": {
+      "bundle_exported": "exportován migrační balíček instance (řídicí DB + tajné klíče)"
+    },
+    "exec": {
+      "shell_opened": "otevřen shell do služby {{service}}"
+    }
+  },
   "attempts": {
     "heading": "Neoprávněné pokusy",
     "summary_one": "{{count}} zablokovaný pokus z {{sources}}",

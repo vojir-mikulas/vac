@@ -64,7 +64,7 @@ func StepUp(sm *auth.SessionManager, tm *auth.TOTPManager) http.HandlerFunc {
 			return
 		}
 
-		audit.Describe(r.Context(), "verified step-up 2FA")
+		audit.Action(r.Context(), "stepup.verified", nil)
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "verified"})
 	}
 }

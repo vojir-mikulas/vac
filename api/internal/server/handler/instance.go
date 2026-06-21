@@ -166,7 +166,7 @@ func PutBaseDomain(s *store.Store, cfg config.Config, pm BaseDomainSetter, rec R
 		if prior, err := s.GetInstanceSettings(r.Context()); err == nil {
 			audit.Snapshot(r.Context(), map[string]any{"base_domain": prior.BaseDomain})
 		}
-		audit.Describe(r.Context(), "set base domain to "+effectiveLabel(host))
+		audit.Action(r.Context(), "instance.base_domain_set", map[string]any{"domain": effectiveLabel(host)})
 		if err := s.SetBaseDomain(r.Context(), host); err != nil {
 			WriteError(w, http.StatusInternalServerError, "could not save base domain")
 			return
@@ -250,7 +250,7 @@ func PutDeployConcurrency(s *store.Store) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "max_concurrent_deploys must be between 1 and "+strconv.Itoa(deploy.MaxConcurrency))
 			return
 		}
-		audit.Describe(r.Context(), "set deploy concurrency to "+strconv.Itoa(req.MaxConcurrentDeploys))
+		audit.Action(r.Context(), "instance.deploy_concurrency_set", map[string]any{"max": req.MaxConcurrentDeploys})
 		if err := s.SetMaxConcurrentDeploys(r.Context(), req.MaxConcurrentDeploys); err != nil {
 			WriteError(w, http.StatusInternalServerError, "could not save deploy concurrency")
 			return

@@ -8,6 +8,7 @@
     "searchPlaceholder": "Search add-ons",
     "searchAria": "Search add-ons by name or description",
     "all": "All",
+    "categoryOther": "Other",
     "noMatches": "No add-ons match your search"
   },
   "card": {

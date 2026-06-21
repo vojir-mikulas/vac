@@ -28,10 +28,16 @@ type AuditEntry struct {
 	TargetType  *string
 	TargetID    *string
 	Summary     *string
-	Metadata    json.RawMessage
-	IP          *string
-	UserAgent   *string
-	StatusCode  int
+	// ActionKey is a stable dotted identifier the UI translates ("env.replaced");
+	// ActionParams carries its interpolation values as JSON. Both nil for the few
+	// actions that only set a free-form Summary. ActionParams is client-visible —
+	// it must not contain secrets.
+	ActionKey    *string
+	ActionParams json.RawMessage
+	Metadata     json.RawMessage
+	IP           *string
+	UserAgent    *string
+	StatusCode   int
 	// Revertable marks the curated set of actions that carry a before-snapshot
 	// in Metadata and can be undone (plan 11, Part 2).
 	Revertable bool
@@ -39,20 +45,22 @@ type AuditEntry struct {
 
 // AuditLog is the read shape, including the server-assigned id and timestamp.
 type AuditLog struct {
-	ID          string
-	ActorUserID *string
-	ActorType   string
-	Action      string
-	TargetType  *string
-	TargetID    *string
-	Summary     *string
-	Metadata    json.RawMessage
-	IP          *string
-	UserAgent   *string
-	StatusCode  int
-	Revertable  bool
-	RevertedAt  *time.Time
-	CreatedAt   time.Time
+	ID           string
+	ActorUserID  *string
+	ActorType    string
+	Action       string
+	TargetType   *string
+	TargetID     *string
+	Summary      *string
+	ActionKey    *string
+	ActionParams json.RawMessage
+	Metadata     json.RawMessage
+	IP           *string
+	UserAgent    *string
+	StatusCode   int
+	Revertable   bool
+	RevertedAt   *time.Time
+	CreatedAt    time.Time
 }
 
 // InsertAuditLog appends one row. Failures here must never fail the audited
@@ -62,14 +70,18 @@ func (s *Store) InsertAuditLog(ctx context.Context, e AuditEntry) error {
 	if len(e.Metadata) > 0 {
 		meta = []byte(e.Metadata)
 	}
+	var params any
+	if len(e.ActionParams) > 0 {
+		params = []byte(e.ActionParams)
+	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO audit_log
 			(actor_user_id, actor_type, action, target_type, target_id,
-			 summary, metadata, ip, user_agent, status_code, revertable)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			 summary, action_key, action_params, metadata, ip, user_agent, status_code, revertable)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`,
 		e.ActorUserID, e.ActorType, e.Action, e.TargetType, e.TargetID,
-		e.Summary, meta, e.IP, e.UserAgent, e.StatusCode, e.Revertable,
+		e.Summary, e.ActionKey, params, meta, e.IP, e.UserAgent, e.StatusCode, e.Revertable,
 	)
 	return err
 }
@@ -107,13 +119,13 @@ func (s *Store) ListAuditLog(ctx context.Context, limit int) ([]AuditLog, error)
 }
 
 const auditColumns = `id, actor_user_id, actor_type, action, target_type, target_id,
-	summary, metadata, ip, user_agent, status_code, revertable, reverted_at, created_at`
+	summary, action_key, action_params, metadata, ip, user_agent, status_code, revertable, reverted_at, created_at`
 
 func scanAuditLog(row pgx.Row) (AuditLog, error) {
 	var a AuditLog
 	err := row.Scan(
 		&a.ID, &a.ActorUserID, &a.ActorType, &a.Action, &a.TargetType, &a.TargetID,
-		&a.Summary, &a.Metadata, &a.IP, &a.UserAgent, &a.StatusCode, &a.Revertable, &a.RevertedAt, &a.CreatedAt,
+		&a.Summary, &a.ActionKey, &a.ActionParams, &a.Metadata, &a.IP, &a.UserAgent, &a.StatusCode, &a.Revertable, &a.RevertedAt, &a.CreatedAt,
 	)
 	return a, err
 }

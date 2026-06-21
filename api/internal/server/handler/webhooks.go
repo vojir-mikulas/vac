@@ -107,7 +107,7 @@ func RegenerateAppWebhookSecret(s *store.Store, box *crypto.Box) http.HandlerFun
 			return
 		}
 		audit.SetTarget(r.Context(), "app", appID)
-		audit.Describe(r.Context(), "regenerated the deploy webhook secret")
+		audit.Action(r.Context(), "webhook.secret_regenerated", nil)
 		WriteJSON(w, http.StatusCreated, regenerateWebhookResponse{
 			URL:    webhookURL(r, appID),
 			Secret: secret,
@@ -128,7 +128,7 @@ func DeleteAppWebhookSecret(s *store.Store) http.HandlerFunc {
 			return
 		}
 		audit.SetTarget(r.Context(), "app", appID)
-		audit.Describe(r.Context(), "disabled the deploy webhook")
+		audit.Action(r.Context(), "webhook.disabled", nil)
 		WriteJSON(w, http.StatusOK, map[string]int{"cleared": 1})
 	}
 }

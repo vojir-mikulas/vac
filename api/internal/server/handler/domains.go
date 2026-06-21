@@ -413,7 +413,7 @@ func DeleteDomainHub(s *store.Store, syncer RouteSyncer, automator DNSAutomator)
 			if _, err := automator.DeleteDomainRecord(r.Context(), existing.Hostname); err != nil {
 				slog.Warn("dns record delete after domain delete failed", "host", existing.Hostname, "err", err)
 			} else {
-				audit.Describe(r.Context(), "auto-deleted DNS record for "+existing.Hostname)
+				audit.Action(r.Context(), "dns.record_auto_deleted", map[string]any{"hostname": existing.Hostname})
 			}
 		}
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "deleted"})

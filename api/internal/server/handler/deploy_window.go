@@ -70,9 +70,9 @@ func PutDeployWindow(s *store.Store) http.HandlerFunc {
 		}
 		audit.SetTarget(r.Context(), "app", app.ID)
 		if len(req.Windows) == 0 {
-			audit.Describe(r.Context(), "cleared the deploy window")
+			audit.Action(r.Context(), "deploy_window.cleared", nil)
 		} else {
-			audit.Describe(r.Context(), "updated the deploy window")
+			audit.Action(r.Context(), "deploy_window.updated", nil)
 		}
 		out := req.Windows
 		if out == nil {

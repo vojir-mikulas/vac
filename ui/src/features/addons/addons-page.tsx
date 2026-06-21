@@ -1,5 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, Blocks, Database, Download, Search, SearchX, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -136,7 +137,7 @@ export function AddonsPage() {
               {categories.map(([c, n]) => (
                 <CategoryChip
                   key={c}
-                  label={categoryLabel(c)}
+                  label={categoryLabel(c, t)}
                   count={n}
                   active={category === c}
                   onClick={() => setCategory(c)}
@@ -174,8 +175,8 @@ export function AddonsPage() {
 // categoryLabel title-cases a catalog category key for display ("observability"
 // → "Observability"; "Database" stays as-is). Categories are single-word data
 // keys, so a leading-letter capitalize is enough.
-function categoryLabel(category: string) {
-  if (!category) return 'Other'
+function categoryLabel(category: string, t: TFunction<'addons'>) {
+  if (!category) return t('filter.categoryOther')
   return category.charAt(0).toUpperCase() + category.slice(1)
 }
 
@@ -241,7 +242,7 @@ function AddonCard({ addon, installedApp }: { addon: Addon; installedApp?: App }
       </div>
       <div className="flex flex-wrap gap-1.5">
         <Badge variant="secondary" className="text-2xs font-normal">
-          {categoryLabel(addon.category)}
+          {categoryLabel(addon.category, t)}
         </Badge>
       </div>
       <p className="flex-1 text-sm text-muted-foreground">{addon.description}</p>
@@ -348,7 +349,7 @@ function DatabaseAddonCard({ addon, count, apps }: { addon: Addon; count: number
       </div>
       <div className="flex flex-wrap gap-1.5">
         <Badge variant="secondary" className="text-2xs font-normal">
-          {categoryLabel(addon.category)}
+          {categoryLabel(addon.category, t)}
         </Badge>
       </div>
       <p className="flex-1 text-sm text-muted-foreground">{addon.description}</p>
