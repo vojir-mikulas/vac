@@ -8,7 +8,6 @@ import (
 	"errors"
 	"log/slog"
 	"math"
-	"net"
 	"net/http"
 	"net/netip"
 	"strconv"
@@ -58,9 +57,14 @@ var (
 func ensureDummyHash() {
 	dummyHashOnce.Do(func() {
 		h, err := auth.HashPassword("vac-username-enumeration-mitigation")
-		if err == nil {
-			dummyHash = h
+		if err != nil {
+			// Leaving dummyHash empty would make VerifyPassword("", …) return
+			// instantly, reopening the username-enumeration timing oracle this
+			// exists to close. Surface it loudly rather than swallowing.
+			slog.Error("auth: failed to compute dummy bcrypt hash; username-enumeration timing mitigation degraded", "err", err)
+			return
 		}
+		dummyHash = h
 	})
 }
 
@@ -211,11 +215,7 @@ func Me(w http.ResponseWriter, r *http.Request) {
 }
 
 func clientIP(r *http.Request) *netip.Addr {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	if addr, err := netip.ParseAddr(host); err == nil {
+	if addr, err := netip.ParseAddr(ClientIPString(r)); err == nil {
 		return &addr
 	}
 	return nil
@@ -244,9 +244,5 @@ func auditAuthFailure(r *http.Request, reason, username, userID string) {
 }
 
 func remoteIPString(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return ClientIPString(r)
 }

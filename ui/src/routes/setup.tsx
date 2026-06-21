@@ -56,7 +56,7 @@ function SetupPage() {
       // observer), so a stale needs_setup:true would bounce us back to /setup.
       qc.setQueryData(queryKeys.auth.me, user)
       qc.setQueryData(queryKeys.setup.status, { needs_setup: false, token_required: false })
-      navigate({ to: '/apps' })
+      void navigate({ to: '/apps' })
     },
   })
 

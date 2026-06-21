@@ -99,10 +99,10 @@ func (s *Store) ListAuditLog(ctx context.Context, limit int) ([]AuditLog, error)
 		-- Unauthenticated failures (probes, failed logins) are not operator
 		-- activity; they live in security_events. New ones are diverted at write
 		-- time, but this also hides any that predate that split.
-		WHERE NOT (actor_type = '`+ActorAnonymous+`' AND status_code >= 400)
+		WHERE NOT (actor_type = $1 AND status_code >= 400)
 		ORDER BY created_at DESC
-		LIMIT $1
-	`, limit)
+		LIMIT $2
+	`, ActorAnonymous, limit)
 	if err != nil {
 		return nil, err
 	}

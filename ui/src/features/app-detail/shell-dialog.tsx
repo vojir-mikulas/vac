@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { api } from '@/lib/api/client'
 import { useContainerShell } from '@/features/app-detail/use-container-shell'
 
 const STATUS_KEYS = ['idle', 'connecting', 'connected', 'disconnected'] as const
@@ -37,7 +38,15 @@ export function ShellDialog({ appId, service }: { appId: string; service: string
     }
   }
 
-  const begin = () => {
+  const begin = async () => {
+    // Step-up preflight over REST: a failed WS upgrade can't surface the
+    // step_up_required challenge, so re-auth here first (the api client opens the
+    // global step-up modal on 403). Only open the socket once it succeeds.
+    try {
+      await api.post(`apps/${appId}/services/${service}/exec/preflight`)
+    } catch {
+      return // step-up cancelled or failed — don't open the shell.
+    }
     setStarted(true)
     // Wait a frame so the terminal container is laid out before xterm opens/fits.
     requestAnimationFrame(connect)

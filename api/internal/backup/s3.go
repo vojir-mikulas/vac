@@ -3,10 +3,12 @@ package backup
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"net/url"
@@ -108,7 +110,12 @@ func (s *S3Destination) Put(ctx context.Context, key string, r io.Reader) (int64
 		_ = tmp.Close()
 		_ = os.Remove(tmp.Name())
 	}()
-	size, err := io.Copy(tmp, r)
+	// Hash while staging so the PUT response ETag can be checked against the bytes
+	// we actually sent — catching a truncated transfer that still returns 2xx.
+	// MD5 here is not a security control; it's the exact digest S3 puts in the
+	// single-part ETag, so it's the only thing we can compare against.
+	md5h := md5.New()
+	size, err := io.Copy(io.MultiWriter(tmp, md5h), r)
 	if err != nil {
 		return 0, err
 	}
@@ -132,7 +139,31 @@ func (s *S3Destination) Put(ctx context.Context, key string, r io.Reader) (int64
 	if resp.StatusCode/100 != 2 {
 		return 0, s3Error("PUT", objKey, resp)
 	}
+	if err := verifyPutETag(resp, md5h); err != nil {
+		return 0, err
+	}
 	return size, nil
+}
+
+// verifyPutETag compares the server's ETag against the staged object's MD5 to
+// catch a silently-truncated upload that still returned 2xx. Only a single-part
+// PUT to a store that returns an MD5 ETag can be checked: a multipart-style ETag
+// (longer, with a "-N" part-count suffix) or an SSE/KMS-encrypted object's opaque
+// ETag is non-MD5, so it is skipped rather than failed — otherwise non-MD5
+// backends would trip a false integrity alarm.
+func verifyPutETag(resp *http.Response, md5h hash.Hash) error {
+	etag := strings.Trim(resp.Header.Get("ETag"), `"`)
+	if len(etag) != 32 {
+		return nil
+	}
+	if _, err := hex.DecodeString(etag); err != nil {
+		return nil
+	}
+	want := hex.EncodeToString(md5h.Sum(nil))
+	if !strings.EqualFold(etag, want) {
+		return fmt.Errorf("backup: s3 PUT integrity check failed: server ETag %s != local MD5 %s (upload may be truncated)", etag, want)
+	}
+	return nil
 }
 
 func (s *S3Destination) Open(ctx context.Context, key string) (io.ReadCloser, error) {

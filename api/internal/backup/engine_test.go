@@ -59,6 +59,8 @@ func (f *fakeStore) FinishBackupRun(_ context.Context, _ string, status string, 
 	return nil
 }
 
+func (f *fakeStore) PruneBackupRuns(context.Context, string, int) (int64, error) { return 0, nil }
+
 type fakeNotifier struct{ calls int }
 
 func (f *fakeNotifier) BackupFailed(string, string, string, string) { f.calls++ }
@@ -99,7 +101,7 @@ func TestEngine_RunOnce_Success(t *testing.T) {
 		t.Errorf("notifier fired %d times on success", nf.calls)
 	}
 	// Artifact landed at the expected key.
-	want := filepath.Join(workDir, "backups", "blog", "db", "20260601T030000Z.dump")
+	want := filepath.Join(workDir, "backups", "blog", "db", "20260601T030000Z-run1.dump")
 	data, err := os.ReadFile(want)
 	if err != nil {
 		t.Fatalf("artifact: %v", err)

@@ -24,6 +24,7 @@ type EngineStore interface {
 	GetService(ctx context.Context, appID, name string) (store.Service, error)
 	CreateBackupRun(ctx context.Context, configID string) (store.BackupRun, error)
 	FinishBackupRun(ctx context.Context, runID, status string, sizeBytes *int64, artifactKey *string, errMsg *string) error
+	PruneBackupRuns(ctx context.Context, configID string, keep int) (int64, error)
 }
 
 // Notifier fires the backup-failed event (notify.Dispatcher.BackupFailed).
@@ -89,7 +90,7 @@ func (e *Engine) RunOnce(ctx context.Context, cfg store.BackupConfig) error {
 		return e.fail(ctx, run.ID, app, cfg, err)
 	}
 
-	key := artifactKey(app.Slug, cfg.ServiceName, e.now())
+	key := artifactKey(app.Slug, cfg.ServiceName, run.ID, e.now())
 
 	// Hard per-run cap covering the command exec and the upload. On expiry the
 	// exec is killed and Put unblocks, surfacing as the run's failure.
@@ -121,12 +122,21 @@ func (e *Engine) RunOnce(ctx context.Context, cfg store.BackupConfig) error {
 		return e.fail(ctx, run.ID, app, cfg, fmt.Errorf("upload to %s failed: %w", cfg.Destination, putErr))
 	}
 
-	if err := e.store.FinishBackupRun(ctx, run.ID, "success", &size, &key, nil); err != nil {
+	// Settle the row on a detached context: the success bytes are already durably
+	// stored, so a shutdown cancelling ctx here must not skip the terminal write
+	// and strand the row in `running`.
+	finCtx, finCancel := detached(ctx, 10*time.Second)
+	defer finCancel()
+	if err := e.store.FinishBackupRun(finCtx, run.ID, "success", &size, &key, nil); err != nil {
 		e.logger.Warn("backup: record success", "config", cfg.ID, "err", err)
 	}
 	if err := dest.Prune(ctx, prunePrefix(app.Slug, cfg.ServiceName), cfg.KeepCount); err != nil {
 		// Non-fatal: the artifact is safely stored; old ones just linger.
 		e.logger.Warn("backup: prune", "config", cfg.ID, "err", err)
+	} else if _, err := e.store.PruneBackupRuns(ctx, cfg.ID, cfg.KeepCount); err != nil {
+		// Prune the run rows in lockstep so none outlive their artifact. Non-fatal:
+		// a stale row at worst points the verifier at a missing object next cycle.
+		e.logger.Warn("backup: prune runs", "config", cfg.ID, "err", err)
 	}
 	e.logger.Info("backup: completed", "app", app.Slug, "service", cfg.ServiceName, "bytes", size, "key", key)
 	return nil
@@ -161,10 +171,20 @@ func resolveContainer(ctx context.Context, s serviceGetter, cfg store.BackupConf
 	return "", fmt.Errorf("backup: load service %s: %w", cfg.ServiceName, err)
 }
 
+// detached returns a context carrying ctx's values but not its cancellation,
+// bounded by d. Used for terminal DB writes that must complete even when the
+// run's context was cancelled (shutdown, per-run timeout) — otherwise the row
+// would hang in `running` until the boot reaper settles it.
+func detached(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), d)
+}
+
 // fail records the run as failed, fires the notification, and returns the error.
 func (e *Engine) fail(ctx context.Context, runID string, app store.App, cfg store.BackupConfig, cause error) error {
 	msg := cause.Error()
-	if err := e.store.FinishBackupRun(ctx, runID, "failed", nil, nil, &msg); err != nil {
+	finCtx, cancel := detached(ctx, 10*time.Second)
+	defer cancel()
+	if err := e.store.FinishBackupRun(finCtx, runID, "failed", nil, nil, &msg); err != nil {
 		e.logger.Warn("backup: record failure", "config", cfg.ID, "err", err)
 	}
 	if e.notifier != nil {
@@ -174,11 +194,15 @@ func (e *Engine) fail(ctx context.Context, runID string, app store.App, cfg stor
 	return cause
 }
 
-// artifactKey is the destination key for a dump: slug/service/<sortable-ts>.dump.
-// The timestamp format is lexically sortable so Prune's string sort is
-// chronological.
-func artifactKey(slug, service string, ts time.Time) string {
-	return keyJoin(slug, service, ts.UTC().Format("20060102T150405Z")+".dump")
+// artifactKey is the destination key for a dump:
+// slug/service/<sortable-ts>-<runID>.dump. The timestamp leads so Prune's string
+// sort stays chronological; the run ID suffix guarantees uniqueness — two runs of
+// the same (app, service) in the same second (a manual run racing the scheduler,
+// or a fast retry) would otherwise collide on an identical key and the second Put
+// would overwrite the first, leaving a `success` row pointing at another run's
+// bytes.
+func artifactKey(slug, service, runID string, ts time.Time) string {
+	return keyJoin(slug, service, ts.UTC().Format("20060102T150405Z")+"-"+runID+".dump")
 }
 
 // prunePrefix is the key prefix Prune scans for a given (app, service).

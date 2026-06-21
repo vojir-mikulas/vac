@@ -321,7 +321,9 @@
     "noKey": "Zatím nebyl vygenerován žádný klíč.",
     "generate": "Vygenerovat klíč",
     "regenerate": "Vygenerovat znovu",
-    "regenerated": "Deploy key vygenerován znovu"
+    "regenerated": "Deploy key vygenerován znovu",
+    "loadError": "Deploy key se nepodařilo načíst.",
+    "retry": "Zkusit znovu"
   },
   "deploySteps": {
     "queued": "Fronta",

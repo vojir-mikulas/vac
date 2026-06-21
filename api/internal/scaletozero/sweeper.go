@@ -3,6 +3,7 @@ package scaletozero
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/store"
@@ -102,6 +103,15 @@ func (s *Sweeper) tick(ctx context.Context) {
 		// sweep; the waker's in-flight guard dedups overlapping ticks and
 		// re-validates against `now` so a wake since this decision wins.
 		go func(a store.App) {
+			// Recover here, not just in the sweeper loop: this goroutine runs
+			// outside main.go's superviseDaemon frame, so an un-recovered panic in
+			// Suspend would crash the whole vac-api process.
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger.Error("scaletozero: suspend panicked",
+						"app", a.Slug, "panic", r, "stack", string(debug.Stack()))
+				}
+			}()
 			if err := s.waker.Suspend(ctx, a, now); err != nil {
 				s.logger.Warn("scaletozero: suspend", "app", a.Slug, "err", err)
 			}

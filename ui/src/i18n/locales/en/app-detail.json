@@ -321,7 +321,9 @@
     "noKey": "No key generated yet.",
     "generate": "Generate key",
     "regenerate": "Regenerate",
-    "regenerated": "Deploy key regenerated"
+    "regenerated": "Deploy key regenerated",
+    "loadError": "Could not load the deploy key.",
+    "retry": "Retry"
   },
   "deploySteps": {
     "queued": "Queue",

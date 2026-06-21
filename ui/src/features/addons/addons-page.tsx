@@ -421,7 +421,7 @@ function AddToAppDialog({ addon, apps }: { addon: Addon; apps: App[] }) {
         onSuccess: (res) => {
           setOpen(false)
           toast.success(res.warning || t('addToApp.toastProvisioning', { name: addon.name }))
-          navigate({ to: '/apps/$appId/databases', params: { appId } })
+          void navigate({ to: '/apps/$appId/databases', params: { appId } })
         },
         onError: (e) => toast.error(e.message),
       },
@@ -508,7 +508,7 @@ function InstallDialog({ addon }: { addon: Addon }) {
   const navigate = useNavigate()
 
   const goToApp = () => {
-    if (appId) navigate({ to: '/apps/$appId/overview', params: { appId } })
+    if (appId) void navigate({ to: '/apps/$appId/overview', params: { appId } })
   }
 
   const onOpenChange = (next: boolean) => {
@@ -540,7 +540,7 @@ function InstallDialog({ addon }: { addon: Addon }) {
           }
           setOpen(false)
           toast.success(t('install.toastInstalling'))
-          navigate({ to: '/apps/$appId/overview', params: { appId: res.app_id } })
+          void navigate({ to: '/apps/$appId/overview', params: { appId: res.app_id } })
         },
         onError: (e) => toast.error(e.message),
       },

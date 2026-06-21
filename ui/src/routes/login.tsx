@@ -40,20 +40,20 @@ function LoginPage() {
 
   const finish = async () => {
     await qc.invalidateQueries({ queryKey: queryKeys.auth.me })
-    navigate({ to: '/apps' })
+    await navigate({ to: '/apps' })
   }
 
   const login = useMutation({
     mutationFn: () => authApi.login({ username, password, remember }),
     onSuccess: (res) => {
       if (isTotpRequired(res)) setStage('totp')
-      else finish()
+      else void finish()
     },
   })
 
   const totp = useMutation({
     mutationFn: () => authApi.totpLogin({ code }),
-    onSuccess: () => finish(),
+    onSuccess: () => void finish(),
     // Clear the slots on a bad code so the next attempt starts fresh.
     onError: () => setCode(''),
   })

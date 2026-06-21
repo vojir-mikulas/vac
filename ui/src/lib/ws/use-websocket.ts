@@ -48,7 +48,12 @@ export function useWebSocket(path: string, options: Options): WsStatus {
     let closedByCaller = false
 
     const connect = () => {
-      if (document.hidden) return
+      if (document.hidden) {
+        // Paused while hidden — reflect that instead of leaving the badge stuck on
+        // the initial 'connecting' (onVisibility reconnects when the tab returns).
+        setStatus('closed')
+        return
+      }
       setStatus('connecting')
       socket = new WebSocket(wsUrl(path))
 

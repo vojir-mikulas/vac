@@ -229,7 +229,7 @@ function Wizard() {
     mutationFn: (appId: string) => deploymentsApi.trigger(appId),
     onSuccess: (_, appId) => {
       toast.success(t('new.toast.deployTriggered'))
-      navigate({ to: '/apps/$appId/deploys', params: { appId } })
+      void navigate({ to: '/apps/$appId/deploys', params: { appId } })
     },
     onError: (e) => toast.error(e.message),
   })

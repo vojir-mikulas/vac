@@ -78,7 +78,8 @@ func StartApp(s *store.Store, ctrl StackController, pm ProxyManager, cr CrashLoo
 		}
 		project := "vac-" + app.Slug
 		if err := ctrl.Start(r.Context(), project, ""); err != nil {
-			WriteError(w, http.StatusInternalServerError, "could not start stack: "+err.Error())
+			slog.Error("start stack failed", "app", app.ID, "err", err)
+			WriteError(w, http.StatusInternalServerError, "could not start stack")
 			return
 		}
 		// Re-arm crash-loop monitoring: this is an explicit operator recovery.
@@ -100,7 +101,8 @@ func StopApp(s *store.Store, ctrl StackController, pm ProxyManager) http.Handler
 		}
 		project := "vac-" + app.Slug
 		if err := ctrl.Stop(r.Context(), project, ""); err != nil {
-			WriteError(w, http.StatusInternalServerError, "could not stop stack: "+err.Error())
+			slog.Error("stop stack failed", "app", app.ID, "err", err)
+			WriteError(w, http.StatusInternalServerError, "could not stop stack")
 			return
 		}
 		applyStatusToAll(r.Context(), s, app.ID, deploy.ServiceStatusStopped)
@@ -119,7 +121,8 @@ func RestartApp(s *store.Store, ctrl StackController, pm ProxyManager, cr CrashL
 		}
 		project := "vac-" + app.Slug
 		if err := ctrl.Restart(r.Context(), project, ""); err != nil {
-			WriteError(w, http.StatusInternalServerError, "could not restart stack: "+err.Error())
+			slog.Error("restart stack failed", "app", app.ID, "err", err)
+			WriteError(w, http.StatusInternalServerError, "could not restart stack")
 			return
 		}
 		// Re-arm crash-loop monitoring: this is an explicit operator recovery.
@@ -139,7 +142,8 @@ func RestartService(s *store.Store, ctrl StackController, pm ProxyManager, cr Cr
 		name := chi.URLParam(r, "name")
 		project := "vac-" + app.Slug
 		if err := ctrl.Restart(r.Context(), project, name); err != nil {
-			WriteError(w, http.StatusInternalServerError, "could not restart service: "+err.Error())
+			slog.Error("restart service failed", "app", app.ID, "service", name, "err", err)
+			WriteError(w, http.StatusInternalServerError, "could not restart service")
 			return
 		}
 		// Clear the crash-loop marker (DB) and re-arm in-memory monitoring: the
@@ -163,7 +167,8 @@ func StopService(s *store.Store, ctrl StackController, pm ProxyManager) http.Han
 		name := chi.URLParam(r, "name")
 		project := "vac-" + app.Slug
 		if err := ctrl.Stop(r.Context(), project, name); err != nil {
-			WriteError(w, http.StatusInternalServerError, "could not stop service: "+err.Error())
+			slog.Error("stop service failed", "app", app.ID, "service", name, "err", err)
+			WriteError(w, http.StatusInternalServerError, "could not stop service")
 			return
 		}
 		_ = s.UpdateServiceStatus(r.Context(), app.ID, name, deploy.ServiceStatusStopped, nil)
@@ -187,7 +192,8 @@ func StartService(s *store.Store, ctrl StackController, pm ProxyManager, cr Cras
 		name := chi.URLParam(r, "name")
 		project := "vac-" + app.Slug
 		if err := ctrl.Start(r.Context(), project, name); err != nil {
-			WriteError(w, http.StatusInternalServerError, "could not start service: "+err.Error())
+			slog.Error("start service failed", "app", app.ID, "service", name, "err", err)
+			WriteError(w, http.StatusInternalServerError, "could not start service")
 			return
 		}
 		// Re-arm crash-loop monitoring: explicit operator recovery.

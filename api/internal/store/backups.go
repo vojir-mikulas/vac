@@ -326,6 +326,59 @@ func (s *Store) FinishBackupRun(ctx context.Context, runID, status string, sizeB
 	return nil
 }
 
+// PruneBackupRuns deletes `success` run rows for a config beyond the newest
+// `keep`, keeping the row history in step with the artifacts that Destination.Prune
+// retains (one artifact per success run). Without this, pruned artifacts leave
+// orphaned rows whose artifact_key points at a deleted object — LatestBackupRun /
+// the download endpoint then serve a dangling reference and the verifier raises a
+// false "unverified" alarm. failed/running rows are left untouched (no artifact to
+// orphan; failure history stays visible). keep <= 0 is a no-op.
+func (s *Store) PruneBackupRuns(ctx context.Context, configID string, keep int) (int64, error) {
+	if keep <= 0 {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM backup_runs
+		WHERE config_id = $1
+		  AND status = 'success'
+		  AND id NOT IN (
+			SELECT id FROM backup_runs
+			WHERE config_id = $1 AND status = 'success'
+			ORDER BY started_at DESC
+			LIMIT $2
+		  )
+	`, configID, keep)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// MarkInterruptedBackupOps runs once at boot — any backup run, restore, or
+// verification left in the non-terminal `running` state by a previous process
+// becomes `failed`. Mirrors MarkInProgressDeploymentsInterrupted. This matters
+// beyond cosmetics for restores and verifications: their "already running"
+// concurrency guards key on a `running` Latest* row, so a row stranded by a crash
+// would otherwise block every future restore/verification for that config forever.
+// Returns the total number of rows settled across the three tables.
+func (s *Store) MarkInterruptedBackupOps(ctx context.Context) (int64, error) {
+	var total int64
+	for _, table := range []string{"backup_runs", "backup_restores", "backup_verifications"} {
+		tag, err := s.pool.Exec(ctx, `
+			UPDATE `+table+`
+			SET status      = 'failed',
+			    error       = COALESCE(error, 'vac-api restarted mid-operation'),
+			    finished_at = COALESCE(finished_at, NOW())
+			WHERE status = 'running'
+		`)
+		if err != nil {
+			return total, err
+		}
+		total += tag.RowsAffected()
+	}
+	return total, nil
+}
+
 // GetBackupRun fetches one run — backs the artifact-download endpoint.
 func (s *Store) GetBackupRun(ctx context.Context, runID string) (BackupRun, error) {
 	var r BackupRun

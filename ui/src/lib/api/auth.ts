@@ -25,9 +25,10 @@ export const authApi = {
     api.post<{ recovery_codes: string[] }>('auth/totp/enable', { code }),
   totpDisable: (password: string) => api.del<{ status: string }>('auth/totp', { password }),
 
-  // Re-prove 2FA on the live session to unlock destructive actions for a short
-  // window. Used by the global step-up prompt, not the login flow.
-  stepUp: (body: { code: string } | { recovery_code: string }) =>
+  // Re-prove identity on the live session to unlock destructive actions for a
+  // short window: a 2FA code/recovery code when TOTP is enabled, or a password
+  // re-entry when it isn't. Used by the global step-up prompt, not the login flow.
+  stepUp: (body: { code: string } | { recovery_code: string } | { password: string }) =>
     api.post<{ status: string }>('auth/step-up', body),
 
   sessions: () => api.get<Session[]>('auth/sessions'),

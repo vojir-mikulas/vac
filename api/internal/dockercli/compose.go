@@ -329,7 +329,6 @@ func runStreaming(cmd *exec.Cmd, out io.Writer) error {
 		return err
 	}
 	cmd.Stderr = cmd.Stdout // interleave — git/docker do this naturally
-	_ = stdout              // keep the reference live for the goroutine below
 	if err := cmd.Start(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
 			return ErrDockerMissing

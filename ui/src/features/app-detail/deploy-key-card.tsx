@@ -61,6 +61,17 @@ export function DeployKeyCard({ appId, gitUrl }: { appId: string; gitUrl: string
             {t('deployKey.generate')}
           </Button>
         </div>
+      ) : error ? (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs text-err-foreground">{t('deployKey.loadError')}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => qc.invalidateQueries({ queryKey: queryKeys.apps.sshKey(appId) })}
+          >
+            {t('deployKey.retry')}
+          </Button>
+        </div>
       ) : data ? (
         <>
           <ScrollArea className="rounded-md border bg-surface-1">

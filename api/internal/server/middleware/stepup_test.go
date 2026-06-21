@@ -47,9 +47,25 @@ func TestRequireStepUp_NoUser_401(t *testing.T) {
 	}
 }
 
-func TestRequireStepUp_TOTPDisabled_PassesThrough(t *testing.T) {
+// With TOTP disabled, step-up is now enforced via password re-entry: an
+// unverified session is still rejected (the gate no longer waives the weakest
+// posture), and a fresh password step-up lets it through.
+func TestRequireStepUp_TOTPDisabled_NeverVerified_403(t *testing.T) {
 	u := &store.User{ID: "u1", TOTPEnabled: false}
-	code, _ := stepUpStatus(t, reqWith(u, &store.Session{ID: "s1"}, nil))
+	code, errCode := stepUpStatus(t, reqWith(u, &store.Session{ID: "s1"}, nil))
+	if code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", code)
+	}
+	if errCode != handler.CodeStepUpRequired {
+		t.Errorf("code = %q, want %q", errCode, handler.CodeStepUpRequired)
+	}
+}
+
+func TestRequireStepUp_TOTPDisabled_Fresh_PassesThrough(t *testing.T) {
+	now := time.Now()
+	u := &store.User{ID: "u1", TOTPEnabled: false}
+	sess := &store.Session{ID: "s1", StepUpVerifiedAt: &now}
+	code, _ := stepUpStatus(t, reqWith(u, sess, nil))
 	if code != http.StatusOK {
 		t.Errorf("status = %d, want 200", code)
 	}

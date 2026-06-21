@@ -152,7 +152,11 @@ func (rr *Restorer) Restore(ctx context.Context, cfg store.BackupConfig, sourceR
 	defer func() { _ = reader.Close() }()
 
 	if err := rr.exec.ExecStdin(ctx, container, []string{restoreCmd}, reader); err != nil {
-		return rr.fail(ctx, rec.ID, app, cfg, fmt.Errorf("restore command failed: %w", err))
+		// Distinct from the pre-exec failures above (resolve/open), which fail
+		// before the DB is touched: once the stream into psql/mariadb has begun a
+		// failure can leave the target half-overwritten and non-atomic, so say so
+		// explicitly — the operator must know the live DB may be inconsistent.
+		return rr.fail(ctx, rec.ID, app, cfg, fmt.Errorf("restore command failed mid-stream — the target database may be PARTIALLY RESTORED and is not guaranteed consistent: %w", err))
 	}
 
 	if err := rr.store.FinishRestoreRun(ctx, rec.ID, "success", nil); err != nil {

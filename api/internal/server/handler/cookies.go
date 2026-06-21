@@ -7,16 +7,18 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/auth"
 )
 
-// trustForwardedProto gates whether secureForRequest believes an
-// X-Forwarded-Proto=https header. Default true: the bundled vac-proxy is the
-// only proxy in front and sets the header. SetTrustForwardedProto(false) hardens
-// a raw-HTTP box with no trusted proxy, where the header is attacker-spoofable.
-// Process-global, set once at server wiring before requests are served.
-var trustForwardedProto = true
+// trustProxyHeaders gates whether the proxy-set forwarding headers
+// (X-Forwarded-Proto for the cookie Secure decision, X-Forwarded-For for the
+// client IP — see ClientIPString) are believed. Default true: the bundled
+// vac-proxy is the only proxy in front and sets them. SetTrustProxyHeaders(false)
+// hardens a raw-HTTP box with no trusted proxy, where the headers are
+// attacker-spoofable. Process-global, set once at server wiring before requests
+// are served.
+var trustProxyHeaders = true
 
-// SetTrustForwardedProto configures whether X-Forwarded-Proto is trusted for the
-// cookie Secure decision. Call once during server construction from config.
-func SetTrustForwardedProto(trust bool) { trustForwardedProto = trust }
+// SetTrustProxyHeaders configures whether the proxy forwarding headers are
+// trusted. Call once during server construction from config (TrustProxyHeaders).
+func SetTrustProxyHeaders(trust bool) { trustProxyHeaders = trust }
 
 // secureForRequest reports whether the cookies set on this response should
 // carry the Secure attribute. Decided per-request: a TLS connection direct to
@@ -33,7 +35,7 @@ func secureForRequest(r *http.Request) bool {
 	if r.TLS != nil {
 		return true
 	}
-	if trustForwardedProto && r.Header.Get("X-Forwarded-Proto") == "https" {
+	if trustProxyHeaders && r.Header.Get("X-Forwarded-Proto") == "https" {
 		return true
 	}
 	return false

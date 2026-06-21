@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -106,14 +105,11 @@ func (rl *RateLimiter) retryAfterSeconds() int {
 	return secs
 }
 
-// ratelimitIP strips the port off RemoteAddr. We deliberately ignore
-// X-Forwarded-For at this layer — when VAC sits behind Caddy we trust the
-// proxy to set RemoteAddr (via Caddy's `trusted_proxies`); when run directly
-// the user's true IP is already in RemoteAddr.
+// ratelimitIP resolves the bucket key to the originating client IP via the
+// shared proxy-aware helper. Behind the bundled vac-proxy, RemoteAddr is the
+// proxy's container IP for every request, so keying on it would collapse all
+// clients into one bucket and defeat per-source throttling — ClientIPString
+// reads the proxy-set X-Forwarded-For (when trusted) instead.
 func ratelimitIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return handler.ClientIPString(r)
 }

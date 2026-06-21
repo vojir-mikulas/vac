@@ -39,9 +39,10 @@ import (
 // `worker` and `pm` may be nil in tests where the deployment / proxy surface is
 // not exercised.
 func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.Worker, docker *dockercli.Compose, pm *proxy.Manager, hub *ws.Hub, statsProv handler.StatsProvider, notifier handler.TestSender, backupEngine handler.BackupRunner, backupRestorer handler.BackupRestorer, backupVerifier handler.BackupVerifier, jobsEngine handler.JobRunner, dbProv *dbprovision.Provisioner, addonCat *addon.Registry, addonInstaller *addon.Installer, dstatus *domainstatus.Engine, secPosture handler.SecurityPosture, secTraffic handler.SecurityTraffic, secHost handler.SecurityHost, previewSvc *preview.Service, waker handler.Waker, crashReset handler.CrashLoopResetter) (*http.Server, error) {
-	// Gate X-Forwarded-Proto trust (cookie Secure decision) on config — the
-	// bundled vac-proxy sets the header; a raw-HTTP box can disable trusting it.
-	handler.SetTrustForwardedProto(cfg.TrustProxyHeaders)
+	// Gate trust of the proxy forwarding headers (X-Forwarded-Proto for the cookie
+	// Secure decision, X-Forwarded-For for the client IP) on config — the bundled
+	// vac-proxy sets them; a raw-HTTP box can disable trusting them.
+	handler.SetTrustProxyHeaders(cfg.TrustProxyHeaders)
 
 	// Convert the concrete (possibly-nil) manager into nil-able interface
 	// values so handlers' `== nil` guards behave (a typed-nil pointer in an
@@ -160,6 +161,11 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 
 	r.Use(chimw.RequestID)
 	r.Use(chimw.Recoverer)
+	// Lift the Caddy ask token from the query string into the header BEFORE the
+	// request logger runs, so the shared secret never lands in access logs. Caddy's
+	// on-demand module can't set headers, so it passes the secret as ?token=; this
+	// hands it to the handler via the header it already accepts and scrubs the URL.
+	r.Use(scrubCaddyAskToken)
 	r.Use(chimw.Logger)
 	// Per-request timeout that deliberately skips WebSocket upgrades — chi's
 	// stock Timeout would cancel the long-lived WS streams (logs/stats/deploys/
@@ -519,8 +525,16 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 				// container. Off unless explicitly enabled; each session is
 				// audit-logged from the handler (the WS GET escapes the audit
 				// middleware, which only wraps mutating verbs).
+				//
+				// Step-up gated like the other destructive routes: a fresh re-auth is
+				// required. A browser can't read the 403 off a failed WS upgrade to
+				// trigger the step-up modal, so the UI first hits the REST preflight
+				// (which surfaces step_up_required normally) and only opens the socket
+				// on 200; the WS itself also carries RequireStepUp as the real gate,
+				// honoured because step-up freshness lives on the session row.
 				if docker != nil && cfg.EnableShell {
-					r.Get("/{id}/services/{name}/exec", handler.ExecWS(s, docker, wsOpts))
+					r.With(middleware.RequireStepUp).Post("/{id}/services/{name}/exec/preflight", handler.ExecPreflight)
+					r.With(middleware.RequireStepUp).Get("/{id}/services/{name}/exec", handler.ExecWS(s, docker, wsOpts))
 				}
 			})
 
@@ -614,7 +628,34 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 		Addr:              cfg.Addr(),
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
+		// Bound the time a client may take to send the full request body, and how
+		// long an idle keep-alive connection may sit, as cheap Slowloris hardening.
+		// (middleware.Timeout only cancels the request *context* — it doesn't abort
+		// a body read that ignores ctx.) No WriteTimeout: WebSocket/log-stream
+		// handlers are long-lived and manage their own per-frame deadlines.
+		ReadTimeout: 30 * time.Second,
+		IdleTimeout: 120 * time.Second,
 	}, nil
+}
+
+// scrubCaddyAskToken moves a ?token= secret on the Caddy ask route into the
+// X-Caddy-Ask-Token header and removes it from the URL, so the downstream request
+// logger (which reads RequestURI at entry) never records the shared secret. A
+// no-op for every other path and when no token query param is present.
+func scrubCaddyAskToken(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/internal/caddy/ask" {
+			if q := r.URL.Query(); q.Get("token") != "" {
+				if r.Header.Get("X-Caddy-Ask-Token") == "" {
+					r.Header.Set("X-Caddy-Ask-Token", q.Get("token"))
+				}
+				q.Del("token")
+				r.URL.RawQuery = q.Encode()
+				r.RequestURI = r.URL.RequestURI()
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // dnsResolverAddr is the public recursive resolver the DNS-check button and the

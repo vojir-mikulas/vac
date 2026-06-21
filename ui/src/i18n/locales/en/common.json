@@ -38,6 +38,9 @@
   "stepUp": {
     "title": "Confirm with two-factor",
     "description": "This action is sensitive. Enter a code from your authenticator to continue.",
+    "passwordTitle": "Confirm your password",
+    "passwordDescription": "This action is sensitive. Re-enter your password to continue.",
+    "passwordLabel": "Password",
     "codeLabel": "Authentication code",
     "codePlaceholder": "123456",
     "recoveryLabel": "Recovery code",

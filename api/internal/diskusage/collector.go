@@ -197,11 +197,15 @@ func (c *Collector) collectApp(ctx context.Context, app store.App, sizes map[str
 			if !ok {
 				continue
 			}
+			// Mark the mount as seen BEFORE the upsert: a transient upsert error must
+			// not drop it from `seen`, or the prune below would delete this mount's
+			// previously-good usage row over a momentary blip (it self-heals next
+			// poll anyway).
+			seen = append(seen, row.MountPath)
 			if err := c.store.UpsertVolumeUsage(ctx, row); err != nil {
 				c.logger.Warn("diskusage: upsert usage", "app", app.Slug, "mount", m.Destination, "err", err)
 				continue
 			}
-			seen = append(seen, row.MountPath)
 			if row.UsedBytes != nil {
 				total += *row.UsedBytes
 				measured = true

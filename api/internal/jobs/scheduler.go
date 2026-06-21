@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -130,6 +131,16 @@ func (s *Scheduler) dispatch(ctx context.Context, job store.ScheduledJob) {
 		defer func() {
 			s.clearRunning(job.ID)
 			s.signalWake()
+		}()
+		// Recover here, not just in the scheduler loop: this goroutine runs
+		// outside main.go's superviseDaemon frame, so an un-recovered panic in
+		// RunOnce would crash the whole vac-api process.
+		defer func() {
+			if r := recover(); r != nil {
+				s.logger.Error("jobs: scheduled run panicked",
+					"job", job.ID, "name", job.Name, "panic", r,
+					"stack", string(debug.Stack()))
+			}
 		}()
 		if err := s.engine.RunOnce(ctx, job); err != nil {
 			// RunOnce already records + notifies; log for the operator trail.

@@ -35,8 +35,10 @@ type AutoHostChecker interface {
 // vac-api mints one automatically when the operator hasn't set VAC_CADDY_ASK_TOKEN
 // (see config.Load), so the gate is always active. Caddy's on-demand permission
 // module can't set request headers, so it presents the secret as the `token`
-// query param (stamped into the ask URL at boot); a header is also accepted for
-// callers that can set one.
+// query param (stamped into the ask URL at boot). The scrubCaddyAskToken
+// middleware lifts that param into the X-Caddy-Ask-Token header before any
+// logging runs, so the secret never reaches access logs; this handler therefore
+// reads the header first and keeps the query read only as a direct-call fallback.
 func CaddyAsk(s *store.Store, token string, ctrl ControlDomainChecker, auto AutoHostChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if token != "" {

@@ -469,11 +469,19 @@ func (p *Pipeline) Run(ctx context.Context, deploymentID string) (runErr error) 
 	if p.Router != nil {
 		// Auto-subdomains are derived from the app's services + base domain at
 		// sync time (plan 09 F1) — no explicit assignment step needed.
+		var syncErr error
 		if err := p.Router.Sync(ctx, app.ID); err != nil {
+			syncErr = err
 			_ = p.logSystem(ctx, deploymentID, "warning: route sync failed (will reconcile): "+err.Error())
 		}
 		if err := p.Router.WaitHealthy(ctx, app.ID); err != nil {
+			// A route that never installed will never become a Caddy upstream, so
+			// WaitHealthy would otherwise burn the full timeout and report a
+			// misleading "upstream not healthy". Name the likelier root cause.
 			msg := "health check failed: " + err.Error()
+			if syncErr != nil {
+				msg = "health check failed (route push also failed — likely the real cause: " + syncErr.Error() + "): " + err.Error()
+			}
 			_ = p.logSystem(ctx, deploymentID, msg)
 			_ = p.Store.MarkDeploymentFinished(ctx, deploymentID, DeploymentStatusError, &msg)
 			_ = p.Store.SetAppStatus(ctx, app.ID, AppStatusDegraded)
@@ -558,7 +566,13 @@ func (p *Pipeline) enterAutoMaintenance(ctx context.Context, app store.App) func
 		p.Logger.Warn("pipeline: enter auto-maintenance", "app", app.ID, "err", err)
 	}
 	return func() {
-		if err := p.Maintainer.MaintainOff(ctx, app.ID); err != nil {
+		// Detach from the deploy context: on a worker timeout or targeted cancel
+		// it is already Done, and clearing maintenance through that cancelled
+		// context would fail — stranding the app on the 503 page, the exact
+		// outcome this clear exists to prevent. Mirror wake.go's WithoutCancel.
+		clearCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		if err := p.Maintainer.MaintainOff(clearCtx, app.ID); err != nil {
 			p.Logger.Warn("pipeline: clear auto-maintenance", "app", app.ID, "err", err)
 		}
 	}

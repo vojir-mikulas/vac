@@ -3,7 +3,9 @@ package deploy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -68,6 +70,12 @@ type Worker struct {
 	// can interrupt a specific in-flight deploy without touching the others.
 	mu       sync.Mutex
 	inflight map[string]context.CancelFunc
+
+	// fail settles a deployment row as errored. Used only by the panic recovery
+	// path so a panicking deploy releases its per-app uniqueness slot (migration
+	// 00062) instead of hanging non-terminal until the reaper. nil disables it
+	// (the bare NewWorker test constructor leaves it unset).
+	fail func(ctx context.Context, deploymentID string, errMsg *string) error
 }
 
 // NewWorker returns a worker with the given queue capacity and pool size.
@@ -113,6 +121,9 @@ func NewPipelineWorker(p *Pipeline, capacity, concurrency int) *Worker {
 		return p.Store.ReapStuckDeployments(ctx, defaultReapTimeout)
 	}
 	w.reapInterval = defaultReapInterval
+	w.fail = func(ctx context.Context, deploymentID string, errMsg *string) error {
+		return p.Store.MarkDeploymentFinished(ctx, deploymentID, DeploymentStatusError, errMsg)
+	}
 	return w
 }
 
@@ -188,6 +199,19 @@ func (w *Worker) process(ctx context.Context, id string) {
 	}()
 
 	start := time.Now()
+
+	// Recover panics so one malformed deploy (a nil-map deref in adapter
+	// resolution, a panic parsing an attacker-supplied compose file, …) fails
+	// only itself instead of killing this pool goroutine. At the default
+	// concurrency=1 a dead goroutine would wedge every future deploy in `queued`
+	// forever with no error — see superviseDaemon in main.go for the same policy
+	// applied to every other long-lived goroutine.
+	defer func() {
+		if r := recover(); r != nil {
+			w.handlePanic(deployCtx, id, r, start)
+		}
+	}()
+
 	if err := w.run(deployCtx, id); err != nil {
 		// A cancelled deploy context (targeted cancel or graceful shutdown) is an
 		// expected stop, not a pipeline fault — log it calmly.
@@ -198,6 +222,27 @@ func (w *Worker) process(ctx context.Context, id string) {
 			w.logger.Error("worker: pipeline failed",
 				"deployment_id", id, "err", err, "duration", time.Since(start))
 		}
+	}
+}
+
+// handlePanic settles a deployment whose pipeline panicked. It logs the panic
+// with a stack trace and marks the row errored on a detached context (the
+// deploy context may itself be cancelled, and even if not we must not let the
+// settle write be skipped), so the per-app uniqueness slot is released and the
+// next deploy for the app isn't blocked.
+func (w *Worker) handlePanic(deployCtx context.Context, id string, r any, start time.Time) {
+	w.logger.Error("worker: pipeline panicked — recovered to keep pool alive",
+		"deployment_id", id, "panic", r,
+		"duration", time.Since(start), "stack", string(debug.Stack()))
+	if w.fail == nil {
+		return
+	}
+	msg := fmt.Sprintf("deploy aborted: internal panic (%v)", r)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(deployCtx), 10*time.Second)
+	defer cancel()
+	if err := w.fail(ctx, id, &msg); err != nil {
+		w.logger.Error("worker: failed to settle panicked deploy",
+			"deployment_id", id, "err", err)
 	}
 }
 
@@ -258,5 +303,7 @@ func (w *Worker) Cancel(deploymentID string) bool {
 func (w *Worker) NotifyChanged() { PublishDeploymentsChanged(w.pub) }
 
 // Wait blocks until every pool goroutine returns. Called from main.go during
-// graceful shutdown so in-flight deploys get time to finish.
+// graceful shutdown: the parent ctx is cancelled first, so any in-flight deploy's
+// derived context is already cancelled — Wait then blocks until those deploys
+// abort cleanly (each settling itself as interrupted), not until they finish.
 func (w *Worker) Wait() { w.wg.Wait() }

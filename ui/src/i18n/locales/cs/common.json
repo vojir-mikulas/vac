@@ -38,6 +38,9 @@
   "stepUp": {
     "title": "Potvrďte pomocí dvoufaktorového ověření",
     "description": "Tato akce je citlivá. Pro pokračování zadejte kód z vaší authenticator aplikace.",
+    "passwordTitle": "Potvrďte své heslo",
+    "passwordDescription": "Tato akce je citlivá. Pro pokračování znovu zadejte své heslo.",
+    "passwordLabel": "Heslo",
     "codeLabel": "Ověřovací kód",
     "codePlaceholder": "123456",
     "recoveryLabel": "Záložní kód",

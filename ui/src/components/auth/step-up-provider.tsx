@@ -14,20 +14,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ApiError, registerStepUpHandler } from '@/lib/api/client'
-import { authApi } from '@/lib/api/auth'
+import { authApi, useMe } from '@/lib/api/auth'
 
 type Pending = { resolve: () => void; reject: (e: unknown) => void }
 
 // StepUpProvider wires the global step-up prompt. When any API call fails with
 // 403 step_up_required, the client invokes the handler registered here, which
-// opens a modal asking for a fresh 2FA code. On success the original request is
-// replayed; on cancel it rejects with the original error.
+// opens a modal asking for a fresh re-authentication — a 2FA code when TOTP is
+// enabled, or a password re-entry when it isn't. On success the original request
+// is replayed; on cancel it rejects with the original error.
 //
 // Concurrent challenges are coalesced: several destructive requests landing at
-// once share one modal and all replay together once the code is accepted.
+// once share one modal and all replay together once the challenge is accepted.
 export function StepUpProvider({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation('common')
   const errId = useId()
+  const { data: me } = useMe()
+  // When TOTP isn't set up, the step-up factor is the account password.
+  const totpEnabled = !!me?.totp_enabled
   const pending = useRef<Pending[]>([])
   const [open, setOpen] = useState(false)
   const [code, setCode] = useState('')
@@ -70,13 +74,16 @@ export function StepUpProvider({ children }: { children: React.ReactNode }) {
     setSubmitting(true)
     setError(null)
     try {
-      await authApi.stepUp(useRecovery ? { recovery_code: code } : { code })
+      await authApi.stepUp(
+        !totpEnabled ? { password: code } : useRecovery ? { recovery_code: code } : { code },
+      )
       settle(true)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('stepUp.error'))
       setSubmitting(false)
-      // Reset the OTP slots for a clean retry; a long recovery code is kept.
-      if (!useRecovery) setCode('')
+      // Reset the OTP slots for a clean retry; a password or long recovery code
+      // is kept so the user can correct it.
+      if (totpEnabled && !useRecovery) setCode('')
     }
   }
 
@@ -86,8 +93,10 @@ export function StepUpProvider({ children }: { children: React.ReactNode }) {
       <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : settle(false))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t('stepUp.title')}</DialogTitle>
-            <DialogDescription>{t('stepUp.description')}</DialogDescription>
+            <DialogTitle>{totpEnabled ? t('stepUp.title') : t('stepUp.passwordTitle')}</DialogTitle>
+            <DialogDescription>
+              {totpEnabled ? t('stepUp.description') : t('stepUp.passwordDescription')}
+            </DialogDescription>
           </DialogHeader>
           <form
             className="flex flex-col gap-4"
@@ -96,7 +105,22 @@ export function StepUpProvider({ children }: { children: React.ReactNode }) {
               submit()
             }}
           >
-            {useRecovery ? (
+            {!totpEnabled ? (
+              <div className="grid gap-2">
+                <Label htmlFor="stepup-code">{t('stepUp.passwordLabel')}</Label>
+                <Input
+                  id="stepup-code"
+                  autoFocus
+                  required
+                  type="password"
+                  autoComplete="current-password"
+                  aria-invalid={!!error || undefined}
+                  aria-describedby={error ? errId : undefined}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                />
+              </div>
+            ) : useRecovery ? (
               <div className="grid gap-2">
                 <Label htmlFor="stepup-code">{t('stepUp.recoveryLabel')}</Label>
                 <Input
@@ -131,17 +155,19 @@ export function StepUpProvider({ children }: { children: React.ReactNode }) {
                 {error}
               </p>
             ) : null}
-            <button
-              type="button"
-              className="self-start text-xs text-muted-foreground underline-offset-2 hover:underline"
-              onClick={() => {
-                setUseRecovery((v) => !v)
-                setCode('')
-                setError(null)
-              }}
-            >
-              {useRecovery ? t('stepUp.useAuthenticator') : t('stepUp.useRecovery')}
-            </button>
+            {totpEnabled ? (
+              <button
+                type="button"
+                className="self-start text-xs text-muted-foreground underline-offset-2 hover:underline"
+                onClick={() => {
+                  setUseRecovery((v) => !v)
+                  setCode('')
+                  setError(null)
+                }}
+              >
+                {useRecovery ? t('stepUp.useAuthenticator') : t('stepUp.useRecovery')}
+              </button>
+            ) : null}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => settle(false)}>
                 {t('stepUp.cancel')}
@@ -149,9 +175,9 @@ export function StepUpProvider({ children }: { children: React.ReactNode }) {
               <Button
                 type="submit"
                 variant="brand"
-                // The 6-digit minimum is a TOTP rule; recovery codes have their
-                // own format, so gate length only when entering an authenticator code.
-                disabled={submitting || (!useRecovery && code.length < 6) || !code}
+                // The 6-digit minimum is a TOTP rule; recovery codes and passwords
+                // have their own format, so gate length only for an authenticator code.
+                disabled={submitting || (totpEnabled && !useRecovery && code.length < 6) || !code}
               >
                 {t('stepUp.submit')}
               </Button>

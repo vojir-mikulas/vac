@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"time"
 
@@ -343,9 +342,5 @@ func auditWebhookEntry(a webhookAuditor, r *http.Request, appID, summary string,
 }
 
 func webhookClientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return ClientIPString(r)
 }

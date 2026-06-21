@@ -168,7 +168,7 @@ function SettingsForm({ app }: { app: App }) {
     remove.mutate(appId, {
       onSuccess: () => {
         toast.success(t('settings.appDeleted'))
-        navigate({ to: '/apps' })
+        void navigate({ to: '/apps' })
       },
       onError: (e) => toast.error(e.message),
     })

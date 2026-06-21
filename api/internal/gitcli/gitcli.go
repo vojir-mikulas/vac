@@ -117,10 +117,32 @@ func FetchCommit(ctx context.Context, dest, sha, sshKeyPath string) error {
 			return classify(err, out, false)
 		}
 	}
+	// NB: no `--` separator here — for `checkout` that switches to pathspec
+	// interpretation and the SHA would be read as a filename. Flag injection is
+	// instead neutralized by requiring sha to be a bare hex object name (it
+	// originates from our own HeadCommit, but validate defensively).
+	if !isHexObjectName(sha) {
+		return fmt.Errorf("gitcli: refusing to check out non-hex ref %q", sha)
+	}
 	if out, err := run(ctx, env, "-C", dest, "checkout", "--detach", sha); err != nil {
 		return classify(err, out, false)
 	}
 	return nil
+}
+
+// isHexObjectName reports whether s is a non-empty string of hex digits — the
+// shape of a git object name (full or abbreviated SHA). Used to reject anything
+// that could be read as a flag before it reaches `git checkout`.
+func isHexObjectName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 // HeadCommit returns the short SHA + first line of the commit message of

@@ -49,6 +49,19 @@ type resizeMsg struct {
 	Cols uint16 `json:"cols"`
 }
 
+// ExecPreflight is the side-effect-free step-up gate the shell UI calls over
+// REST before opening the exec WebSocket. A browser can't read the 403 body off
+// a failed WS upgrade, so it can't trigger the global step-up modal from the
+// socket directly; this REST endpoint (behind RequireStepUp) makes the
+// step_up_required challenge surface normally, and the UI only connects on 200.
+// The WS route carries RequireStepUp too, so this is a UX affordance, not the
+// security boundary.
+//
+// POST /api/apps/:id/services/:name/exec/preflight
+func ExecPreflight(w http.ResponseWriter, _ *http.Request) {
+	WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // ExecWS opens an interactive `docker exec -it {container} sh` over a WebSocket
 // PTY (P3.4). This is a PRIVILEGED action — the deliberately-sandboxed control
 // plane shelling into a *user app* container — so the route is feature-flagged

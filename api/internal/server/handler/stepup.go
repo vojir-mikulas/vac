@@ -11,15 +11,24 @@ import (
 type stepUpRequest struct {
 	Code         string `json:"code"`
 	RecoveryCode string `json:"recovery_code"`
+	Password     string `json:"password"`
 }
 
-// StepUp re-proves the current session's second factor for a sensitive action.
-// On success it stamps the session so RequireStepUp lets destructive routes
-// through for auth.StepUpTTL. Unlike TOTPLogin this runs on a *full* session —
-// the user is already logged in; this only refreshes their 2FA freshness.
+// StepUp re-proves the current session's identity for a sensitive action. On
+// success it stamps the session so RequireStepUp lets destructive routes through
+// for auth.StepUpTTL. Unlike TOTPLogin this runs on a *full* session — the user
+// is already logged in; this only refreshes their step-up freshness.
 //
-// Mounted behind RequireSession. A code or recovery_code is required; the user
-// must have TOTP enabled (otherwise there is nothing to step up against).
+// The factor demanded depends on the account's posture:
+//   - TOTP enabled  → a fresh authenticator code or a recovery code. A password
+//     is NOT accepted here: it must not be possible to downgrade past the second
+//     factor.
+//   - TOTP disabled → a password re-entry. Without this, RequireStepUp would have
+//     nothing to verify and would have to wave destructive ops through on the
+//     session cookie alone — defeating the step-up gate exactly when there is no
+//     second factor as a backstop.
+//
+// Mounted behind RequireSession.
 func StepUp(sm *auth.SessionManager, tm *auth.TOTPManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.User(r.Context())
@@ -30,32 +39,41 @@ func StepUp(sm *auth.SessionManager, tm *auth.TOTPManager) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "step-up requires an interactive session")
 			return
 		}
-		if !u.TOTPEnabled {
-			WriteError(w, http.StatusBadRequest, "two-factor authentication is not enabled")
-			return
-		}
 
 		var req stepUpRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			WriteError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		if req.Code == "" && req.RecoveryCode == "" {
-			WriteError(w, http.StatusBadRequest, "code or recovery_code is required")
-			return
-		}
 
-		if req.Code != "" {
-			if err := tm.Verify(r.Context(), u.ID, req.Code); err != nil {
-				auditAuthFailure(r, "bad_stepup_totp", u.Username, u.ID)
-				WriteError(w, http.StatusUnauthorized, "invalid code")
+		if !u.TOTPEnabled {
+			// Password re-entry is the step-up factor when there is no TOTP.
+			if req.Password == "" {
+				WriteError(w, http.StatusBadRequest, "password is required")
+				return
+			}
+			if err := auth.VerifyPassword(u.PasswordHash, req.Password); err != nil {
+				auditAuthFailure(r, "bad_stepup_password", u.Username, u.ID)
+				WriteError(w, http.StatusUnauthorized, "invalid password")
 				return
 			}
 		} else {
-			if err := tm.ConsumeRecoveryCode(r.Context(), u.ID, req.RecoveryCode); err != nil {
-				auditAuthFailure(r, "bad_stepup_recovery_code", u.Username, u.ID)
-				WriteError(w, http.StatusUnauthorized, "invalid recovery code")
+			if req.Code == "" && req.RecoveryCode == "" {
+				WriteError(w, http.StatusBadRequest, "code or recovery_code is required")
 				return
+			}
+			if req.Code != "" {
+				if err := tm.Verify(r.Context(), u.ID, req.Code); err != nil {
+					auditAuthFailure(r, "bad_stepup_totp", u.Username, u.ID)
+					WriteError(w, http.StatusUnauthorized, "invalid code")
+					return
+				}
+			} else {
+				if err := tm.ConsumeRecoveryCode(r.Context(), u.ID, req.RecoveryCode); err != nil {
+					auditAuthFailure(r, "bad_stepup_recovery_code", u.Username, u.ID)
+					WriteError(w, http.StatusUnauthorized, "invalid recovery code")
+					return
+				}
 			}
 		}
 

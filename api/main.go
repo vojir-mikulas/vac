@@ -393,6 +393,16 @@ func main() {
 	var backupRestorer *backup.Restorer
 	var backupVerifier *backup.Verifier
 	if cfg.ManagedServices {
+		// Settle any backup run/restore/verification left `running` by a previous
+		// process — mirrors the deployment boot sweep. Critical for restores and
+		// verifications: their "already running" guards key on a `running` row, so a
+		// crash-stranded row would otherwise block all future ones for that config.
+		if n, err := st.MarkInterruptedBackupOps(ctx); err != nil {
+			slog.Warn("backup: boot sweep of interrupted ops failed", "err", err)
+		} else if n > 0 {
+			slog.Info("backup: swept interrupted ops", "count", n)
+		}
+
 		if n, err := st.CountBackupConfigs(ctx); err != nil {
 			slog.Warn("backup: could not count configs; scheduler not started", "err", err)
 		} else if n > 0 {
