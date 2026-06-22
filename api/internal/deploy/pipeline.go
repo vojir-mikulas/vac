@@ -637,11 +637,33 @@ func (p *Pipeline) cloneOrPull(ctx context.Context, app store.App, dest, sshKeyP
 	return p.Git.Clone(ctx, app.GitURL, dest, app.GitBranch, sshKeyPath)
 }
 
+// routableInternalPort decides the container port Caddy should dial for a
+// service over vac-edge — and, since the proxy routes exactly the services with
+// a non-nil internal port, whether VAC publishes the service at all.
+//
+// Routing follows operator intent declared in the compose file
+// (`expose:`/`ports:`, passed in as composeExposed), NOT the image's built-in
+// EXPOSE. `docker compose ps` surfaces image-exposed ports as a publisher with
+// TargetPort set but PublishedPort 0 — e.g. getmeili/meilisearch's `EXPOSE
+// 7700` shows up as {TargetPort:7700, PublishedPort:0} even with no `expose:` in
+// compose — so trusting the ps target blindly would publicly route a service the
+// compose file never exposed. Prefer the compose-declared port; fall back to the
+// ps target only when the host actually publishes one (a mapping that, by
+// definition, originated from a compose `ports:` entry the operator wrote).
+func routableInternalPort(s dockercli.PsService, composeExposed int) int {
+	if composeExposed > 0 {
+		return composeExposed
+	}
+	if s.FirstPublishedPort() > 0 {
+		return s.FirstTargetPort()
+	}
+	return 0
+}
+
 func (p *Pipeline) upsertServices(ctx context.Context, appID string, services []dockercli.PsService, composeFile string) error {
-	// `docker compose ps` only reports host-published mappings, so an
-	// `expose`-only service (e.g. the Grafana add-on) yields TargetPort 0 and
-	// would never be attached to vac-edge or routed. Fall back to the container
-	// port declared in the compose `expose:`/`ports:` target.
+	// Routing follows operator intent declared in the compose file
+	// (`expose:`/`ports:`), parsed here, never the image's built-in EXPOSE.
+	// See routableInternalPort for why the ps TargetPort can't be trusted alone.
 	exposed, eerr := compose.ServiceExposedPorts(composeFile)
 	if eerr != nil {
 		p.Logger.Warn("pipeline: parse compose for exposed ports", "err", eerr)
@@ -656,10 +678,7 @@ func (p *Pipeline) upsertServices(ctx context.Context, appID string, services []
 		seen[s.Service] = true
 		containerID := s.ID
 		port := s.FirstPublishedPort()
-		internal := s.FirstTargetPort()
-		if internal == 0 {
-			internal = exposed[s.Service]
-		}
+		internal := routableInternalPort(s, exposed[s.Service])
 		var (
 			cidPtr      *string
 			portPtr     *int
