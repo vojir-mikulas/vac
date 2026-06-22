@@ -288,7 +288,10 @@ func (m *Manager) autoHostsForApp(app store.App, services []store.Service) []Aut
 	}
 	var httpServices []store.Service
 	for _, s := range services {
-		if s.InternalPort != nil {
+		// IsPrivate forces the service internal-only — no auto-domain. Dropping it
+		// here also keeps it out of AutoHosts, so pruneOrphans tears down any live
+		// auto route and SyncCerts won't authorize a cert for its hostname.
+		if s.InternalPort != nil && !s.IsPrivate {
 			httpServices = append(httpServices, s)
 		}
 	}
@@ -664,9 +667,12 @@ func (m *Manager) applyApp(ctx context.Context, appID string) error {
 			continue
 		}
 		svc, ok := byName[spec.service]
-		routable := ok && svc.ContainerID != nil && *svc.ContainerID != "" && svc.InternalPort != nil
+		// !IsPrivate gates custom domains too: a domain explicitly assigned to a
+		// private service is also torn down here, so "private" means no HTTP route
+		// at all — auto or custom.
+		routable := ok && svc.ContainerID != nil && *svc.ContainerID != "" && svc.InternalPort != nil && !svc.IsPrivate
 		if !routable {
-			// Not deployed yet (or portless) — make sure no stale route lingers.
+			// Not deployed yet (or portless/private) — make sure no stale route lingers.
 			if err := m.caddy.DeleteRoute(ctx, spec.id); err != nil {
 				m.logger.Debug("proxy: delete stale route", "host", spec.hostname, "err", err)
 			}

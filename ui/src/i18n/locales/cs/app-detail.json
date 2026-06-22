@@ -461,6 +461,8 @@
     "internalPort": "Internal port",
     "internalPortHint": "Port, na kterém container skutečně naslouchá. Uložení okamžitě přesměruje traffic na něj — restart není nutný.",
     "healthPath": "Health check path",
+    "private": "Ponechat privátní",
+    "privateHint": "Nepřidělovat této službě veřejnou doménu ani trasu – zůstane dostupná jen ostatním kontejnerům ve stacku. Vhodné pro interní služby (vyhledávání, cache, interní API), jejichž image vystavuje port, který by VAC jinak zveřejnil.",
     "serviceUpdated": "Service aktualizována"
   },
   "services": {

@@ -25,6 +25,7 @@ type serviceDTO struct {
 	RestartCount int       `json:"restart_count"`
 	LastExitCode *int      `json:"last_exit_code,omitempty"`
 	HasVolumes   bool      `json:"has_volumes"`
+	IsPrivate    bool      `json:"is_private"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -42,6 +43,7 @@ func toServiceDTO(s store.Service) serviceDTO {
 		RestartCount: s.RestartCount,
 		LastExitCode: s.LastExitCode,
 		HasVolumes:   s.HasVolumes,
+		IsPrivate:    s.IsPrivate,
 		CreatedAt:    s.CreatedAt,
 		UpdatedAt:    s.UpdatedAt,
 	}
@@ -69,6 +71,7 @@ type patchServiceRequest struct {
 	ExposedPort  *int    `json:"exposed_port,omitempty"`
 	InternalPort *int    `json:"internal_port,omitempty"`
 	HealthPath   *string `json:"health_path,omitempty"`
+	IsPrivate    *bool   `json:"is_private,omitempty"`
 }
 
 // PatchAppService sets the operator-controlled routing fields on a service.
@@ -103,7 +106,7 @@ func PatchAppService(s *store.Store, pm ProxyManager) http.HandlerFunc {
 			return
 		}
 
-		updated, err := s.SetServiceConfig(r.Context(), appID, name, req.ExposedPort, req.InternalPort, req.HealthPath)
+		updated, err := s.SetServiceConfig(r.Context(), appID, name, req.ExposedPort, req.InternalPort, req.HealthPath, req.IsPrivate)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				WriteError(w, http.StatusNotFound, "service not found")
@@ -116,7 +119,7 @@ func PatchAppService(s *store.Store, pm ProxyManager) http.HandlerFunc {
 		// A routing-relevant change must reach Caddy now, not on the next deploy:
 		// re-push the app's routes so the upstream dials the new port / health
 		// path. proxySync is nil-safe and best-effort (logs on failure).
-		if req.InternalPort != nil || req.HealthPath != nil {
+		if req.InternalPort != nil || req.HealthPath != nil || req.IsPrivate != nil {
 			proxySync(r.Context(), pm, appID)
 		}
 
@@ -137,6 +140,11 @@ func describeServicePatch(name string, req patchServiceRequest) string {
 		return fmt.Sprintf("set %s health path to %s", name, *req.HealthPath)
 	case req.ExposedPort != nil:
 		return fmt.Sprintf("set %s exposed port to %d", name, *req.ExposedPort)
+	case req.IsPrivate != nil:
+		if *req.IsPrivate {
+			return "made " + name + " private (no public route)"
+		}
+		return "made " + name + " public"
 	default:
 		return "updated service " + name
 	}

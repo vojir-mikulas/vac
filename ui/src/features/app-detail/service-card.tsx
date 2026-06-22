@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
   useRestartService,
   useStartService,
@@ -174,6 +175,7 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
   const [open, setOpen] = useState(false)
   const [internalPort, setInternalPort] = useState(service.internal_port?.toString() ?? '')
   const [healthPath, setHealthPath] = useState(service.health_path ?? '')
+  const [isPrivate, setIsPrivate] = useState(service.is_private)
   const update = useUpdateService(appId)
 
   const submit = () => {
@@ -183,6 +185,7 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
         input: {
           internal_port: internalPort ? Number(internalPort) : undefined,
           health_path: healthPath || undefined,
+          is_private: isPrivate,
         },
       },
       {
@@ -233,6 +236,13 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
               value={healthPath}
               onChange={(e) => setHealthPath(e.target.value)}
             />
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="grid gap-1">
+              <Label htmlFor="private">{t('serviceCard.private')}</Label>
+              <p className="text-xs text-muted-foreground">{t('serviceCard.privateHint')}</p>
+            </div>
+            <Switch id="private" checked={isPrivate} onCheckedChange={setIsPrivate} />
           </div>
         </div>
         <DialogFooter>

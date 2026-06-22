@@ -444,6 +444,34 @@ func TestAutoHosts_MultiService(t *testing.T) {
 	}
 }
 
+func TestAutoHosts_SkipsPrivateService(t *testing.T) {
+	s := &fakeStore{
+		app: store.App{ID: "a1", Slug: "intake"},
+		services: []store.Service{
+			{ServiceName: "api", InternalPort: intp(8080)},
+			// meilisearch's image declares EXPOSE 7700, so it has an InternalPort,
+			// but the operator marked it private — it must get no auto-host.
+			{ServiceName: "meilisearch", InternalPort: intp(7700), IsPrivate: true},
+		},
+	}
+	m := newManagerWith(s, newFakeCaddy(), newFakeNet())
+	hosts, err := m.AutoHosts(context.Background())
+	if err != nil {
+		t.Fatalf("AutoHosts: %v", err)
+	}
+	for _, h := range hosts {
+		if h.ServiceName == "meilisearch" {
+			t.Fatalf("private service got an auto-host: %q", h.Hostname)
+		}
+	}
+	// The single non-private service routes — and as the only public service it
+	// gets the bare app subdomain, confirming the private one is excluded from the
+	// multi-service count too.
+	if len(hosts) != 1 || hosts[0].Hostname != "intake.vac.example.com" {
+		t.Fatalf("expected only the api host, got %+v", hosts)
+	}
+}
+
 // ---- bring-your-own cert push (dns-automation plan B) ----
 
 type fakeCertSource struct{ certs []store.UploadedCert }

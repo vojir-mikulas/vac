@@ -461,6 +461,8 @@
     "internalPort": "Internal port",
     "internalPortHint": "The port the container actually serves on. Saving re-routes traffic to it immediately — no restart needed.",
     "healthPath": "Health check path",
+    "private": "Keep private",
+    "privateHint": "Don't give this service a public domain or route — keep it reachable only by other containers in the stack. Use this for internal services (search, cache, internal APIs) whose image exposes a port VAC would otherwise publish.",
     "serviceUpdated": "Service updated"
   },
   "services": {

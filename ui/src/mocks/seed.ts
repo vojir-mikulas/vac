@@ -23,6 +23,7 @@ function svc(
     lastExit?: number | null
     healthPath?: string | null
     hasVolumes?: boolean
+    isPrivate?: boolean
   } = {},
 ): Service {
   return {
@@ -38,6 +39,7 @@ function svc(
     last_exit_code: opts.lastExit ?? null,
     oom_killed_count: 0,
     has_volumes: opts.hasVolumes ?? false,
+    is_private: opts.isPrivate ?? false,
     created_at: daysAgoISO(12),
     updated_at: minutesAgoISO(3),
   }

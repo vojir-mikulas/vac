@@ -136,6 +136,9 @@ type Service struct {
 	Name         string `yaml:"name"                   json:"name"`
 	InternalPort *int   `yaml:"internalPort,omitempty" json:"internalPort,omitempty"`
 	HealthPath   string `yaml:"healthPath,omitempty"   json:"healthPath,omitempty"`
+	// IsPrivate forces the service internal-only (no public route). Part of the
+	// portable spec so a private service stays private across export/import.
+	IsPrivate bool `yaml:"isPrivate,omitempty" json:"isPrivate,omitempty"`
 }
 
 // Deploy holds push-to-deploy configuration. Triggers map to deploy_triggers.

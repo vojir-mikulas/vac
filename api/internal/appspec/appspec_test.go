@@ -171,6 +171,54 @@ func TestRoundTrip_StoreToSpecToInputs(t *testing.T) {
 	}
 }
 
+// A service marked private must keep that flag across export → YAML → import, so
+// re-importing an app can't silently re-publish an internal-only service.
+func TestRoundTrip_PreservesIsPrivate(t *testing.T) {
+	t.Parallel()
+	in := appspec.FromAppInput{
+		App: store.App{
+			Name:        "intake",
+			Slug:        "intake",
+			GitURL:      "git@github.com:me/intake.git",
+			GitBranch:   "main",
+			ComposeFile: "compose.yaml",
+			BuildKind:   adapter.KindCompose,
+			BuildConfig: bc(t, adapter.BuildConfig{}),
+			Source:      store.AppSourceGit,
+		},
+		Services: []store.Service{
+			{ServiceName: "api", InternalPort: intp(8080)},
+			{ServiceName: "meilisearch", InternalPort: intp(7700), IsPrivate: true},
+		},
+	}
+	spec := appspec.FromApp(in)
+
+	data, err := appspec.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec2, err := appspec.Unmarshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := appspec.ToApp(spec2)
+	if err != nil {
+		t.Fatalf("ToApp: %v", err)
+	}
+
+	// Services are sorted by name: api, meilisearch.
+	byName := map[string]appspec.ServiceInput{}
+	for _, s := range got.Services {
+		byName[s.Name] = s
+	}
+	if s := byName["meilisearch"]; s.IsPrivate == nil || !*s.IsPrivate {
+		t.Errorf("meilisearch should round-trip private, got %v", s.IsPrivate)
+	}
+	if s := byName["api"]; s.IsPrivate == nil || *s.IsPrivate {
+		t.Errorf("api should round-trip public (is_private=false), got %v", s.IsPrivate)
+	}
+}
+
 func TestBuildKinds_RoundTrip(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

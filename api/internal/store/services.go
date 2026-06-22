@@ -27,20 +27,25 @@ type Service struct {
 	// volume mount other than the Docker socket). Recomputed from the compose
 	// file on every deploy; drives the dashboard's backup nudge.
 	HasVolumes bool
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// IsPrivate, when true, forces the service internal-only: the proxy assigns
+	// it no auto-domain and routes no custom domain to it, even when its image or
+	// compose file exposes a port. Operator-set via PatchAppService; survives
+	// redeploys (UpsertService never writes it).
+	IsPrivate bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 const serviceColumns = `id, app_id, service_name, container_id, exposed_port,
 	internal_port, health_path, status, restart_count, last_exit_code,
-	oom_killed_count, has_volumes, created_at, updated_at`
+	oom_killed_count, has_volumes, is_private, created_at, updated_at`
 
 func scanService(row pgx.Row) (Service, error) {
 	var svc Service
 	err := row.Scan(
 		&svc.ID, &svc.AppID, &svc.ServiceName, &svc.ContainerID, &svc.ExposedPort,
 		&svc.InternalPort, &svc.HealthPath, &svc.Status, &svc.RestartCount,
-		&svc.LastExitCode, &svc.OOMKilledCount, &svc.HasVolumes, &svc.CreatedAt, &svc.UpdatedAt,
+		&svc.LastExitCode, &svc.OOMKilledCount, &svc.HasVolumes, &svc.IsPrivate, &svc.CreatedAt, &svc.UpdatedAt,
 	)
 	return svc, err
 }
@@ -185,16 +190,17 @@ func (s *Store) IncrementServiceOOM(ctx context.Context, appID, name string, exi
 
 // SetServiceConfig backs PATCH /api/apps/:id/services/:name. Each pointer is
 // COALESCE'd so a nil leaves the existing value untouched (partial update).
-func (s *Store) SetServiceConfig(ctx context.Context, appID, name string, exposedPort, internalPort *int, healthPath *string) (Service, error) {
+func (s *Store) SetServiceConfig(ctx context.Context, appID, name string, exposedPort, internalPort *int, healthPath *string, isPrivate *bool) (Service, error) {
 	svc, err := scanService(s.pool.QueryRow(ctx, `
 		UPDATE services
 		SET exposed_port  = COALESCE($3, exposed_port),
 		    internal_port = COALESCE($4, internal_port),
 		    health_path   = COALESCE($5, health_path),
+		    is_private    = COALESCE($6, is_private),
 		    updated_at    = NOW()
 		WHERE app_id = $1 AND service_name = $2
 		RETURNING `+serviceColumns,
-		appID, name, exposedPort, internalPort, healthPath))
+		appID, name, exposedPort, internalPort, healthPath, isPrivate))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Service{}, ErrNotFound
 	}

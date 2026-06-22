@@ -234,13 +234,13 @@ func applyServices(ctx context.Context, st *store.Store, appID string, services 
 			if _, err := st.UpsertService(ctx, appID, svc.Name, nil, nil, svc.InternalPort, serviceStatusCreated, false); err != nil {
 				return fmt.Errorf("portability: create service %q: %w", svc.Name, err)
 			}
-			if svc.HealthPath != nil {
-				if _, err := st.SetServiceConfig(ctx, appID, svc.Name, nil, nil, svc.HealthPath); err != nil {
-					return fmt.Errorf("portability: service %q health path: %w", svc.Name, err)
+			if svc.HealthPath != nil || svc.IsPrivate != nil {
+				if _, err := st.SetServiceConfig(ctx, appID, svc.Name, nil, nil, svc.HealthPath, svc.IsPrivate); err != nil {
+					return fmt.Errorf("portability: service %q config: %w", svc.Name, err)
 				}
 			}
 		case err == nil:
-			if _, err := st.SetServiceConfig(ctx, appID, svc.Name, nil, svc.InternalPort, svc.HealthPath); err != nil {
+			if _, err := st.SetServiceConfig(ctx, appID, svc.Name, nil, svc.InternalPort, svc.HealthPath, svc.IsPrivate); err != nil {
 				return fmt.Errorf("portability: update service %q: %w", svc.Name, err)
 			}
 		default:

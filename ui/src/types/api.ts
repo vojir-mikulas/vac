@@ -176,6 +176,8 @@ export interface Service {
   oom_killed_count: number
   /** True when the service declares a persistent volume — gates the backup nudge. */
   has_volumes: boolean
+  /** When true, the service is internal-only: VAC assigns it no public route. */
+  is_private: boolean
   created_at: string
   updated_at: string
 }
@@ -214,6 +216,7 @@ export interface UpdateServiceInput {
   exposed_port?: number
   internal_port?: number
   health_path?: string
+  is_private?: boolean
 }
 
 // Mirrors api/internal/deploy/status.go. Terminal states are `running`

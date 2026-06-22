@@ -295,13 +295,19 @@ export function restartService(app: AppRecord, name: string): Service | undefine
 export function updateService(
   app: AppRecord,
   name: string,
-  input: { exposed_port?: number; internal_port?: number; health_path?: string },
+  input: {
+    exposed_port?: number
+    internal_port?: number
+    health_path?: string
+    is_private?: boolean
+  },
 ): Service | undefined {
   const s = app.services.find((x) => x.name === name)
   if (!s) return undefined
   if (input.exposed_port !== undefined) s.exposed_port = input.exposed_port
   if (input.internal_port !== undefined) s.internal_port = input.internal_port
   if (input.health_path !== undefined) s.health_path = input.health_path
+  if (input.is_private !== undefined) s.is_private = input.is_private
   s.updated_at = nowISO()
   return s
 }
