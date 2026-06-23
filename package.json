@@ -20,6 +20,9 @@
     "lint-staged": "^17.0.5"
   },
   "pnpm": {
+    "overrides": {
+      "undici@>=7.0.0 <7.28.0": "^7.28.0"
+    },
     "supportedArchitectures": {
       "os": [
         "current",

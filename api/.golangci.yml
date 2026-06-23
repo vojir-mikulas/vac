@@ -122,6 +122,14 @@ linters:
         text: G710
         linters:
           - gosec
+      # G401/G501: MD5 here is not a security control — it's the exact digest S3
+      # returns in a single-part ETag, so it's the only value the uploaded bytes
+      # can be compared against to catch a silently-truncated 2xx upload (see the
+      # comment at md5.New). Required by the S3 protocol shape, not a crypto choice.
+      - path: internal/backup/s3.go
+        text: G401|G501
+        linters:
+          - gosec
 
 formatters:
   enable:

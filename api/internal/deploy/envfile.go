@@ -44,7 +44,8 @@ func RenderEnvFile(ctx context.Context, src envSource, box *crypto.Box, appID, d
 // escapeEnvValue produces a docker-compose .env-compatible value. Plain
 // strings (no whitespace, no quotes, no $ signs that look like compose
 // interpolation) go raw; anything else is double-quoted with backslash
-// escaping for `"`, `\`, and `\n`.
+// escaping for `"`, `\`, and `\n`, and each `$` doubled to `$$` so compose
+// interpolation passes it through literally.
 func escapeEnvValue(s string) string {
 	if s == "" {
 		return ""
@@ -65,6 +66,12 @@ func escapeEnvValue(s string) string {
 			b.WriteString(`\n`)
 		case '\r':
 			b.WriteString(`\r`)
+		case '$':
+			// Docker Compose interpolates the .env file, so a literal `$`
+			// must be doubled or it (and the following identifier) is
+			// substituted away — which silently mangles bcrypt hashes,
+			// JWT secrets, and DB URLs that contain `$`.
+			b.WriteString(`$$`)
 		default:
 			b.WriteRune(r)
 		}
