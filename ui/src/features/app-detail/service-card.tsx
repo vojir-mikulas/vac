@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { Cog, Play, RotateCw, ScrollText, ShieldAlert, Square } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -18,12 +19,15 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { CopyButton } from '@/components/common/copy-button'
 import {
   useRestartService,
   useStartService,
   useStopService,
   useUpdateService,
 } from '@/lib/api/services'
+import { guestAccessApi } from '@/lib/api/guest-access'
+import { queryKeys } from '@/lib/query/keys'
 import { useInstanceInfo } from '@/lib/api/instance'
 import { ShellDialog } from '@/features/app-detail/shell-dialog'
 import { useAppStatsContext } from '@/features/app-detail/stats-context'
@@ -161,6 +165,128 @@ export function ServiceCard({
   )
 }
 
+// GuestAccessControls manages this service's shared access code: set/rotate,
+// reveal+copy, and remove. The code lets non-operators past the VAC login gate
+// for THIS service only — for sharing one internal tool with friends. Operates
+// on its own endpoints, separate from the service-config Save button.
+function GuestAccessControls({ appId, service }: { appId: string; service: Service }) {
+  const { t } = useTranslation('app-detail')
+  const qc = useQueryClient()
+  const [enabled, setEnabled] = useState(service.guest_access_enabled)
+  const [draft, setDraft] = useState('')
+  const [revealed, setRevealed] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const refreshServices = () => qc.invalidateQueries({ queryKey: queryKeys.apps.services(appId) })
+
+  const save = async () => {
+    const code = draft.trim()
+    if (code.length < 6) {
+      toast.error(t('guestAccess.tooShort', { min: 6 }))
+      return
+    }
+    setBusy(true)
+    try {
+      await guestAccessApi.set(appId, service.name, code)
+      setEnabled(true)
+      setDraft('')
+      setRevealed(null)
+      void refreshServices()
+      toast.success(t('guestAccess.saved'))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('guestAccess.revealFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const reveal = async () => {
+    setBusy(true)
+    try {
+      const { code } = await guestAccessApi.reveal(appId, service.name)
+      setRevealed(code)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('guestAccess.revealFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async () => {
+    setBusy(true)
+    try {
+      await guestAccessApi.remove(appId, service.name)
+      setEnabled(false)
+      setRevealed(null)
+      void refreshServices()
+      toast.success(t('guestAccess.disabled'))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('guestAccess.revealFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="grid gap-2 rounded-md border border-border/60 bg-muted/30 p-3">
+      <Label className="text-xs font-medium">{t('guestAccess.title')}</Label>
+      <p className="text-2xs text-muted-foreground">{t('guestAccess.intro')}</p>
+      <p className="text-2xs text-muted-foreground">
+        {enabled ? t('guestAccess.statusSet') : t('guestAccess.statusNone')}
+      </p>
+
+      {enabled && revealed ? (
+        <div className="grid gap-1.5 rounded-md border border-brand/40 bg-brand/5 p-2">
+          <Label className="text-2xs font-medium">{t('guestAccess.currentCode')}</Label>
+          <div className="flex items-center gap-2">
+            <Input readOnly value={revealed} className="font-mono text-xs" />
+            <CopyButton value={revealed} />
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex items-center gap-2">
+        <Input
+          type="text"
+          autoComplete="off"
+          placeholder={t('guestAccess.placeholder')}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          className="font-mono text-xs"
+        />
+        <Button variant="ghost" size="sm" onClick={() => setDraft(randomCode())}>
+          {t('guestAccess.generate')}
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="brand" size="sm" disabled={busy} onClick={save}>
+          {enabled ? t('guestAccess.rotate') : t('guestAccess.save')}
+        </Button>
+        {enabled ? (
+          <>
+            <Button variant="outline" size="sm" disabled={busy} onClick={reveal}>
+              {t('guestAccess.reveal')}
+            </Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={remove}>
+              {t('guestAccess.disable')}
+            </Button>
+          </>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+// randomCode builds a short, human-shareable code from an unambiguous alphabet
+// (no 0/O/1/l). Client-side convenience; the backend enforces the minimum length.
+function randomCode(): string {
+  const alphabet = 'abcdefghijkmnpqrstuvwxyz23456789'
+  const bytes = new Uint8Array(10)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -260,6 +386,12 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
               onCheckedChange={setRequiresAuth}
             />
           </div>
+
+          {/* Shared access code for this service — only meaningful once the gate
+              is on. Its own endpoints, independent of the Save button below. */}
+          {!isPrivate && requiresAuth ? (
+            <GuestAccessControls appId={appId} service={service} />
+          ) : null}
         </div>
         <DialogFooter>
           <Button variant="brand" disabled={update.isPending} onClick={submit}>

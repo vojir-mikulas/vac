@@ -38,20 +38,26 @@ type Service struct {
 	// survives redeploys (UpsertService never writes it). Orthogonal to IsPrivate
 	// — a private service has no route to guard.
 	RequiresAuth bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// GuestAccessEnabled is a read-only projection of whether a shared access code
+	// is set for this service (guest_access_code_enc IS NOT NULL). The sealed code
+	// itself never rides on ordinary reads — see service_guest_access.go.
+	GuestAccessEnabled bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 const serviceColumns = `id, app_id, service_name, container_id, exposed_port,
 	internal_port, health_path, status, restart_count, last_exit_code,
-	oom_killed_count, has_volumes, is_private, requires_auth, created_at, updated_at`
+	oom_killed_count, has_volumes, is_private, requires_auth,
+	(guest_access_code_enc IS NOT NULL) AS guest_access_enabled, created_at, updated_at`
 
 func scanService(row pgx.Row) (Service, error) {
 	var svc Service
 	err := row.Scan(
 		&svc.ID, &svc.AppID, &svc.ServiceName, &svc.ContainerID, &svc.ExposedPort,
 		&svc.InternalPort, &svc.HealthPath, &svc.Status, &svc.RestartCount,
-		&svc.LastExitCode, &svc.OOMKilledCount, &svc.HasVolumes, &svc.IsPrivate, &svc.RequiresAuth, &svc.CreatedAt, &svc.UpdatedAt,
+		&svc.LastExitCode, &svc.OOMKilledCount, &svc.HasVolumes, &svc.IsPrivate, &svc.RequiresAuth,
+		&svc.GuestAccessEnabled, &svc.CreatedAt, &svc.UpdatedAt,
 	)
 	return svc, err
 }

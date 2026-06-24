@@ -81,6 +81,17 @@ function appOr404(ctx: Ctx) {
   return app
 }
 
+// Resolve the service from :id/:name or 404.
+function serviceOr404(ctx: Ctx) {
+  const svc = appOr404(ctx).services.find((s) => s.name === (ctx.params.name ?? ''))
+  if (!svc) throw notFound('service')
+  return svc
+}
+
+// In-memory shared access codes, keyed by service id (mirrors the sealed
+// per-service column; only the reveal endpoint returns the plaintext).
+const guestCodes = new Map<string, string>()
+
 const routes: Route[] = [
   // ── Setup / auth ──────────────────────────────────────────────────────────
   {
@@ -487,6 +498,39 @@ const routes: Route[] = [
         last_traffic_at: a.last_traffic_at,
       })
     },
+  },
+
+  // ── Per-service shared access code (VAC login gate) ─────────────────────────
+  {
+    method: 'GET',
+    pattern: 'apps/:id/services/:name/guest-access',
+    handler: (ctx) => ok({ enabled: !!serviceOr404(ctx).guest_access_enabled }),
+  },
+  {
+    method: 'PUT',
+    pattern: 'apps/:id/services/:name/guest-access',
+    handler: (ctx) => {
+      const svc = serviceOr404(ctx)
+      const body = (ctx.body ?? {}) as { code?: string }
+      guestCodes.set(svc.id, body.code ?? '')
+      svc.guest_access_enabled = true
+      return ok({ enabled: true })
+    },
+  },
+  {
+    method: 'DELETE',
+    pattern: 'apps/:id/services/:name/guest-access',
+    handler: (ctx) => {
+      const svc = serviceOr404(ctx)
+      guestCodes.delete(svc.id)
+      svc.guest_access_enabled = false
+      return ok({ cleared: 1 })
+    },
+  },
+  {
+    method: 'GET',
+    pattern: 'apps/:id/services/:name/guest-access/reveal',
+    handler: (ctx) => ok({ code: guestCodes.get(serviceOr404(ctx).id) ?? '' }),
   },
 
   // ── Services ──────────────────────────────────────────────────────────────

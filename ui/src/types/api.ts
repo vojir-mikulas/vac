@@ -180,6 +180,8 @@ export interface Service {
   is_private: boolean
   /** When true, the service's route is fronted by the VAC login gate (forward_auth). */
   requires_auth: boolean
+  /** True when a shared access code is set for this service (lets non-operators in). */
+  guest_access_enabled: boolean
   created_at: string
   updated_at: string
 }

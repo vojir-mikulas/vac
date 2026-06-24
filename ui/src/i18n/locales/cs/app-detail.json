@@ -128,6 +128,23 @@
     "cleared": "Rate limit odebrán.",
     "invalid": "Zadejte celé číslo větší než 0, nebo nechte prázdné pro zrušení."
   },
+  "guestAccess": {
+    "title": "Sdílený přístupový kód",
+    "intro": "Pusťte k této službě lidi bez účtu ve VAC pomocí kódu, který sdílíte. Dostanou se sem — a nikam jinam ve VAC. Kdykoli kód změňte a všem tím přístup zrušíte.",
+    "statusSet": "Přístupový kód je nastaven.",
+    "statusNone": "Zatím žádný kód — dostanou se jen přihlášení operátoři.",
+    "currentCode": "Aktuální přístupový kód",
+    "placeholder": "např. modra-vydra-42",
+    "generate": "Vygenerovat",
+    "save": "Uložit kód",
+    "rotate": "Nahradit kód",
+    "reveal": "Zobrazit",
+    "disable": "Odebrat",
+    "tooShort": "Použijte alespoň {{min}} znaků.",
+    "saved": "Přístupový kód uložen.",
+    "disabled": "Sdílený přístup odebrán.",
+    "revealFailed": "Přístupový kód se nepodařilo zobrazit."
+  },
   "idleSuspend": {
     "title": "Idle suspend",
     "intro": "Zastaví containery této aplikace po určité době bez příchozího trafficu a znovu je spustí při dalším requestu. Uvolňuje RAM pro aplikace, které jsou nečinné.",
@@ -464,7 +481,7 @@
     "private": "Ponechat privátní",
     "privateHint": "Nepřidělovat této službě veřejnou doménu ani trasu – zůstane dostupná jen ostatním kontejnerům ve stacku. Vhodné pro interní služby (vyhledávání, cache, interní API), jejichž image vystavuje port, který by VAC jinak zveřejnil.",
     "requireAuth": "Vyžadovat přihlášení do VAC",
-    "requireAuthHint": "Umístí službu za přihlašovací bránu VAC – návštěvníci se musí nejdřív přihlásit do VAC, než se k ní dostanou. Vhodné pro interní nástroje, které mají vidět jen lidé s přístupem do VAC. (Nedostupné u privátních služeb, které nemají veřejnou trasu k ochraně.)",
+    "requireAuthHint": "Umístí službu za přihlašovací bránu VAC – návštěvníci se musí nejdřív přihlásit do VAC, než se k ní dostanou. Chcete-li pustit dovnitř i lidi bez účtu ve VAC, nastavte níže sdílený přístupový kód. (Nedostupné u privátních služeb, které nemají veřejnou trasu k ochraně.)",
     "serviceUpdated": "Service aktualizována"
   },
   "services": {

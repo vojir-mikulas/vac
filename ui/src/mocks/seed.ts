@@ -41,6 +41,7 @@ function svc(
     has_volumes: opts.hasVolumes ?? false,
     is_private: opts.isPrivate ?? false,
     requires_auth: false,
+    guest_access_enabled: false,
     created_at: daysAgoISO(12),
     updated_at: minutesAgoISO(3),
   }

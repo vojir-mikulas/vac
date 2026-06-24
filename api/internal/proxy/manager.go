@@ -386,17 +386,26 @@ func (m *Manager) IsAutoHost(ctx context.Context, host string) (bool, error) {
 	return false, nil
 }
 
-// guardedHosts returns the set of hostnames currently fronted by the VAC login
-// gate: an auto host or assigned custom domain whose backing service is marked
-// requires_auth. Mirrors AutoHosts' derivation so the portal agrees with what
-// applyApp actually installs forward_auth on. A private service has no route, so
-// it never appears here (autoHostsForApp already drops it).
-func (m *Manager) guardedHosts(ctx context.Context) (map[string]bool, error) {
+// guardTarget is the (app, service) a guarded hostname routes to. Each guarded
+// host maps to exactly one service, so the shared access code — like the gate
+// itself — is resolved per service.
+type guardTarget struct {
+	appID   string
+	service string
+}
+
+// guardedHosts returns the hostnames currently fronted by the VAC login gate
+// mapped to their backing (app, service): an auto host or assigned custom domain
+// whose service is marked requires_auth. Mirrors AutoHosts' derivation so the
+// portal agrees with what applyApp actually installs forward_auth on. A private
+// service has no route, so it never appears here (autoHostsForApp already drops
+// it).
+func (m *Manager) guardedHosts(ctx context.Context) (map[string]guardTarget, error) {
 	apps, err := m.store.ListApps(ctx)
 	if err != nil {
 		return nil, err
 	}
-	set := make(map[string]bool)
+	set := make(map[string]guardTarget)
 	for _, app := range apps {
 		services, err := m.store.ListServicesForApp(ctx, app.ID)
 		if err != nil {
@@ -408,7 +417,7 @@ func (m *Manager) guardedHosts(ctx context.Context) (map[string]bool, error) {
 		}
 		for _, ah := range m.autoHostsForApp(app, services) {
 			if ah.Service.RequiresAuth {
-				set[strings.ToLower(ah.Hostname)] = true
+				set[strings.ToLower(ah.Hostname)] = guardTarget{app.ID, ah.ServiceName}
 			}
 		}
 		domains, err := m.store.ListDomainsByApp(ctx, app.ID)
@@ -420,7 +429,7 @@ func (m *Manager) guardedHosts(ctx context.Context) (map[string]bool, error) {
 				continue
 			}
 			if svc, ok := byName[d.ServiceName]; ok && svc.RequiresAuth {
-				set[strings.ToLower(d.Hostname)] = true
+				set[strings.ToLower(d.Hostname)] = guardTarget{app.ID, d.ServiceName}
 			}
 		}
 	}
@@ -431,11 +440,21 @@ func (m *Manager) guardedHosts(ctx context.Context) (map[string]bool, error) {
 // portal consults it before redirecting, so it can refuse an open redirect to
 // any host VAC doesn't actually guard.
 func (m *Manager) IsGuardedHost(ctx context.Context, host string) (bool, error) {
+	_, _, ok, err := m.GuardedServiceForHost(ctx, host)
+	return ok, err
+}
+
+// GuardedServiceForHost resolves a guarded hostname to its backing (app id,
+// service name), or ok=false when the host is not fronted by the login gate. The
+// portal uses it both to refuse an open redirect and to look up the service's
+// shared access code.
+func (m *Manager) GuardedServiceForHost(ctx context.Context, host string) (appID, service string, ok bool, err error) {
 	set, err := m.guardedHosts(ctx)
 	if err != nil {
-		return false, err
+		return "", "", false, err
 	}
-	return set[strings.ToLower(strings.TrimSpace(host))], nil
+	t, ok := set[strings.ToLower(strings.TrimSpace(host))]
+	return t.appID, t.service, ok, nil
 }
 
 // routeSpec is one desired Caddy route for an app: a Caddy @id, the hostname it

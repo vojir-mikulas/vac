@@ -128,6 +128,23 @@
     "cleared": "Rate limit removed.",
     "invalid": "Enter a whole number greater than 0, or leave blank to clear."
   },
+  "guestAccess": {
+    "title": "Shared access code",
+    "intro": "Let people without a VAC account reach this service with a code you share. They get in here — and nowhere else in VAC. Rotate it any time to cut everyone off.",
+    "statusSet": "An access code is set.",
+    "statusNone": "No code yet — only signed-in operators can reach it.",
+    "currentCode": "Current access code",
+    "placeholder": "e.g. blue-otter-42",
+    "generate": "Generate",
+    "save": "Save code",
+    "rotate": "Replace code",
+    "reveal": "Reveal",
+    "disable": "Remove",
+    "tooShort": "Use at least {{min}} characters.",
+    "saved": "Access code saved.",
+    "disabled": "Shared access removed.",
+    "revealFailed": "Could not reveal the access code."
+  },
   "idleSuspend": {
     "title": "Idle Suspend",
     "intro": "Stop this app's containers after a period with no inbound traffic, and start them again on the next request. Reclaims RAM for apps that sit idle.",
@@ -464,7 +481,7 @@
     "private": "Keep private",
     "privateHint": "Don't give this service a public domain or route — keep it reachable only by other containers in the stack. Use this for internal services (search, cache, internal APIs) whose image exposes a port VAC would otherwise publish.",
     "requireAuth": "Require VAC login",
-    "requireAuthHint": "Put this service behind the VAC login gate — visitors must sign in to VAC before they can reach it. Use it for internal tools you want visible only to people who can log in to VAC. (Disabled for private services, which have no public route to guard.)",
+    "requireAuthHint": "Put this service behind the VAC login gate — visitors must sign in to VAC before they can reach it. To also let people without a VAC account in, set a shared access code below. (Disabled for private services, which have no public route to guard.)",
     "serviceUpdated": "Service updated"
   },
   "services": {

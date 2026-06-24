@@ -14,40 +14,42 @@ import (
 )
 
 type serviceDTO struct {
-	ID           string    `json:"id"`
-	AppID        string    `json:"app_id"`
-	Name         string    `json:"name"`
-	ContainerID  *string   `json:"container_id,omitempty"`
-	ExposedPort  *int      `json:"exposed_port,omitempty"`
-	InternalPort *int      `json:"internal_port,omitempty"`
-	HealthPath   *string   `json:"health_path,omitempty"`
-	Status       string    `json:"status"`
-	RestartCount int       `json:"restart_count"`
-	LastExitCode *int      `json:"last_exit_code,omitempty"`
-	HasVolumes   bool      `json:"has_volumes"`
-	IsPrivate    bool      `json:"is_private"`
-	RequiresAuth bool      `json:"requires_auth"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID                 string    `json:"id"`
+	AppID              string    `json:"app_id"`
+	Name               string    `json:"name"`
+	ContainerID        *string   `json:"container_id,omitempty"`
+	ExposedPort        *int      `json:"exposed_port,omitempty"`
+	InternalPort       *int      `json:"internal_port,omitempty"`
+	HealthPath         *string   `json:"health_path,omitempty"`
+	Status             string    `json:"status"`
+	RestartCount       int       `json:"restart_count"`
+	LastExitCode       *int      `json:"last_exit_code,omitempty"`
+	HasVolumes         bool      `json:"has_volumes"`
+	IsPrivate          bool      `json:"is_private"`
+	RequiresAuth       bool      `json:"requires_auth"`
+	GuestAccessEnabled bool      `json:"guest_access_enabled"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 func toServiceDTO(s store.Service) serviceDTO {
 	return serviceDTO{
-		ID:           s.ID,
-		AppID:        s.AppID,
-		Name:         s.ServiceName,
-		ContainerID:  s.ContainerID,
-		ExposedPort:  s.ExposedPort,
-		InternalPort: s.InternalPort,
-		HealthPath:   s.HealthPath,
-		Status:       s.Status,
-		RestartCount: s.RestartCount,
-		LastExitCode: s.LastExitCode,
-		HasVolumes:   s.HasVolumes,
-		IsPrivate:    s.IsPrivate,
-		RequiresAuth: s.RequiresAuth,
-		CreatedAt:    s.CreatedAt,
-		UpdatedAt:    s.UpdatedAt,
+		ID:                 s.ID,
+		AppID:              s.AppID,
+		Name:               s.ServiceName,
+		ContainerID:        s.ContainerID,
+		ExposedPort:        s.ExposedPort,
+		InternalPort:       s.InternalPort,
+		HealthPath:         s.HealthPath,
+		Status:             s.Status,
+		RestartCount:       s.RestartCount,
+		LastExitCode:       s.LastExitCode,
+		HasVolumes:         s.HasVolumes,
+		IsPrivate:          s.IsPrivate,
+		RequiresAuth:       s.RequiresAuth,
+		GuestAccessEnabled: s.GuestAccessEnabled,
+		CreatedAt:          s.CreatedAt,
+		UpdatedAt:          s.UpdatedAt,
 	}
 }
 

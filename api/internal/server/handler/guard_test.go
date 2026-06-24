@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/vojir-mikulas/vac/api/internal/auth"
+	"github.com/vojir-mikulas/vac/api/internal/crypto"
 	"github.com/vojir-mikulas/vac/api/internal/guard"
 )
 
@@ -21,13 +23,30 @@ func guardKey() []byte {
 	return k
 }
 
+func testBox(t *testing.T) *crypto.Box {
+	t.Helper()
+	b, err := crypto.New(guardKey())
+	if err != nil {
+		t.Fatalf("crypto.New: %v", err)
+	}
+	return b
+}
+
 type fakeGuardHosts struct {
-	guarded map[string]bool
+	guarded map[string][2]string // host -> {appID, service}
 	err     error
 }
 
-func (f fakeGuardHosts) IsGuardedHost(_ context.Context, host string) (bool, error) {
-	return f.guarded[strings.ToLower(host)], f.err
+func (f fakeGuardHosts) GuardedServiceForHost(_ context.Context, host string) (string, string, bool, error) {
+	v, ok := f.guarded[strings.ToLower(host)]
+	return v[0], v[1], ok, f.err
+}
+
+// fakeCodes is a stub GuestAccessReader keyed by "appID/service".
+type fakeCodes map[string][]byte
+
+func (f fakeCodes) GetServiceGuestAccessCode(_ context.Context, appID, service string) ([]byte, error) {
+	return f[appID+"/"+service], nil
 }
 
 func verifyReq(host, uri, token string) *http.Request {
@@ -155,8 +174,8 @@ func TestGuardVerify_FailsClosedWithoutSigner(t *testing.T) {
 
 func TestGuardStart_RefusesNonGuardedHost(t *testing.T) {
 	signer := guard.New(guardKey())
-	chk := fakeGuardHosts{guarded: map[string]bool{}}
-	h := GuardStart(nil, signer, chk)
+	chk := fakeGuardHosts{guarded: map[string][2]string{}}
+	h := GuardStart(nil, signer, chk, fakeCodes{})
 
 	r := httptest.NewRequest(http.MethodGet, guardStartPath+"?rd="+url.QueryEscape("https://evil.example.com/"), nil)
 	w := httptest.NewRecorder()
@@ -168,8 +187,8 @@ func TestGuardStart_RefusesNonGuardedHost(t *testing.T) {
 
 func TestGuardStart_InvalidRedirect(t *testing.T) {
 	signer := guard.New(guardKey())
-	chk := fakeGuardHosts{guarded: map[string]bool{}}
-	h := GuardStart(nil, signer, chk)
+	chk := fakeGuardHosts{guarded: map[string][2]string{}}
+	h := GuardStart(nil, signer, chk, fakeCodes{})
 
 	r := httptest.NewRequest(http.MethodGet, guardStartPath+"?rd="+url.QueryEscape("http://tool.example.com/"), nil)
 	w := httptest.NewRecorder()
@@ -179,12 +198,12 @@ func TestGuardStart_InvalidRedirect(t *testing.T) {
 	}
 }
 
-func TestGuardStart_NoSessionGoesToLogin(t *testing.T) {
+func TestGuardStart_NoCodeNoSessionGoesToLogin(t *testing.T) {
 	signer := guard.New(guardKey())
-	chk := fakeGuardHosts{guarded: map[string]bool{"tool.example.com": true}}
-	// No session cookie on the request, so the session manager is never consulted.
+	chk := fakeGuardHosts{guarded: map[string][2]string{"tool.example.com": {"a1", "web"}}}
+	// No session cookie and no access code → operator login fallback.
 	sm := auth.NewSessionManager(nil, time.Hour, time.Hour)
-	h := GuardStart(sm, signer, chk)
+	h := GuardStart(sm, signer, chk, fakeCodes{})
 
 	rd := "https://tool.example.com/secret"
 	r := httptest.NewRequest(http.MethodGet, guardStartPath+"?rd="+url.QueryEscape(rd), nil)
@@ -202,5 +221,81 @@ func TestGuardStart_NoSessionGoesToLogin(t *testing.T) {
 	next := u.Query().Get("next")
 	if !strings.HasPrefix(next, guardStartPath+"?rd=") || !strings.Contains(next, url.QueryEscape(rd)) {
 		t.Errorf("next = %q", next)
+	}
+}
+
+func TestGuardStart_WithCodeRendersAccessPage(t *testing.T) {
+	signer := guard.New(guardKey())
+	chk := fakeGuardHosts{guarded: map[string][2]string{"tool.example.com": {"a1", "web"}}}
+	sm := auth.NewSessionManager(nil, time.Hour, time.Hour)
+	codes := fakeCodes{"a1/web": []byte("sealed")} // non-empty → guest access enabled
+	h := GuardStart(sm, signer, chk, codes)
+
+	rd := "https://tool.example.com/secret"
+	r := httptest.NewRequest(http.MethodGet, guardStartPath+"?rd="+url.QueryEscape(rd), nil)
+	w := httptest.NewRecorder()
+	h(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (access page)", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, guardRedeemPath) || !strings.Contains(body, `name="code"`) {
+		t.Errorf("access page missing the code form: %s", body)
+	}
+	// rd must be reflected escaped into the hidden field.
+	if !strings.Contains(body, html.EscapeString(rd)) {
+		t.Errorf("rd not reflected into the form")
+	}
+}
+
+func TestGuardRedeem_CorrectCodeHandsOff(t *testing.T) {
+	box := testBox(t)
+	signer := guard.New(guardKey())
+	chk := fakeGuardHosts{guarded: map[string][2]string{"tool.example.com": {"a1", "web"}}}
+	sealed, _ := box.Seal([]byte("hunter2"))
+	codes := fakeCodes{"a1/web": sealed}
+	h := GuardRedeem(signer, chk, codes, box)
+
+	form := url.Values{"rd": {"https://tool.example.com/secret"}, "code": {"hunter2"}}
+	r := httptest.NewRequest(http.MethodPost, guardRedeemPath, strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h(w, r)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", w.Code)
+	}
+	loc := w.Header().Get("Location")
+	if !strings.HasPrefix(loc, "https://tool.example.com"+guardCallbackPath+"?token=") {
+		t.Fatalf("Location = %q", loc)
+	}
+	// The handed-off token must verify as a guest exchange token for the host.
+	u, _ := url.Parse(loc)
+	user, ok := signer.Verify(guard.KindExchange, "tool.example.com", u.Query().Get("token"))
+	if !ok || user != guardGuestUser {
+		t.Errorf("exchange token: user=%q ok=%v", user, ok)
+	}
+}
+
+func TestGuardRedeem_WrongCodeReshowsPage(t *testing.T) {
+	box := testBox(t)
+	signer := guard.New(guardKey())
+	chk := fakeGuardHosts{guarded: map[string][2]string{"tool.example.com": {"a1", "web"}}}
+	sealed, _ := box.Seal([]byte("hunter2"))
+	codes := fakeCodes{"a1/web": sealed}
+	h := GuardRedeem(signer, chk, codes, box)
+
+	form := url.Values{"rd": {"https://tool.example.com/secret"}, "code": {"wrong"}}
+	r := httptest.NewRequest(http.MethodPost, guardRedeemPath, strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `name="code"`) {
+		t.Error("wrong code should re-render the access page")
 	}
 }

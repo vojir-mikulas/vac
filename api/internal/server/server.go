@@ -89,12 +89,13 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	if pm != nil {
 		wakeResolver = pm
 	}
-	// VAC login gate (internal/guard): the start portal asks the proxy manager
-	// whether an rd host is actually guarded, to refuse an open redirect. nil-able
-	// so the endpoint degrades cleanly when the proxy isn't wired (tests).
-	var guardChk handler.GuardHostChecker
+	// VAC login gate (internal/guard): the start portal asks the proxy manager to
+	// resolve an rd host to its app (refuse open redirects; find the shared access
+	// code). nil-able so the endpoints degrade cleanly when the proxy isn't wired
+	// (tests).
+	var guardResolver handler.GuardHostResolver
 	if pm != nil {
-		guardChk = pm
+		guardResolver = pm
 	}
 
 	// Same resolver the status engine uses, so the one-shot DNS-check button and
@@ -219,7 +220,13 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	// X-Caddy-Ask-Token, lifted from ?t= by scrubCaddyAskToken); the start portal
 	// runs on the control domain and manages its own session check + redirects.
 	r.Get("/__vac_guard", handler.GuardVerify(guardSigner, cfg.ControlDomain, cfg.CaddyAskToken))
-	r.Get("/__vac_guard/start", handler.GuardStart(sm, guardSigner, guardChk))
+	r.Get("/__vac_guard/start", handler.GuardStart(sm, guardSigner, guardResolver, s))
+	// The shared-access-code form POST is the brute-force surface for the code, so
+	// it gets its own per-IP limiter (separate bucket from the operator login,
+	// same budget) on top of the constant-time compare in the handler.
+	guardLimiter := middleware.NewRateLimiter(ctx, cfg.LoginRateLimit, cfg.LoginRateWindow)
+	r.With(middleware.BodyLimit(middleware.MaxBodyBytes), guardLimiter.Middleware).
+		Post("/__vac_guard/redeem", handler.GuardRedeem(guardSigner, guardResolver, s, box))
 
 	// Token-gated runtime introspection for the RAM benchmark (plan 07).
 	// Default-closed: with VAC_METRICS_TOKEN unset these 404. Sits outside the
@@ -461,6 +468,15 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 
 				r.Get("/{id}/services", handler.ListAppServices(s))
 				r.Patch("/{id}/services/{name}", handler.PatchAppService(s, proxyMgr))
+
+				// Per-service shared access code for the VAC login gate
+				// (internal/guard): lets non-operators reach this one guarded service
+				// without any dashboard access. Reveal is a GET behind the session like
+				// the env-var reveal.
+				r.Get("/{id}/services/{name}/guest-access", handler.GetGuestAccess(s))
+				r.Put("/{id}/services/{name}/guest-access", handler.SetGuestAccess(s, box))
+				r.Delete("/{id}/services/{name}/guest-access", handler.DeleteGuestAccess(s))
+				r.Get("/{id}/services/{name}/guest-access/reveal", handler.RevealGuestAccess(s, box))
 
 				// Domains: per-app view (custom + derived auto hosts, with live
 				// DNS/cert status). The Settings → Domains hub uses /api/domains.
