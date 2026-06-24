@@ -178,6 +178,8 @@ export interface Service {
   has_volumes: boolean
   /** When true, the service is internal-only: VAC assigns it no public route. */
   is_private: boolean
+  /** When true, the service's route is fronted by the VAC login gate (forward_auth). */
+  requires_auth: boolean
   created_at: string
   updated_at: string
 }
@@ -217,6 +219,7 @@ export interface UpdateServiceInput {
   internal_port?: number
   health_path?: string
   is_private?: boolean
+  requires_auth?: boolean
 }
 
 // Mirrors api/internal/deploy/status.go. Terminal states are `running`

@@ -66,6 +66,7 @@ func FromApp(in FromAppInput) Spec {
 			InternalPort: s.InternalPort,
 			HealthPath:   derefStr(s.HealthPath),
 			IsPrivate:    s.IsPrivate,
+			RequiresAuth: s.RequiresAuth,
 		})
 	}
 	sort.Slice(spec.Services, func(i, j int) bool { return spec.Services[i].Name < spec.Services[j].Name })
@@ -158,6 +159,7 @@ type ServiceInput struct {
 	InternalPort *int
 	HealthPath   *string
 	IsPrivate    *bool
+	RequiresAuth *bool
 }
 
 type DomainInput struct {
@@ -220,13 +222,15 @@ func ToApp(s Spec) (AppInputs, error) {
 
 	for _, svc := range s.Services {
 		isPrivate := svc.IsPrivate
+		requiresAuth := svc.RequiresAuth
 		in.Services = append(in.Services, ServiceInput{
 			Name:         svc.Name,
 			InternalPort: svc.InternalPort,
 			HealthPath:   nilIfEmpty(svc.HealthPath),
-			// Always carry the desired private state (even false) so an import
-			// makes the live flag match the spec exactly.
-			IsPrivate: &isPrivate,
+			// Always carry the desired private/guarded state (even false) so an
+			// import makes the live flags match the spec exactly.
+			IsPrivate:    &isPrivate,
+			RequiresAuth: &requiresAuth,
 		})
 	}
 	for _, d := range s.Domains {

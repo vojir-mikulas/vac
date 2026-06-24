@@ -300,6 +300,7 @@ export function updateService(
     internal_port?: number
     health_path?: string
     is_private?: boolean
+    requires_auth?: boolean
   },
 ): Service | undefined {
   const s = app.services.find((x) => x.name === name)
@@ -308,6 +309,7 @@ export function updateService(
   if (input.internal_port !== undefined) s.internal_port = input.internal_port
   if (input.health_path !== undefined) s.health_path = input.health_path
   if (input.is_private !== undefined) s.is_private = input.is_private
+  if (input.requires_auth !== undefined) s.requires_auth = input.requires_auth
   s.updated_at = nowISO()
   return s
 }

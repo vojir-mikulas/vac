@@ -731,7 +731,7 @@ func (p *Pipeline) applyTemplateHealthPaths(ctx context.Context, appID, template
 			continue
 		}
 		hp := path
-		if _, err := p.Store.SetServiceConfig(ctx, appID, r.ServiceName, nil, nil, &hp, nil); err != nil {
+		if _, err := p.Store.SetServiceConfig(ctx, appID, r.ServiceName, nil, nil, &hp, nil, nil); err != nil {
 			p.Logger.Warn("pipeline: set template health path", "service", r.ServiceName, "err", err)
 		}
 	}

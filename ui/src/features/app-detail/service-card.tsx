@@ -176,6 +176,7 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
   const [internalPort, setInternalPort] = useState(service.internal_port?.toString() ?? '')
   const [healthPath, setHealthPath] = useState(service.health_path ?? '')
   const [isPrivate, setIsPrivate] = useState(service.is_private)
+  const [requiresAuth, setRequiresAuth] = useState(service.requires_auth)
   const update = useUpdateService(appId)
 
   const submit = () => {
@@ -186,6 +187,8 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
           internal_port: internalPort ? Number(internalPort) : undefined,
           health_path: healthPath || undefined,
           is_private: isPrivate,
+          // A private service has no route to guard, so never send a stale true.
+          requires_auth: isPrivate ? false : requiresAuth,
         },
       },
       {
@@ -243,6 +246,19 @@ function ConfigureDialog({ appId, service }: { appId: string; service: Service }
               <p className="text-xs text-muted-foreground">{t('serviceCard.privateHint')}</p>
             </div>
             <Switch id="private" checked={isPrivate} onCheckedChange={setIsPrivate} />
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="grid gap-1">
+              <Label htmlFor="requires-auth">{t('serviceCard.requireAuth')}</Label>
+              <p className="text-xs text-muted-foreground">{t('serviceCard.requireAuthHint')}</p>
+            </div>
+            {/* A private service has no public route to put behind the login. */}
+            <Switch
+              id="requires-auth"
+              checked={!isPrivate && requiresAuth}
+              disabled={isPrivate}
+              onCheckedChange={setRequiresAuth}
+            />
           </div>
         </div>
         <DialogFooter>

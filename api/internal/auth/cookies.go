@@ -14,6 +14,12 @@ const (
 	// pattern. JS reads it and echoes it back via CSRFHeader.
 	CSRFCookie = "vac_csrf"
 
+	// GuardCookie is the HttpOnly, host-scoped cookie proving a visitor cleared
+	// the VAC login gate for one guarded app. It is NOT the control-plane session
+	// (vac_session): a distinct token, bound to a single host, that grants access
+	// only to that app — never the dashboard. See internal/guard.
+	GuardCookie = "vac_guard"
+
 	// CSRFHeader is the request header that must match CSRFCookie on
 	// session-authenticated mutating requests.
 	CSRFHeader = "X-CSRF-Token"

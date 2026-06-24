@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,6 +186,92 @@ func TestRouteFor_RateLimit(t *testing.T) {
 	zone, ok := r.Handle[0].RateLimits["vac-route-d1"]
 	if !ok || zone.MaxEvents != 120 || zone.Window != "1m" {
 		t.Errorf("rate_limit zone = %+v (ok=%v)", zone, ok)
+	}
+}
+
+func newGuardManager(s Store, c CaddyClient, n NetworkController) *Manager {
+	return New(s, c, n, Config{
+		EdgeNetwork: "vac-edge", BaseDomain: "vac.example.com",
+		HealthRetries: 1, HealthTimeout: time.Second,
+		GuardEnabled: true, WakeToken: "sekret",
+	}, nil)
+}
+
+func TestRouteFor_Guarded(t *testing.T) {
+	m := newGuardManager(&fakeStore{}, newFakeCaddy(), newFakeNet())
+	d := store.Domain{ID: "d1", Hostname: "tool.vac.example.com", ServiceName: "web"}
+	svc := store.Service{ServiceName: "web", InternalPort: intp(3000), RequiresAuth: true}
+
+	r := m.routeFor(d, svc, "tool", nil)
+	// Chain: headers (carry host/uri) → reverse_proxy (forward_auth) → reverse_proxy (app).
+	if len(r.Handle) != 3 {
+		t.Fatalf("guarded chain len = %d: %+v", len(r.Handle), r.Handle)
+	}
+	if r.Handle[0].Handler != "headers" {
+		t.Errorf("handler[0] = %q, want headers", r.Handle[0].Handler)
+	}
+	fa := r.Handle[1]
+	if fa.Handler != "reverse_proxy" || fa.Rewrite == nil || fa.Rewrite.Method != "GET" {
+		t.Fatalf("forward_auth handler = %+v", fa)
+	}
+	// The shared secret rides the verify URI as ?t=, never a request header (which
+	// would leak it to the app on a 2xx fall-through).
+	if !strings.HasPrefix(fa.Rewrite.URI, guardVerifyPath+"?t=") {
+		t.Errorf("verify uri = %q", fa.Rewrite.URI)
+	}
+	if fa.Upstreams[0].Dial != m.controlDial() {
+		t.Errorf("forward_auth dials %q, want control plane", fa.Upstreams[0].Dial)
+	}
+	if len(fa.HandleResponse) != 1 || len(fa.HandleResponse[0].Match.StatusCode) != 1 || fa.HandleResponse[0].Match.StatusCode[0] != 2 {
+		t.Errorf("handle_response should match 2xx: %+v", fa.HandleResponse)
+	}
+	app := r.Handle[2]
+	if app.Handler != "reverse_proxy" || app.Upstreams[0].Dial != "tool--web:3000" {
+		t.Errorf("app handler = %+v", app)
+	}
+}
+
+func TestRouteFor_GuardDisabledNoForwardAuth(t *testing.T) {
+	// newManagerWith leaves GuardEnabled false.
+	m := newManagerWith(&fakeStore{}, newFakeCaddy(), newFakeNet())
+	d := store.Domain{ID: "d1", Hostname: "h", ServiceName: "web"}
+	svc := store.Service{ServiceName: "web", InternalPort: intp(3000), RequiresAuth: true}
+	r := m.routeFor(d, svc, "app", nil)
+	if len(r.Handle) != 1 || r.Handle[0].Handler != "reverse_proxy" {
+		t.Fatalf("guard disabled should yield a bare reverse_proxy: %+v", r.Handle)
+	}
+}
+
+func TestApplyApp_GuardedFailsClosedWithoutKey(t *testing.T) {
+	d := store.Domain{ID: "d1", AppID: "a1", Hostname: "tool.vac.example.com", ServiceName: "web"}
+	s := &fakeStore{
+		app:      store.App{ID: "a1", Slug: "tool"},
+		domains:  []store.Domain{d},
+		services: []store.Service{{ServiceName: "web", ContainerID: strp("c1"), InternalPort: intp(3000), RequiresAuth: true}},
+	}
+	c := newFakeCaddy()
+	m := newManagerWith(s, c, newFakeNet()) // GuardEnabled=false
+	if err := m.Sync(context.Background(), "a1"); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if _, ok := c.put["vac-route-d1"]; ok {
+		t.Errorf("guarded route must not be published when the guard can't operate: %+v", c.put)
+	}
+}
+
+func TestIsGuardedHost(t *testing.T) {
+	d := store.Domain{ID: "d1", AppID: "a1", Hostname: "tool.example.com", ServiceName: "web"}
+	s := &fakeStore{
+		app:      store.App{ID: "a1", Slug: "tool"},
+		domains:  []store.Domain{d},
+		services: []store.Service{{ServiceName: "web", ContainerID: strp("c1"), InternalPort: intp(3000), RequiresAuth: true}},
+	}
+	m := newGuardManager(s, newFakeCaddy(), newFakeNet())
+	if ok, err := m.IsGuardedHost(context.Background(), "TOOL.EXAMPLE.COM"); err != nil || !ok {
+		t.Errorf("guarded custom domain: ok=%v err=%v", ok, err)
+	}
+	if ok, _ := m.IsGuardedHost(context.Background(), "other.example.com"); ok {
+		t.Error("unrelated host must not be reported guarded")
 	}
 }
 

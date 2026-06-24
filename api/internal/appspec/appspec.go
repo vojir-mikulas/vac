@@ -139,6 +139,10 @@ type Service struct {
 	// IsPrivate forces the service internal-only (no public route). Part of the
 	// portable spec so a private service stays private across export/import.
 	IsPrivate bool `yaml:"isPrivate,omitempty" json:"isPrivate,omitempty"`
+	// RequiresAuth puts the service behind the VAC login gate (forward_auth via
+	// Caddy). Part of the portable spec so a guarded service stays guarded across
+	// export/import.
+	RequiresAuth bool `yaml:"requiresAuth,omitempty" json:"requiresAuth,omitempty"`
 }
 
 // Deploy holds push-to-deploy configuration. Triggers map to deploy_triggers.

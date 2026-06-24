@@ -22,6 +22,7 @@ import (
 	"github.com/vojir-mikulas/vac/api/internal/dnsprovider"
 	"github.com/vojir-mikulas/vac/api/internal/dockercli"
 	"github.com/vojir-mikulas/vac/api/internal/domainstatus"
+	"github.com/vojir-mikulas/vac/api/internal/guard"
 	"github.com/vojir-mikulas/vac/api/internal/preview"
 	"github.com/vojir-mikulas/vac/api/internal/proxy"
 	"github.com/vojir-mikulas/vac/api/internal/revert"
@@ -88,6 +89,13 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	if pm != nil {
 		wakeResolver = pm
 	}
+	// VAC login gate (internal/guard): the start portal asks the proxy manager
+	// whether an rd host is actually guarded, to refuse an open redirect. nil-able
+	// so the endpoint degrades cleanly when the proxy isn't wired (tests).
+	var guardChk handler.GuardHostChecker
+	if pm != nil {
+		guardChk = pm
+	}
 
 	// Same resolver the status engine uses, so the one-shot DNS-check button and
 	// the background projection agree (plan 09 F3 §2): a public recursive resolver
@@ -139,6 +147,12 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	tm := auth.NewTOTPManager(s, box)
 	tokm := auth.NewTokenManager(s)
 	keys := sshkey.NewManager(s, box)
+
+	// VAC login gate signer (internal/guard): mints/verifies the host-bound guard
+	// cookies and exchange tokens. nil when VAC_MASTER_KEY is unset — the proxy
+	// then refuses to route a guarded service (fail closed) and the guard
+	// endpoints 503.
+	guardSigner := guard.New(cfg.MasterKey)
 
 	// Custom-domain DNS automation (dns-automation plan A). Opt-in via
 	// VAC_DNS_AUTOMATION; when off the automator is nil and the domain hook /
@@ -199,6 +213,13 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	// authenticate, via the shared X-Caddy-Ask-Token), outside the /api group, and
 	// matched on every method so a rewritten POST still reaches it.
 	r.HandleFunc("/__vac_wake", handler.WakeApp(waker, wakeResolver, cfg.CaddyAskToken))
+
+	// VAC login gate (internal/guard). Both sit outside the /api auth group: the
+	// verify endpoint is Caddy's forward_auth target (gated by the shared
+	// X-Caddy-Ask-Token, lifted from ?t= by scrubCaddyAskToken); the start portal
+	// runs on the control domain and manages its own session check + redirects.
+	r.Get("/__vac_guard", handler.GuardVerify(guardSigner, cfg.ControlDomain, cfg.CaddyAskToken))
+	r.Get("/__vac_guard/start", handler.GuardStart(sm, guardSigner, guardChk))
 
 	// Token-gated runtime introspection for the RAM benchmark (plan 07).
 	// Default-closed: with VAC_METRICS_TOKEN unset these 404. Sits outside the
@@ -638,24 +659,38 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	}, nil
 }
 
-// scrubCaddyAskToken moves a ?token= secret on the Caddy ask route into the
-// X-Caddy-Ask-Token header and removes it from the URL, so the downstream request
-// logger (which reads RequestURI at entry) never records the shared secret. A
-// no-op for every other path and when no token query param is present.
+// scrubCaddyAskToken moves a query-string shared secret into the X-Caddy-Ask-Token
+// header and removes it from the URL, so the downstream request logger (which
+// reads RequestURI at entry) never records it. Caddy passes the secret as a query
+// param because its on-demand / forward_auth modules can't set request headers:
+// the ask hook uses ?token=, the guard verify route uses ?t=. A no-op for every
+// other path and when the param is absent.
 func scrubCaddyAskToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/internal/caddy/ask" {
-			if q := r.URL.Query(); q.Get("token") != "" {
-				if r.Header.Get("X-Caddy-Ask-Token") == "" {
-					r.Header.Set("X-Caddy-Ask-Token", q.Get("token"))
-				}
-				q.Del("token")
-				r.URL.RawQuery = q.Encode()
-				r.RequestURI = r.URL.RequestURI()
-			}
+		switch r.URL.Path {
+		case "/internal/caddy/ask":
+			liftAskToken(r, "token")
+		case "/__vac_guard":
+			liftAskToken(r, "t")
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// liftAskToken moves the named query param into the X-Caddy-Ask-Token header (if
+// not already set) and strips it from the URL.
+func liftAskToken(r *http.Request, param string) {
+	q := r.URL.Query()
+	v := q.Get(param)
+	if v == "" {
+		return
+	}
+	if r.Header.Get("X-Caddy-Ask-Token") == "" {
+		r.Header.Set("X-Caddy-Ask-Token", v)
+	}
+	q.Del(param)
+	r.URL.RawQuery = q.Encode()
+	r.RequestURI = r.URL.RequestURI()
 }
 
 // dnsResolverAddr is the public recursive resolver the DNS-check button and the

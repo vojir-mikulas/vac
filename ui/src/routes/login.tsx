@@ -16,6 +16,15 @@ import { queryKeys } from '@/lib/query/keys'
 import { isTotpRequired } from '@/types/api'
 
 export const Route = createFileRoute('/login')({
+  // `next` lets the VAC login gate (internal/guard) bounce an unauthenticated
+  // visitor through login and back to the guard portal. Only same-origin
+  // absolute paths are accepted — never protocol-relative or external URLs — so
+  // it can't be turned into an open redirect.
+  validateSearch: (search: Record<string, unknown>): { next?: string } => {
+    const next = typeof search.next === 'string' ? search.next : undefined
+    if (next && next.startsWith('/') && !next.startsWith('//')) return { next }
+    return {}
+  },
   beforeLoad: async ({ context }) => {
     // If onboarding hasn't happened, the login form is meaningless.
     const setup = await context.queryClient.ensureQueryData({
@@ -31,6 +40,7 @@ function LoginPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const errId = useId()
+  const { next } = Route.useSearch()
   const [stage, setStage] = useState<'credentials' | 'totp'>('credentials')
   useDocumentTitle(stage === 'totp' ? 'Two-factor code' : 'Sign in')
   const [username, setUsername] = useState('')
@@ -40,6 +50,13 @@ function LoginPage() {
 
   const finish = async () => {
     await qc.invalidateQueries({ queryKey: queryKeys.auth.me })
+    if (next) {
+      // A full-page navigation, not an SPA route change: `next` is typically the
+      // guard portal (a server endpoint, not a client route), and the reload
+      // ensures the freshly-set session cookie is applied to it.
+      window.location.assign(next)
+      return
+    }
     await navigate({ to: '/apps' })
   }
 

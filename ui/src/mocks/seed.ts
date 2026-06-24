@@ -40,6 +40,7 @@ function svc(
     oom_killed_count: 0,
     has_volumes: opts.hasVolumes ?? false,
     is_private: opts.isPrivate ?? false,
+    requires_auth: false,
     created_at: daysAgoISO(12),
     updated_at: minutesAgoISO(3),
   }

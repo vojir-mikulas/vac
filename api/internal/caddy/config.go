@@ -136,6 +136,42 @@ type Handler struct {
 	// reverse_proxy so excess requests get a 429 before reaching the upstream.
 	// The plugin is baked into the vac-proxy image (proxy/Dockerfile).
 	RateLimits map[string]*RateLimit `json:"rate_limits,omitempty"`
+	// Rewrite is the reverse_proxy `rewrite` op (NOT the standalone rewrite
+	// handler — that one uses URI above). The VAC-guard forward_auth handler uses
+	// it to turn the auth subrequest into a GET against the verify path while the
+	// outer request is untouched.
+	Rewrite *Rewrite `json:"rewrite,omitempty"`
+	// HandleResponse is the reverse_proxy `handle_response` clause list. The guard
+	// forward_auth handler uses one clause to match a 2xx auth result and fall
+	// through to the real reverse_proxy (copying the authenticated user onto the
+	// request); a non-2xx auth response has no matching clause, so reverse_proxy's
+	// default copies it — redirect, Set-Cookie and all — straight back to the
+	// client. That copy-on-non-2xx is what carries the login bounce and the
+	// cookie mint to the browser.
+	HandleResponse []ResponseHandler `json:"handle_response,omitempty"`
+}
+
+// Rewrite is a reverse_proxy request rewrite: override the method and/or the URI
+// of the subrequest sent upstream, leaving the client-facing request unchanged.
+type Rewrite struct {
+	Method string `json:"method,omitempty"`
+	URI    string `json:"uri,omitempty"`
+}
+
+// ResponseHandler is one reverse_proxy `handle_response` clause: when an upstream
+// response matches Match, run Routes instead of copying the response to the
+// client. Routes that write no response let the parent handler chain continue to
+// the next handler — how forward_auth falls through to the real reverse_proxy on
+// a successful (2xx) auth check.
+type ResponseHandler struct {
+	Match  *ResponseMatch `json:"match,omitempty"`
+	Routes []Route        `json:"routes,omitempty"`
+}
+
+// ResponseMatch matches an upstream response by status-code class: a single-digit
+// entry matches a whole class (2 → any 2xx), a three-digit entry an exact code.
+type ResponseMatch struct {
+	StatusCode []int `json:"status_code,omitempty"`
 }
 
 // RateLimit is one caddy-ratelimit zone: a sliding window of MaxEvents requests

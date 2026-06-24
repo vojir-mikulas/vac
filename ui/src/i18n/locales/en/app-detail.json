@@ -463,6 +463,8 @@
     "healthPath": "Health check path",
     "private": "Keep private",
     "privateHint": "Don't give this service a public domain or route — keep it reachable only by other containers in the stack. Use this for internal services (search, cache, internal APIs) whose image exposes a port VAC would otherwise publish.",
+    "requireAuth": "Require VAC login",
+    "requireAuthHint": "Put this service behind the VAC login gate — visitors must sign in to VAC before they can reach it. Use it for internal tools you want visible only to people who can log in to VAC. (Disabled for private services, which have no public route to guard.)",
     "serviceUpdated": "Service updated"
   },
   "services": {

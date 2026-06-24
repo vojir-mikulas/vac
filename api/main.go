@@ -173,6 +173,9 @@ func main() {
 		HealthTimeout:  cfg.HealthCheckTimeout,
 		HealthRetries:  cfg.HealthCheckRetries,
 		WakeToken:      cfg.CaddyAskToken,
+		// The VAC login gate needs the master key to sign guard tokens; without it
+		// a guarded service is refused a route rather than served unprotected.
+		GuardEnabled: len(cfg.MasterKey) > 0,
 	}, slog.Default())
 
 	// Apply any runtime base-domain override saved in instance_settings so it

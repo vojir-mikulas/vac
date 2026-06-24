@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -82,8 +83,14 @@ type Config struct {
 	// WakeToken, when set, is sent as X-Caddy-Ask-Token on scale-to-zero wake
 	// routes so the (unauthenticated, control-domain-reachable) /__vac_wake
 	// endpoint can reject requests that didn't come through a VAC-installed route.
-	// Reuses the CaddyAsk shared secret.
+	// Reuses the CaddyAsk shared secret. The VAC-guard forward_auth check reuses
+	// the same secret to gate its verify endpoint.
 	WakeToken string
+	// GuardEnabled reports whether the VAC login gate can operate (i.e. a master
+	// key is present to sign guard tokens). When false, a service marked
+	// requires_auth is NOT routed at all rather than served unprotected — the
+	// guard fails closed.
+	GuardEnabled bool
 }
 
 // Manager projects VAC domains into Caddy routes and manages vac-edge
@@ -379,6 +386,58 @@ func (m *Manager) IsAutoHost(ctx context.Context, host string) (bool, error) {
 	return false, nil
 }
 
+// guardedHosts returns the set of hostnames currently fronted by the VAC login
+// gate: an auto host or assigned custom domain whose backing service is marked
+// requires_auth. Mirrors AutoHosts' derivation so the portal agrees with what
+// applyApp actually installs forward_auth on. A private service has no route, so
+// it never appears here (autoHostsForApp already drops it).
+func (m *Manager) guardedHosts(ctx context.Context) (map[string]bool, error) {
+	apps, err := m.store.ListApps(ctx)
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool)
+	for _, app := range apps {
+		services, err := m.store.ListServicesForApp(ctx, app.ID)
+		if err != nil {
+			return nil, err
+		}
+		byName := make(map[string]store.Service, len(services))
+		for _, s := range services {
+			byName[s.ServiceName] = s
+		}
+		for _, ah := range m.autoHostsForApp(app, services) {
+			if ah.Service.RequiresAuth {
+				set[strings.ToLower(ah.Hostname)] = true
+			}
+		}
+		domains, err := m.store.ListDomainsByApp(ctx, app.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range domains {
+			if !d.Assigned() {
+				continue
+			}
+			if svc, ok := byName[d.ServiceName]; ok && svc.RequiresAuth {
+				set[strings.ToLower(d.Hostname)] = true
+			}
+		}
+	}
+	return set, nil
+}
+
+// IsGuardedHost reports whether host is fronted by the VAC login gate. The guard
+// portal consults it before redirecting, so it can refuse an open redirect to
+// any host VAC doesn't actually guard.
+func (m *Manager) IsGuardedHost(ctx context.Context, host string) (bool, error) {
+	set, err := m.guardedHosts(ctx)
+	if err != nil {
+		return false, err
+	}
+	return set[strings.ToLower(strings.TrimSpace(host))], nil
+}
+
 // routeSpec is one desired Caddy route for an app: a Caddy @id, the hostname it
 // matches, and either the service it proxies to or (Phase 3) a redirect target.
 type routeSpec struct {
@@ -489,6 +548,57 @@ func (m *Manager) wakeRoute(id, hostname string) caddy.Route {
 	}
 }
 
+// guardVerifyPath is vac-api's forward_auth verify endpoint. The guard's
+// reverse_proxy rewrites the auth subrequest to this path; the handler decides
+// 204 (allow), a cookie-minting 302 (callback), or a bounce to the login portal.
+const guardVerifyPath = "/__vac_guard"
+
+// guardHandlers builds the forward_auth chain that fronts a guarded route: a
+// headers handler that carries the original host+URI to the verify endpoint
+// (the subrequest rewrites the path away, losing them), followed by a
+// reverse_proxy to vac-api configured as a forward-auth check. On a 2xx auth
+// result the handle_response clause copies the resolved user onto the request
+// and falls through to the real reverse_proxy that follows in the chain; on any
+// non-2xx, reverse_proxy's default copies the auth response (the login redirect,
+// or the 302 that sets the guard cookie) back to the browser. Modeled on
+// wakeRoute, which funnels to vac-api the same way.
+func (m *Manager) guardHandlers() []caddy.Handler {
+	// Non-secret context for the verify endpoint; harmless if it also reaches the
+	// app on a 2xx fall-through. orig_uri (not uri) so the original path survives
+	// any earlier rewrite.
+	carry := map[string][]string{
+		"X-Vac-Guard-Host": {"{http.request.host}"},
+		"X-Vac-Guard-Uri":  {"{http.request.orig_uri}"},
+	}
+	verifyURI := guardVerifyPath
+	if m.cfg.WakeToken != "" {
+		// Carry the shared secret as a query param on the (internal) subrequest
+		// URI, mirroring CaddyAsk — vac-api scrubs it from logs. A request header
+		// would leak it to the app on a 2xx fall-through.
+		verifyURI += "?t=" + url.QueryEscape(m.cfg.WakeToken)
+	}
+	return []caddy.Handler{
+		{Handler: "headers", Request: &caddy.HeaderOps{Set: carry}},
+		{
+			Handler:   "reverse_proxy",
+			Upstreams: []caddy.Upstream{{Dial: m.controlDial()}},
+			Rewrite:   &caddy.Rewrite{Method: "GET", URI: verifyURI},
+			HandleResponse: []caddy.ResponseHandler{{
+				Match: &caddy.ResponseMatch{StatusCode: []int{2}},
+				Routes: []caddy.Route{{
+					Handle: []caddy.Handler{{
+						Handler: "headers",
+						Request: &caddy.HeaderOps{Set: map[string][]string{
+							// Surface the authenticated VAC user to the app.
+							"X-Vac-User": {"{http.reverse_proxy.header.X-Vac-User}"},
+						}},
+					}},
+				}},
+			}},
+		},
+	}
+}
+
 // route builds the Caddy route for one hostname → service. The upstream dials
 // the service's vac-edge alias on its container port; an active health check
 // lets Caddy (and, via the upstreams endpoint, WaitHealthy) track liveness.
@@ -497,11 +607,18 @@ func (m *Manager) route(id, hostname string, svc store.Service, slug string, rat
 	if svc.HealthPath != nil && *svc.HealthPath != "" {
 		path = *svc.HealthPath
 	}
-	handlers := make([]caddy.Handler, 0, 2)
+	handlers := make([]caddy.Handler, 0, 4)
 	// A per-app limit gates the request before it reaches the upstream, so the
 	// rate_limit handler must precede reverse_proxy in the chain.
 	if rateLimitRPM != nil && *rateLimitRPM > 0 {
 		handlers = append(handlers, caddy.RateLimitHandler(id, *rateLimitRPM))
+	}
+	// VAC guard: the forward_auth check must also precede reverse_proxy so an
+	// unauthenticated request is bounced to login before it reaches the upstream.
+	// Gated on GuardEnabled; applyApp refuses to route a guarded service when the
+	// guard can't operate, so this never silently serves an unprotected app.
+	if svc.RequiresAuth && m.cfg.GuardEnabled {
+		handlers = append(handlers, m.guardHandlers()...)
 	}
 	handlers = append(handlers, caddy.Handler{
 		Handler:   "reverse_proxy",
@@ -671,6 +788,14 @@ func (m *Manager) applyApp(ctx context.Context, appID string) error {
 		// private service is also torn down here, so "private" means no HTTP route
 		// at all — auto or custom.
 		routable := ok && svc.ContainerID != nil && *svc.ContainerID != "" && svc.InternalPort != nil && !svc.IsPrivate
+		// Fail closed: a service the operator marked requires_auth must never be
+		// served without the gate. If the guard can't sign tokens (no master key),
+		// drop the route entirely rather than expose it unauthenticated.
+		if routable && svc.RequiresAuth && !m.cfg.GuardEnabled {
+			m.logger.Warn("proxy: guarded service has no master key to sign tokens; refusing to route it unprotected",
+				"host", spec.hostname, "service", svc.ServiceName)
+			routable = false
+		}
 		if !routable {
 			// Not deployed yet (or portless/private) — make sure no stale route lingers.
 			if err := m.caddy.DeleteRoute(ctx, spec.id); err != nil {
