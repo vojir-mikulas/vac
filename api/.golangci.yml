@@ -122,6 +122,15 @@ linters:
         text: G710
         linters:
           - gosec
+      # G710: not an open redirect — every guard redirect target is validated.
+      # guardCleanRedirect rebuilds the URL with the request's own host and a
+      # sanitized path (rejects scheme/host changes); guardStartURL points at the
+      # configured control domain (a trusted constant), embedding only a
+      # same-host, path-constrained rd. The taint analysis can't see these gates.
+      - path: internal/server/handler/guard.go
+        text: G710
+        linters:
+          - gosec
       # G401/G501: MD5 here is not a security control — it's the exact digest S3
       # returns in a single-part ETag, so it's the only value the uploaded bytes
       # can be compared against to catch a silently-truncated 2xx upload (see the
