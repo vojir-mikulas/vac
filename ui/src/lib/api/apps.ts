@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api } from '@/lib/api/client'
+import { ApiError, api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
 import type {
   App,
@@ -52,6 +52,9 @@ export function useApp(id: string) {
   return useQuery({
     queryKey: queryKeys.apps.detail(id),
     queryFn: () => appsApi.get(id),
+    // A 404 is definitive (app deleted / never existed) — don't retry it, so the
+    // not-found state surfaces immediately instead of after the default backoff.
+    retry: (count, err) => !(err instanceof ApiError && err.status === 404) && count < 1,
   })
 }
 
@@ -87,7 +90,12 @@ export function useDeleteApp() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => appsApi.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.apps.all }),
+    onSuccess: (_data, id) => {
+      // Drop the deleted app's detail cache so navigating back to its URL shows
+      // the not-found state rather than lingering stale data.
+      qc.removeQueries({ queryKey: queryKeys.apps.detail(id) })
+      qc.invalidateQueries({ queryKey: queryKeys.apps.all })
+    },
   })
 }
 

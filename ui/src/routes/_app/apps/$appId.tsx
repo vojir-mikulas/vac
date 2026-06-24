@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useApp } from '@/lib/api/apps'
+import { ApiError } from '@/lib/api/client'
 import { useDatabases } from '@/lib/api/databases'
 import { useTriggerDeploy } from '@/lib/api/deployments'
 import { useDomains } from '@/lib/api/domains'
@@ -39,11 +40,21 @@ const MANAGED_TABS = [{ to: 'backups' }, { to: 'databases' }] as const
 function AppDetailLayout() {
   const { t } = useTranslation('app-detail')
   const { appId } = Route.useParams()
-  const { data: app, isLoading } = useApp(appId)
+  const { data: app, isLoading, error } = useApp(appId)
   const { data: domains } = useDomains(appId)
   const { data: instance } = useInstanceInfo()
   const { data: databases } = useDatabases(appId, !!instance?.managed_services)
   const deploy = useTriggerDeploy(appId)
+
+  // App deleted (or never existed) → show a clear not-found state instead of a
+  // perpetual header skeleton with tabs that link nowhere.
+  if (!isLoading && !app) {
+    return (
+      <PageContainer>
+        <AppNotFound error={error} />
+      </PageContainer>
+    )
+  }
 
   const primaryDomain = domains?.[0]
   const isAddon = app?.source === 'template'
@@ -190,5 +201,27 @@ function AppDetailLayout() {
         <Outlet />
       </AppStatsProvider>
     </PageContainer>
+  )
+}
+
+function AppNotFound({ error }: { error: Error | null }) {
+  const { t } = useTranslation('app-detail')
+  // No error means an empty 200 (shouldn't happen); a 404 means the app is gone.
+  // Anything else is a load failure — keep the escape hatch but show its message.
+  const notFound = !error || (error instanceof ApiError && error.status === 404)
+  return (
+    <div className="grid place-items-center px-4 py-24">
+      <div className="flex max-w-md flex-col items-center gap-3 text-center">
+        <h1 className="text-xl font-semibold tracking-tight">
+          {notFound ? t('layout.notFound.title') : t('layout.notFound.errorTitle')}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {notFound ? t('layout.notFound.description') : error?.message}
+        </p>
+        <Button variant="brand" asChild>
+          <Link to="/apps">{t('layout.notFound.back')}</Link>
+        </Button>
+      </div>
+    </div>
   )
 }

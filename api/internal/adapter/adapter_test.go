@@ -326,9 +326,19 @@ func TestStaticAdapter_Prepare_SPAFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Files are baked into an image (a generated Dockerfile), not bind-mounted —
+	// bind mounts resolve against the host daemon, which can't see VAC's
+	// named-volume repo tree. The compose must build that Dockerfile.
 	compose, _ := os.ReadFile(path)
-	if !strings.Contains(string(compose), "nginx:alpine") || !strings.Contains(string(compose), "./public:/usr/share/nginx/html") {
-		t.Errorf("compose missing nginx/static mount:\n%s", compose)
+	if !strings.Contains(string(compose), "Dockerfile.vac") {
+		t.Errorf("compose should build a generated Dockerfile:\n%s", compose)
+	}
+	df, err := os.ReadFile(filepath.Join(d, "Dockerfile.vac"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(df), "nginx:alpine") || !strings.Contains(string(df), "COPY public ./") {
+		t.Errorf("Dockerfile should COPY the static dir into nginx:\n%s", df)
 	}
 	conf, err := os.ReadFile(filepath.Join(d, "vac-static.conf"))
 	if err != nil {
@@ -336,6 +346,32 @@ func TestStaticAdapter_Prepare_SPAFallback(t *testing.T) {
 	}
 	if !strings.Contains(string(conf), "/index.html") {
 		t.Errorf("spa fallback conf missing index.html:\n%s", conf)
+	}
+}
+
+func TestStaticAdapter_Prepare_RootScrubsSecrets(t *testing.T) {
+	t.Parallel()
+	// Serving the repo root would otherwise expose .git history and the .env
+	// VAC writes (decrypted secrets) over HTTP. The generated Dockerfile must
+	// scrub them in a throwaway stage so they never reach the served image.
+	d := t.TempDir()
+	write(t, d, "index.html", "<html></html>")
+	ad, _ := adapter.For(adapter.KindStatic, d)
+	if _, err := ad.Prepare(context.Background(), d, adapter.BuildConfig{StaticDir: "./"}); err != nil {
+		t.Fatal(err)
+	}
+	df, err := os.ReadFile(filepath.Join(d, "Dockerfile.vac"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(df)
+	if !strings.Contains(body, "AS site") || !strings.Contains(body, "COPY --from=site") {
+		t.Errorf("expected a throwaway build stage that scrubs before serving:\n%s", body)
+	}
+	for _, secret := range []string{".git", ".env"} {
+		if !strings.Contains(body, secret) {
+			t.Errorf("Dockerfile should scrub %q from the served root:\n%s", secret, body)
+		}
 	}
 }
 

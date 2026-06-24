@@ -26,7 +26,13 @@
     "addonFallback": "add-on",
     "deployFromHead": "Deploy from HEAD",
     "deployTriggered": "Deploy triggered",
-    "sectionsAria": "App sections"
+    "sectionsAria": "App sections",
+    "notFound": {
+      "title": "App not found",
+      "description": "This app doesn't exist — it may have been deleted.",
+      "errorTitle": "Couldn't load this app",
+      "back": "Back to apps"
+    }
   },
   "traffic": {
     "title": "Request Traffic",

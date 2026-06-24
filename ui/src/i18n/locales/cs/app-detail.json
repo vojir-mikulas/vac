@@ -26,7 +26,13 @@
     "addonFallback": "add-on",
     "deployFromHead": "Deploy z HEAD",
     "deployTriggered": "Deploy spuštěn",
-    "sectionsAria": "Sekce aplikace"
+    "sectionsAria": "Sekce aplikace",
+    "notFound": {
+      "title": "Aplikace nenalezena",
+      "description": "Tato aplikace neexistuje — možná byla smazána.",
+      "errorTitle": "Aplikaci se nepodařilo načíst",
+      "back": "Zpět na aplikace"
+    }
   },
   "traffic": {
     "title": "Request traffic",

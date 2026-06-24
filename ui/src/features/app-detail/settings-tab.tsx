@@ -168,7 +168,8 @@ function SettingsForm({ app }: { app: App }) {
     remove.mutate(appId, {
       onSuccess: () => {
         toast.success(t('settings.appDeleted'))
-        void navigate({ to: '/apps' })
+        // replace: the deleted app's pages are gone — don't leave them in history.
+        void navigate({ to: '/apps', replace: true })
       },
       onError: (e) => toast.error(e.message),
     })
