@@ -44,6 +44,14 @@ type GuestAccessReader interface {
 	GetServiceGuestAccessCode(ctx context.Context, appID, service string) ([]byte, error)
 }
 
+// GuardRateLimiter throttles code-guessing on the redeem endpoint per client IP.
+// *middleware.RateLimiter satisfies it; a narrow interface keeps the handler
+// free of an import cycle (middleware imports handler) and unit-testable. A nil
+// limiter disables throttling.
+type GuardRateLimiter interface {
+	Allow(r *http.Request) bool
+}
+
 // GuardVerify is the forward_auth target for guarded routes (internal/guard).
 // Caddy rewrites every guarded request to guardVerifyPath and proxies here,
 // carrying the original host/URI in X-Vac-Guard-Host / X-Vac-Guard-Uri and the
@@ -171,7 +179,7 @@ func GuardStart(sm *auth.SessionManager, signer *guard.Signer, resolver GuardHos
 // host's callback (identical to the operator path, but labelled "guest"); on a
 // wrong code it re-renders the page with an error. Must be rate-limited at the
 // router — it is the brute-force surface for the code.
-func GuardRedeem(signer *guard.Signer, resolver GuardHostResolver, codes GuestAccessReader, box *crypto.Box) http.HandlerFunc {
+func GuardRedeem(signer *guard.Signer, resolver GuardHostResolver, codes GuestAccessReader, box *crypto.Box, limiter GuardRateLimiter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if signer == nil || resolver == nil || box == nil {
 			http.Error(w, "vac guard is not configured", http.StatusServiceUnavailable)
@@ -185,6 +193,14 @@ func GuardRedeem(signer *guard.Signer, resolver GuardHostResolver, codes GuestAc
 		host, ok := guardRedirectHost(rd)
 		if !ok {
 			http.Error(w, "invalid redirect target", http.StatusBadRequest)
+			return
+		}
+		// Throttle code-guessing per IP, but render the access page (not the stock
+		// JSON 429) so a visitor who is briefly over the limit sees a clear message
+		// and keeps the form — the budget is generous enough that ordinary typos
+		// never hit it (see server wiring).
+		if limiter != nil && !limiter.Allow(r) {
+			writeGuardAccessPage(w, http.StatusTooManyRequests, rd, "Too many attempts — wait a minute and try again.")
 			return
 		}
 		appID, service, guarded, err := resolver.GuardedServiceForHost(r.Context(), host)

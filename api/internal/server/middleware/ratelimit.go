@@ -75,6 +75,13 @@ func (rl *RateLimiter) getLimiter(key string) *rate.Limiter {
 	return e.limiter
 }
 
+// Allow reports whether this request is within the per-IP budget, consuming one
+// token when it is. Lets a handler enforce the limit itself — e.g. to render a
+// friendly response instead of the stock JSON 429 (see GuardRedeem).
+func (rl *RateLimiter) Allow(r *http.Request) bool {
+	return rl.getLimiter(ratelimitIP(r)).Allow()
+}
+
 // Middleware returns an http.Handler middleware that enforces the per-IP
 // budget. Over-budget requests get 429 with a Retry-After header set to the
 // time until the next token refill.

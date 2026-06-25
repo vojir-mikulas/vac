@@ -49,6 +49,15 @@ func (f fakeCodes) GetServiceGuestAccessCode(_ context.Context, appID, service s
 	return f[appID+"/"+service], nil
 }
 
+// allowAll / denyAll stub GuardRateLimiter for redeem tests.
+type allowAll struct{}
+
+func (allowAll) Allow(*http.Request) bool { return true }
+
+type denyAll struct{}
+
+func (denyAll) Allow(*http.Request) bool { return false }
+
 func verifyReq(host, uri, token string) *http.Request {
 	r := httptest.NewRequest(http.MethodGet, guardVerifyPath, nil)
 	r.Header.Set("X-Caddy-Ask-Token", token)
@@ -255,7 +264,7 @@ func TestGuardRedeem_CorrectCodeHandsOff(t *testing.T) {
 	chk := fakeGuardHosts{guarded: map[string][2]string{"tool.example.com": {"a1", "web"}}}
 	sealed, _ := box.Seal([]byte("hunter2"))
 	codes := fakeCodes{"a1/web": sealed}
-	h := GuardRedeem(signer, chk, codes, box)
+	h := GuardRedeem(signer, chk, codes, box, allowAll{})
 
 	form := url.Values{"rd": {"https://tool.example.com/secret"}, "code": {"hunter2"}}
 	r := httptest.NewRequest(http.MethodPost, guardRedeemPath, strings.NewReader(form.Encode()))
@@ -284,7 +293,7 @@ func TestGuardRedeem_WrongCodeReshowsPage(t *testing.T) {
 	chk := fakeGuardHosts{guarded: map[string][2]string{"tool.example.com": {"a1", "web"}}}
 	sealed, _ := box.Seal([]byte("hunter2"))
 	codes := fakeCodes{"a1/web": sealed}
-	h := GuardRedeem(signer, chk, codes, box)
+	h := GuardRedeem(signer, chk, codes, box, allowAll{})
 
 	form := url.Values{"rd": {"https://tool.example.com/secret"}, "code": {"wrong"}}
 	r := httptest.NewRequest(http.MethodPost, guardRedeemPath, strings.NewReader(form.Encode()))
@@ -297,5 +306,31 @@ func TestGuardRedeem_WrongCodeReshowsPage(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `name="code"`) {
 		t.Error("wrong code should re-render the access page")
+	}
+}
+
+func TestGuardRedeem_RateLimitedShowsPage(t *testing.T) {
+	box := testBox(t)
+	signer := guard.New(guardKey())
+	chk := fakeGuardHosts{guarded: map[string][2]string{"tool.example.com": {"a1", "web"}}}
+	sealed, _ := box.Seal([]byte("hunter2"))
+	codes := fakeCodes{"a1/web": sealed}
+	// Over the limit even though the code is correct → page, not a handoff.
+	h := GuardRedeem(signer, chk, codes, box, denyAll{})
+
+	form := url.Values{"rd": {"https://tool.example.com/secret"}, "code": {"hunter2"}}
+	r := httptest.NewRequest(http.MethodPost, guardRedeemPath, strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h(w, r)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", w.Code)
+	}
+	if w.Header().Get("Location") != "" {
+		t.Error("rate-limited redeem must not hand off")
+	}
+	if !strings.Contains(w.Body.String(), `name="code"`) {
+		t.Error("rate-limited redeem should re-render the access page")
 	}
 }

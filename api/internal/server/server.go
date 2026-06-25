@@ -221,12 +221,16 @@ func New(ctx context.Context, cfg config.Config, s *store.Store, worker *deploy.
 	// runs on the control domain and manages its own session check + redirects.
 	r.Get("/__vac_guard", handler.GuardVerify(guardSigner, cfg.ControlDomain, cfg.CaddyAskToken))
 	r.Get("/__vac_guard/start", handler.GuardStart(sm, guardSigner, guardResolver, s))
-	// The shared-access-code form POST is the brute-force surface for the code, so
-	// it gets its own per-IP limiter (separate bucket from the operator login,
-	// same budget) on top of the constant-time compare in the handler.
-	guardLimiter := middleware.NewRateLimiter(ctx, cfg.LoginRateLimit, cfg.LoginRateWindow)
-	r.With(middleware.BodyLimit(middleware.MaxBodyBytes), guardLimiter.Middleware).
-		Post("/__vac_guard/redeem", handler.GuardRedeem(guardSigner, guardResolver, s, box))
+	// The shared-access-code form POST is the brute-force surface for the code.
+	// It gets its own per-IP limiter — deliberately NOT the tiny login budget
+	// (5/15min), which locked out legit visitors after a few typos. 30/min/IP is
+	// generous enough that ordinary mistypes never trip it, yet still throttles
+	// guessing to a rate that's hopeless against the code's entropy. The handler
+	// enforces it inline so an over-limit visitor gets the page with a message,
+	// not a blank JSON 429.
+	guardLimiter := middleware.NewRateLimiter(ctx, 30, time.Minute)
+	r.With(middleware.BodyLimit(middleware.MaxBodyBytes)).
+		Post("/__vac_guard/redeem", handler.GuardRedeem(guardSigner, guardResolver, s, box, guardLimiter))
 
 	// Token-gated runtime introspection for the RAM benchmark (plan 07).
 	// Default-closed: with VAC_METRICS_TOKEN unset these 404. Sits outside the
